@@ -3,6 +3,7 @@ package tui
 import (
 	"encoding/base64"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/viewport"
@@ -11,6 +12,14 @@ import (
 	"github.com/floatpane/matcha/fetcher"
 	"github.com/floatpane/matcha/view"
 )
+
+// clearKittyGraphics sends the Kitty graphics protocol delete command directly to stdout
+func clearKittyGraphics() tea.Msg {
+	// Delete all images: a=d (action=delete), d=A (delete all)
+	os.Stdout.WriteString("\x1b_Ga=d,d=A\x1b\\")
+	os.Stdout.Sync()
+	return nil
+}
 
 var (
 	emailHeaderStyle   = lipgloss.NewStyle().BorderStyle(lipgloss.NormalBorder()).BorderBottom(true).Padding(0, 1)
@@ -74,8 +83,11 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.focusOnAttachments = false
 				return m, nil
 			}
-			m.viewport.SetContent("\x1b_Ga=d\x1b\\")
-			return m, func() tea.Msg { return BackToMailboxMsg{Mailbox: m.mailbox} }
+			// Clear Kitty graphics before returning to mailbox
+			return m, tea.Sequence(
+				clearKittyGraphics,
+				func() tea.Msg { return BackToMailboxMsg{Mailbox: m.mailbox} },
+			)
 		}
 
 		if m.focusOnAttachments {
@@ -110,19 +122,31 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			switch msg.String() {
 			case "r":
-				return m, func() tea.Msg { return ReplyToEmailMsg{Email: m.email} }
+				// Clear Kitty graphics before opening composer
+				return m, tea.Sequence(
+					clearKittyGraphics,
+					func() tea.Msg { return ReplyToEmailMsg{Email: m.email} },
+				)
 			case "d":
 				accountID := m.accountID
 				uid := m.email.UID
-				return m, func() tea.Msg {
-					return DeleteEmailMsg{UID: uid, AccountID: accountID, Mailbox: m.mailbox}
-				}
+				// Clear Kitty graphics before transitioning
+				return m, tea.Sequence(
+					clearKittyGraphics,
+					func() tea.Msg {
+						return DeleteEmailMsg{UID: uid, AccountID: accountID, Mailbox: m.mailbox}
+					},
+				)
 			case "a":
 				accountID := m.accountID
 				uid := m.email.UID
-				return m, func() tea.Msg {
-					return ArchiveEmailMsg{UID: uid, AccountID: accountID, Mailbox: m.mailbox}
-				}
+				// Clear Kitty graphics before transitioning
+				return m, tea.Sequence(
+					clearKittyGraphics,
+					func() tea.Msg {
+						return ArchiveEmailMsg{UID: uid, AccountID: accountID, Mailbox: m.mailbox}
+					},
+				)
 			case "tab":
 				if len(m.email.Attachments) > 0 {
 					m.focusOnAttachments = true
