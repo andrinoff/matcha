@@ -14,11 +14,10 @@ import (
 )
 
 // clearKittyGraphics sends the Kitty graphics protocol delete command directly to stdout
-func clearKittyGraphics() tea.Msg {
+func clearKittyGraphics() {
 	// Delete all images: a=d (action=delete), d=A (delete all)
 	os.Stdout.WriteString("\x1b_Ga=d,d=A\x1b\\")
 	os.Stdout.Sync()
-	return nil
 }
 
 var (
@@ -84,10 +83,8 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			// Clear Kitty graphics before returning to mailbox
-			return m, tea.Sequence(
-				clearKittyGraphics,
-				func() tea.Msg { return BackToMailboxMsg{Mailbox: m.mailbox} },
-			)
+			clearKittyGraphics()
+			return m, func() tea.Msg { return BackToMailboxMsg{Mailbox: m.mailbox} }
 		}
 
 		if m.focusOnAttachments {
@@ -123,30 +120,24 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch msg.String() {
 			case "r":
 				// Clear Kitty graphics before opening composer
-				return m, tea.Sequence(
-					clearKittyGraphics,
-					func() tea.Msg { return ReplyToEmailMsg{Email: m.email} },
-				)
+				clearKittyGraphics()
+				return m, func() tea.Msg { return ReplyToEmailMsg{Email: m.email} }
 			case "d":
 				accountID := m.accountID
 				uid := m.email.UID
 				// Clear Kitty graphics before transitioning
-				return m, tea.Sequence(
-					clearKittyGraphics,
-					func() tea.Msg {
-						return DeleteEmailMsg{UID: uid, AccountID: accountID, Mailbox: m.mailbox}
-					},
-				)
+				clearKittyGraphics()
+				return m, func() tea.Msg {
+					return DeleteEmailMsg{UID: uid, AccountID: accountID, Mailbox: m.mailbox}
+				}
 			case "a":
 				accountID := m.accountID
 				uid := m.email.UID
 				// Clear Kitty graphics before transitioning
-				return m, tea.Sequence(
-					clearKittyGraphics,
-					func() tea.Msg {
-						return ArchiveEmailMsg{UID: uid, AccountID: accountID, Mailbox: m.mailbox}
-					},
-				)
+				clearKittyGraphics()
+				return m, func() tea.Msg {
+					return ArchiveEmailMsg{UID: uid, AccountID: accountID, Mailbox: m.mailbox}
+				}
 			case "tab":
 				if len(m.email.Attachments) > 0 {
 					m.focusOnAttachments = true
