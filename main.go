@@ -577,6 +577,14 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(m.current.Init(), sendEmail(account, msg))
 
 	case tui.EmailResultMsg:
+		if msg.Err != nil {
+			log.Printf("Failed to send email: %v", msg.Err)
+			m.previousModel = tui.NewChoice()
+			m.current = tui.NewStatus(fmt.Sprintf("Error: %v", msg.Err))
+			return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
+				return tui.RestoreViewMsg{}
+			})
+		}
 		m.current = tui.NewChoice()
 		return m, m.current.Init()
 
@@ -615,12 +623,16 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tui.EmailActionDoneMsg:
 		if msg.Err != nil {
 			log.Printf("Action failed: %v", msg.Err)
+			m.previousModel = m.current
 			if msg.Mailbox == tui.MailboxSent && m.sentInbox != nil {
-				m.current = m.sentInbox
-			} else {
-				m.current = m.inbox
+				m.previousModel = m.sentInbox
+			} else if m.inbox != nil {
+				m.previousModel = m.inbox
 			}
-			return m, nil
+			m.current = tui.NewStatus(fmt.Sprintf("Error: %v", msg.Err))
+			return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
+				return tui.RestoreViewMsg{}
+			})
 		}
 
 		// Remove email from stores
