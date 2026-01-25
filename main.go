@@ -429,6 +429,11 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 		return m, m.current.Init()
 
+	case tui.GoToSignatureEditorMsg:
+		m.current = tui.NewSignatureEditor()
+		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+		return m, m.current.Init()
+
 	case tui.GoToChoiceMenuMsg:
 		m.current = tui.NewChoice()
 		return m, m.current.Init()
@@ -1048,6 +1053,10 @@ func sendEmail(account *config.Account, msg tui.SendEmailMsg) tea.Cmd {
 
 		recipients := []string{msg.To}
 		body := msg.Body
+		// Append signature if present
+		if msg.Signature != "" {
+			body = body + "\n\n" + msg.Signature
+		}
 		// Append quoted text if present (for replies)
 		if msg.QuotedText != "" {
 			body = body + msg.QuotedText
@@ -1082,7 +1091,7 @@ func sendEmail(account *config.Account, msg tui.SendEmailMsg) tea.Cmd {
 			}
 		}
 
-		err := sender.SendEmail(account, recipients, msg.Subject, msg.Body, string(htmlBody), images, attachments, msg.InReplyTo, msg.References)
+		err := sender.SendEmail(account, recipients, msg.Subject, body, string(htmlBody), images, attachments, msg.InReplyTo, msg.References)
 		if err != nil {
 			log.Printf("Failed to send email: %v", err)
 			return tui.EmailResultMsg{Err: err}

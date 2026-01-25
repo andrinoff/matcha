@@ -70,8 +70,8 @@ func (m *Settings) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor--
 			}
 		case "down", "j":
-			// +1 for "Add Account" option
-			if m.cursor < len(m.accounts) {
+			// +2 for "Add Account" and "Signature" options
+			if m.cursor < len(m.accounts)+1 {
 				m.cursor++
 			}
 		case "d":
@@ -83,6 +83,10 @@ func (m *Settings) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// If cursor is on "Add Account"
 			if m.cursor == len(m.accounts) {
 				return m, func() tea.Msg { return GoToAddAccountMsg{} }
+			}
+			// If cursor is on "Signature"
+			if m.cursor == len(m.accounts)+1 {
+				return m, func() tea.Msg { return GoToSignatureEditorMsg{} }
 			}
 		case "esc":
 			return m, func() tea.Msg { return GoToChoiceMenuMsg{} }
@@ -131,6 +135,18 @@ func (m *Settings) View() string {
 		b.WriteString(selectedAccountItemStyle.Render(fmt.Sprintf("> %s", addAccountText)))
 	} else {
 		b.WriteString(accountItemStyle.Render(fmt.Sprintf("  %s", addAccountText)))
+	}
+	b.WriteString("\n")
+
+	// Signature option
+	signatureText := "Edit Signature"
+	if config.HasSignature() {
+		signatureText = "Edit Signature (configured)"
+	}
+	if m.cursor == len(m.accounts)+1 {
+		b.WriteString(selectedAccountItemStyle.Render(fmt.Sprintf("> %s", signatureText)))
+	} else {
+		b.WriteString(accountItemStyle.Render(fmt.Sprintf("  %s", signatureText)))
 	}
 	b.WriteString("\n\n")
 

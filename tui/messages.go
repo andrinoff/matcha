@@ -28,6 +28,7 @@ type SendEmailMsg struct {
 	References     []string
 	AccountID      string // ID of the account to send from
 	QuotedText     string // Hidden quoted text appended when sending
+	Signature      string // Signature to append to email body
 }
 
 type Credentials struct {
@@ -71,6 +72,8 @@ type GoToSendMsg struct {
 }
 
 type GoToSettingsMsg struct{}
+
+type GoToSignatureEditorMsg struct{}
 
 type FetchMoreEmailsMsg struct {
 	Offset    uint32
