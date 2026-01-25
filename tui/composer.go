@@ -37,6 +37,7 @@ const (
 	focusTo
 	focusSubject
 	focusBody
+	focusSignature
 	focusAttachment
 	focusSend
 )
@@ -47,6 +48,7 @@ type Composer struct {
 	toInput        textinput.Model
 	subjectInput   textinput.Model
 	bodyInput      textarea.Model
+	signatureInput textarea.Model
 	attachmentPath string
 	width          int
 	height         int
@@ -101,6 +103,16 @@ func NewComposer(from, to, subject, body string) *Composer {
 	m.bodyInput.Prompt = "> "
 	m.bodyInput.SetHeight(10)
 	m.bodyInput.SetCursor(0)
+
+	m.signatureInput = textarea.New()
+	m.signatureInput.Cursor.Style = cursorStyle
+	m.signatureInput.Placeholder = "Signature (optional)..."
+	m.signatureInput.Prompt = "> "
+	m.signatureInput.SetHeight(3)
+	// Load default signature
+	if sig, err := config.LoadSignature(); err == nil && sig != "" {
+		m.signatureInput.SetValue(sig)
+	}
 
 	// Start focus on To field (From is selectable but not a text input)
 	m.focusIndex = focusTo
@@ -164,6 +176,7 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.toInput.Width = inputWidth
 		m.subjectInput.Width = inputWidth
 		m.bodyInput.SetWidth(inputWidth)
+		m.signatureInput.SetWidth(inputWidth)
 
 	case SetComposerCursorToStartMsg:
 		m.bodyInput.SetCursor(0)
@@ -272,6 +285,7 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.toInput.Blur()
 			m.subjectInput.Blur()
 			m.bodyInput.Blur()
+			m.signatureInput.Blur()
 
 			switch m.focusIndex {
 			case focusTo:
@@ -281,6 +295,8 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case focusBody:
 				cmds = append(cmds, m.bodyInput.Focus())
 				cmds = append(cmds, func() tea.Msg { return SetComposerCursorToStartMsg{} })
+			case focusSignature:
+				cmds = append(cmds, m.signatureInput.Focus())
 			}
 			return m, tea.Batch(cmds...)
 
@@ -309,6 +325,7 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						QuotedText:     m.quotedText,
 						InReplyTo:      m.inReplyTo,
 						References:     m.references,
+						Signature:      m.signatureInput.Value(),
 					}
 				}
 			}
@@ -338,6 +355,9 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 	case focusBody:
 		m.bodyInput, cmd = m.bodyInput.Update(msg)
+		cmds = append(cmds, cmd)
+	case focusSignature:
+		m.signatureInput, cmd = m.signatureInput.Update(msg)
 		cmds = append(cmds, cmd)
 	}
 
@@ -399,12 +419,22 @@ func (m *Composer) View() string {
 		toFieldView = toFieldView + "\n" + suggestionBoxStyle.Render(strings.TrimSuffix(suggestionsBuilder.String(), "\n"))
 	}
 
+	// Signature field label
+	var signatureLabel string
+	if m.focusIndex == focusSignature {
+		signatureLabel = focusedStyle.Render("Signature:")
+	} else {
+		signatureLabel = blurredStyle.Render("Signature:")
+	}
+
 	composerView.WriteString(lipgloss.JoinVertical(lipgloss.Left,
 		"Compose New Email",
 		fromField,
 		toFieldView,
 		m.subjectInput.View(),
 		m.bodyInput.View(),
+		signatureLabel,
+		m.signatureInput.View(),
 		attachmentStyle.Render(attachmentField),
 		button,
 		helpStyle.Render("Markdown/HTML • tab/shift+tab: navigate • esc: save draft & exit"),
@@ -500,6 +530,11 @@ func (m *Composer) GetBody() string {
 // GetAttachmentPath returns the current attachment path.
 func (m *Composer) GetAttachmentPath() string {
 	return m.attachmentPath
+}
+
+// GetSignature returns the current signature value.
+func (m *Composer) GetSignature() string {
+	return m.signatureInput.Value()
 }
 
 // SetReplyContext sets the reply context for the draft.
