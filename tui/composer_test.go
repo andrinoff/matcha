@@ -36,18 +36,25 @@ func TestComposerUpdate(t *testing.T) {
 			t.Errorf("After two Tabs, focusIndex should be %d (focusBody), got %d", focusBody, composer.focusIndex)
 		}
 
+		// Simulate pressing Tab again to move to the 'Signature' field.
+		model, _ = composer.Update(tea.KeyMsg{Type: tea.KeyTab})
+		composer = model.(*Composer)
+		if composer.focusIndex != focusSignature {
+			t.Errorf("After three Tabs, focusIndex should be %d (focusSignature), got %d", focusSignature, composer.focusIndex)
+		}
+
 		// Simulate pressing Tab again to move to the 'Attachment' field.
 		model, _ = composer.Update(tea.KeyMsg{Type: tea.KeyTab})
 		composer = model.(*Composer)
 		if composer.focusIndex != focusAttachment {
-			t.Errorf("After three Tabs, focusIndex should be %d (focusAttachment), got %d", focusAttachment, composer.focusIndex)
+			t.Errorf("After four Tabs, focusIndex should be %d (focusAttachment), got %d", focusAttachment, composer.focusIndex)
 		}
 
 		// Simulate pressing Tab again to move to the 'Send' button.
 		model, _ = composer.Update(tea.KeyMsg{Type: tea.KeyTab})
 		composer = model.(*Composer)
 		if composer.focusIndex != focusSend {
-			t.Errorf("After four Tabs, focusIndex should be %d (focusSend), got %d", focusSend, composer.focusIndex)
+			t.Errorf("After five Tabs, focusIndex should be %d (focusSend), got %d", focusSend, composer.focusIndex)
 		}
 
 		// Simulate one more Tab to wrap around.
@@ -55,7 +62,7 @@ func TestComposerUpdate(t *testing.T) {
 		model, _ = composer.Update(tea.KeyMsg{Type: tea.KeyTab})
 		composer = model.(*Composer)
 		if composer.focusIndex != focusTo {
-			t.Errorf("After five Tabs, focusIndex should wrap to %d (focusTo) since single account skips From, got %d", focusTo, composer.focusIndex)
+			t.Errorf("After six Tabs, focusIndex should wrap to %d (focusTo) since single account skips From, got %d", focusTo, composer.focusIndex)
 		}
 	})
 
@@ -168,12 +175,14 @@ func TestComposerUpdate(t *testing.T) {
 			t.Errorf("Initial focusIndex should be %d (focusTo), got %d", focusTo, multiComposer.focusIndex)
 		}
 
-		// Tab through all fields: To -> Subject -> Body -> Attachment -> Send -> From (wrap)
+		// Tab through all fields: To -> Subject -> Body -> Signature -> Attachment -> Send -> From (wrap)
 		model, _ := multiComposer.Update(tea.KeyMsg{Type: tea.KeyTab}) // To -> Subject
 		multiComposer = model.(*Composer)
 		model, _ = multiComposer.Update(tea.KeyMsg{Type: tea.KeyTab}) // Subject -> Body
 		multiComposer = model.(*Composer)
-		model, _ = multiComposer.Update(tea.KeyMsg{Type: tea.KeyTab}) // Body -> Attachment
+		model, _ = multiComposer.Update(tea.KeyMsg{Type: tea.KeyTab}) // Body -> Signature
+		multiComposer = model.(*Composer)
+		model, _ = multiComposer.Update(tea.KeyMsg{Type: tea.KeyTab}) // Signature -> Attachment
 		multiComposer = model.(*Composer)
 		model, _ = multiComposer.Update(tea.KeyMsg{Type: tea.KeyTab}) // Attachment -> Send
 		multiComposer = model.(*Composer)
@@ -182,7 +191,7 @@ func TestComposerUpdate(t *testing.T) {
 
 		// With multiple accounts, From field should be included in tab order
 		if multiComposer.focusIndex != focusFrom {
-			t.Errorf("After five Tabs with multi-account, focusIndex should wrap to %d (focusFrom), got %d", focusFrom, multiComposer.focusIndex)
+			t.Errorf("After six Tabs with multi-account, focusIndex should wrap to %d (focusFrom), got %d", focusFrom, multiComposer.focusIndex)
 		}
 
 		// One more Tab should go to To
