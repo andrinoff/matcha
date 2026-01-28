@@ -172,7 +172,7 @@ func (m *Inbox) updateList() {
 			// Find the account email for display
 			for _, acc := range m.accounts {
 				if acc.ID == email.AccountID {
-					accountEmail = acc.Email
+					accountEmail = acc.FetchEmail
 					break
 				}
 			}
@@ -231,7 +231,7 @@ func (m *Inbox) getTitle() string {
 				if acc.Name != "" {
 					title = fmt.Sprintf("%s - %s", m.getBaseTitle(), acc.Name)
 				} else {
-					title = fmt.Sprintf("%s - %s", m.getBaseTitle(), acc.Email)
+					title = fmt.Sprintf("%s - %s", m.getBaseTitle(), acc.FetchEmail)
 				}
 				break
 			}
@@ -527,7 +527,7 @@ func (m *Inbox) SetEmails(emails []fetcher.Email, accounts []config.Account) {
 	} else {
 		tabs = []AccountTab{{ID: "", Label: "ALL", Email: ""}}
 		for _, acc := range accounts {
-			tabs = append(tabs, AccountTab{ID: acc.ID, Label: acc.Email, Email: acc.Email})
+			tabs = append(tabs, AccountTab{ID: acc.ID, Label: acc.FetchEmail, Email: acc.Email})
 		}
 	}
 	m.tabs = tabs
