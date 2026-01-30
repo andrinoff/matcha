@@ -172,6 +172,11 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *EmailView) View() string {
+	// Clear all Kitty graphics before rendering to prevent image stacking on scroll.
+	// This must be done synchronously via stdout before the frame is drawn,
+	// as escape sequences in the return string execute too late.
+	clearKittyGraphics()
+
 	header := fmt.Sprintf("From: %s | Subject: %s", m.email.From, m.email.Subject)
 	styledHeader := emailHeaderStyle.Width(m.viewport.Width).Render(header)
 
