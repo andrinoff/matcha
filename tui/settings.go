@@ -111,7 +111,7 @@ func (m *Settings) View() string {
 	for i, account := range m.accounts {
 		displayName := account.Email
 		if account.Name != "" {
-			displayName = fmt.Sprintf("%s (%s)", account.Name, account.Email)
+			displayName = fmt.Sprintf("%s (%s)", account.Name, account.FetchEmail)
 		}
 
 		providerInfo := account.ServiceProvider
