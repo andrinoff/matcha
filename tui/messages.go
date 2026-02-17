@@ -97,6 +97,10 @@ type ReplyToEmailMsg struct {
 	Email fetcher.Email
 }
 
+type ForwardEmailMsg struct {
+	Email fetcher.Email
+}
+
 type SetComposerCursorToStartMsg struct{}
 
 type GoToFilePickerMsg struct{}

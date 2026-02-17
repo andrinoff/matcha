@@ -122,6 +122,10 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Clear Kitty graphics before opening composer
 				clearKittyGraphics()
 				return m, func() tea.Msg { return ReplyToEmailMsg{Email: m.email} }
+			case "f":
+				// Clear Kitty graphics before opening composer
+				clearKittyGraphics()
+				return m, func() tea.Msg { return ForwardEmailMsg{Email: m.email} }
 			case "d":
 				accountID := m.accountID
 				uid := m.email.UID
@@ -184,7 +188,7 @@ func (m *EmailView) View() string {
 	if m.focusOnAttachments {
 		help = helpStyle.Render("↑/↓: navigate • enter: download • esc/tab: back to email body")
 	} else {
-		help = helpStyle.Render("\uf112 r: reply • \uea81 d: delete • \uea98 a: archive • \uf435 tab: focus attachments • \ueb06 esc: back to inbox")
+		help = helpStyle.Render("\uf112 r: reply • \uf064 f: forward • \uea81 d: delete • \uea98 a: archive • \uf435 tab: focus attachments • \ueb06 esc: back to inbox")
 	}
 
 	var attachmentView string
