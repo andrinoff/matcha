@@ -599,6 +599,37 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 		return m, m.current.Init()
 
+	case tui.ForwardEmailMsg:
+		subject := msg.Email.Subject
+		if !strings.HasPrefix(strings.ToLower(subject), "fwd:") {
+			subject = "Fwd: " + subject
+		}
+
+		forwardHeader := fmt.Sprintf("\n\n---------- Forwarded message ----------\nFrom: %s\nDate: %s\nSubject: %s\nTo: %s\n\n",
+			msg.Email.From,
+			msg.Email.Date.Format("Mon, Jan 2, 2006 at 3:04 PM"),
+			msg.Email.Subject,
+			msg.Email.To,
+		)
+
+		body := forwardHeader + msg.Email.Body
+
+		var composer *tui.Composer
+		if m.config != nil && len(m.config.Accounts) > 0 {
+			// Use the account that received the email
+			accountID := msg.Email.AccountID
+			if accountID == "" {
+				accountID = m.config.GetFirstAccount().ID
+			}
+			composer = tui.NewComposerWithAccounts(m.config.Accounts, accountID, "", subject, body)
+		} else {
+			composer = tui.NewComposer("", "", subject, body)
+		}
+
+		m.current = composer
+		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+		return m, m.current.Init()
+
 	case tui.GoToFilePickerMsg:
 		m.previousModel = m.current
 		wd, _ := os.Getwd()

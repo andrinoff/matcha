@@ -341,8 +341,8 @@ func FetchEmailBodyFromMailbox(account *config.Account, mailbox string, uid uint
 		return "", nil, fmt.Errorf("no message or body structure found with UID %d", uid)
 	}
 
-	var plainPartID string
-	var htmlPartID string
+	var plainPartID, plainPartEncoding string
+	var htmlPartID, htmlPartEncoding string
 	var attachments []Attachment
 	var checkPart func(part *imap.BodyStructure, partID string)
 	checkPart = func(part *imap.BodyStructure, partID string) {
@@ -353,10 +353,12 @@ func FetchEmailBodyFromMailbox(account *config.Account, mailbox string, uid uint
 			case "html":
 				if htmlPartID == "" {
 					htmlPartID = partID
+					htmlPartEncoding = part.Encoding
 				}
 			case "plain":
 				if plainPartID == "" {
 					plainPartID = partID
+					plainPartEncoding = part.Encoding
 				}
 			}
 		}
@@ -444,10 +446,13 @@ func FetchEmailBodyFromMailbox(account *config.Account, mailbox string, uid uint
 
 	var body string
 	textPartID := ""
+	textPartEncoding := ""
 	if htmlPartID != "" {
 		textPartID = htmlPartID
+		textPartEncoding = htmlPartEncoding
 	} else if plainPartID != "" {
 		textPartID = plainPartID
+		textPartEncoding = plainPartEncoding
 	}
 	if os.Getenv("DEBUG_KITTY_IMAGES") != "" {
 		msg := fmt.Sprintf("[kitty-img] body selection html=%s plain=%s chosen=%s\n", htmlPartID, plainPartID, textPartID)
@@ -481,38 +486,12 @@ func FetchEmailBodyFromMailbox(account *config.Account, mailbox string, uid uint
 		if partMsg != nil {
 			literal := partMsg.GetBody(section)
 			if literal != nil {
-				// The new decoding logic starts here
 				buf, _ := ioutil.ReadAll(literal)
-				mr, err := mail.CreateReader(bytes.NewReader(buf))
-				if err != nil {
-					body = string(buf)
+				// Use the encoding from BodyStructure to decode
+				if decoded, err := decodeAttachmentData(buf, textPartEncoding); err == nil {
+					body = string(decoded)
 				} else {
-					p, err := mr.NextPart()
-					if err != nil {
-						body = string(buf)
-					} else {
-						encoding := p.Header.Get("Content-Transfer-Encoding")
-						bodyBytes, _ := ioutil.ReadAll(p.Body)
-
-						switch strings.ToLower(encoding) {
-						case "base64":
-							decoded, err := base64.StdEncoding.DecodeString(string(bodyBytes))
-							if err == nil {
-								body = string(decoded)
-							} else {
-								body = string(bodyBytes)
-							}
-						case "quoted-printable":
-							decoded, err := ioutil.ReadAll(quotedprintable.NewReader(strings.NewReader(string(bodyBytes))))
-							if err == nil {
-								body = string(decoded)
-							} else {
-								body = string(bodyBytes)
-							}
-						default:
-							body = string(bodyBytes)
-						}
-					}
+					body = string(buf)
 				}
 			}
 		}
