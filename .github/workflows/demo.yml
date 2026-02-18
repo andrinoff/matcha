@@ -15,27 +15,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: "stable"
 
-      - name: Install VHS
-        run: |
-          sudo mkdir -p /etc/apt/keyrings
-          curl -fsSL https://repo.charm.sh/apt/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/charm.gpg
-          echo "deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *" | sudo tee /etc/apt/sources.list.d/charm.list
-          sudo apt-get update
-          sudo apt-get install -y vhs
+      - name: Build Matcha
+        # We build the binary so we can run it inside the VHS container
+        # (which likely doesn't have Go installed).
+        run: go build -o matcha .
 
       - name: Create Dummy Config
-        # Creates the config file expected by config/config.go
-        # using the "custom" provider to bypass specific Gmail/iCloud checks.
+        # Create the config in the workspace so we can map HOME to it for the container.
         run: |
-          mkdir -p ~/.config/matcha
-          cat <<EOF > ~/.config/matcha/config.json
+          mkdir -p .config/matcha
+          cat <<EOF > .config/matcha/config.json
           {
             "accounts": [
               {
@@ -49,21 +45,29 @@ jobs:
           }
           EOF
 
+      - name: Prepare Tape
+        # Patch the tape to run the compiled binary instead of "go run ."
+        # This works seamlessly because the typing of this command is 'Hidden' in your tape.
+        run: sed -i 's/go run ./.\/matcha/' demo.tape
+
       - name: Run VHS
-        # Runs the tape file which executes "go run ."
-        run: vhs demo.tape
+        uses: charmbracelet/vhs-action@v2
+        with:
+          path: "demo.tape"
+          install-fonts: true
+        env:
+          # Point HOME to /github/workspace so the app finds .config/matcha/config.json
+          HOME: /github/workspace
 
       - name: Move GIF to Assets
-        # The README expects the image at public/assets/demo.gif
-        # simpler to overwrite the existing one than change the tape output.
-        run: mv demo.gif public/assets/demo.gif
+        run: sudo mv demo.gif public/assets/demo.gif
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "chore: update demo.gif from release [skip ci]"
-          title: "chore: update demo.gif"
+          commit-message: "docs: update demo.gif from release [skip ci]"
+          title: "docs: update demo.gif"
           body: |
             This PR updates the demo GIF based on the latest release version.
             Generated automatically by the Update Demo VHS workflow.
