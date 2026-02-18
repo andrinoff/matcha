@@ -447,7 +447,7 @@ func (m *Composer) View() string {
 		for i, acc := range m.accounts {
 			display := acc.Email
 			if acc.Name != "" {
-				display = fmt.Sprintf("%s (%s)", acc.Name, acc.Email)
+				display = fmt.Sprintf("%s (%s)", acc.Name, acc.FetchEmail)
 			}
 			if i == m.selectedAccountIdx {
 				accountList.WriteString(selectedItemStyle.Render(fmt.Sprintf("> %s", display)))
