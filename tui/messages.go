@@ -85,6 +85,7 @@ type FetchMoreEmailsMsg struct {
 	Offset    uint32
 	AccountID string
 	Mailbox   MailboxKind
+	Limit     uint32
 }
 
 type FetchingMoreEmailsMsg struct{}

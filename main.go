@@ -410,9 +410,13 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if account == nil {
 			return m, nil
 		}
+		limit := uint32(paginationLimit)
+		if msg.Limit > 0 {
+			limit = msg.Limit
+		}
 		return m, tea.Batch(
 			func() tea.Msg { return tui.FetchingMoreEmailsMsg{} },
-			fetchEmailsForMailbox(account, paginationLimit, msg.Offset, msg.Mailbox),
+			fetchEmailsForMailbox(account, limit, msg.Offset, msg.Mailbox),
 		)
 
 	case tui.EmailsAppendedMsg:

@@ -226,8 +226,14 @@ func (m *Inbox) updateList() {
 
 	l.KeyMap.Quit.SetEnabled(false)
 
+	// Disable default help to render it manually at the bottom
+	l.SetShowHelp(false)
+
 	if m.width > 0 {
 		l.SetWidth(m.width)
+	}
+	if m.height > 0 {
+		l.SetHeight(m.height / 2)
 	}
 
 	m.list = l
@@ -338,6 +344,10 @@ func (m *Inbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.list.SetWidth(msg.Width)
+		m.list.SetHeight(msg.Height / 2)
+		if m.shouldFetchMore() {
+			return m, tea.Batch(m.fetchMoreCmds()...)
+		}
 		return m, nil
 
 	case FetchingMoreEmailsMsg:
@@ -426,11 +436,17 @@ func (m *Inbox) shouldFetchMore() bool {
 	if m.list.FilterState() == list.Filtering {
 		return false
 	}
-	return m.list.Index() >= len(m.list.Items())-1
+	// Fetch if we've reached the bottom OR if we don't have enough items to fill the view
+	return m.list.Index() >= len(m.list.Items())-1 || len(m.list.Items()) < m.list.Height()
 }
 
 func (m *Inbox) fetchMoreCmds() []tea.Cmd {
 	var cmds []tea.Cmd
+	limit := uint32(m.list.Height())
+	if limit < 20 {
+		limit = 20
+	}
+
 	if m.currentAccountID == "" {
 		if len(m.accounts) == 0 {
 			return nil
@@ -440,7 +456,7 @@ func (m *Inbox) fetchMoreCmds() []tea.Cmd {
 			offset := uint32(len(m.emailsByAccount[accountID]))
 			cmds = append(cmds, func(id string, off uint32) tea.Cmd {
 				return func() tea.Msg {
-					return FetchMoreEmailsMsg{Offset: off, AccountID: id, Mailbox: m.mailbox}
+					return FetchMoreEmailsMsg{Offset: off, AccountID: id, Mailbox: m.mailbox, Limit: limit}
 				}
 			}(accountID, offset))
 		}
@@ -450,7 +466,7 @@ func (m *Inbox) fetchMoreCmds() []tea.Cmd {
 	offset := uint32(len(m.emailsByAccount[m.currentAccountID]))
 	cmds = append(cmds, func(id string, off uint32) tea.Cmd {
 		return func() tea.Msg {
-			return FetchMoreEmailsMsg{Offset: off, AccountID: id, Mailbox: m.mailbox}
+			return FetchMoreEmailsMsg{Offset: off, AccountID: id, Mailbox: m.mailbox, Limit: limit}
 		}
 	}(m.currentAccountID, offset))
 	return cmds
@@ -480,6 +496,56 @@ func (m *Inbox) View() string {
 	}
 
 	b.WriteString(m.list.View())
+
+	// Calculate remaining height to push help to bottom
+	// m.height is total height.
+	// We need to account for tabs (if present) and the list height.
+	// The list height is set to m.height / 2.
+	// Tabs take about 3 lines (border + padding + content).
+
+	helpView := inboxHelpStyle.Render(m.list.Help.View(m.list))
+
+	// If we have a known height, we can try to fill the space.
+	if m.height > 0 {
+		// Calculate how many lines we have used
+		usedHeight := 0
+		if len(m.tabs) > 1 {
+			// Re-render tabs just to measure height
+			var tabViews []string
+			for i, tab := range m.tabs {
+				label := tab.Label
+				if tab.ID == "" {
+					label = "ALL"
+				}
+
+				if i == m.activeTabIndex {
+					tabViews = append(tabViews, activeTabStyle.Render(label))
+				} else {
+					tabViews = append(tabViews, tabStyle.Render(label))
+				}
+			}
+			tabBar := tabBarStyle.Render(lipgloss.JoinHorizontal(lipgloss.Top, tabViews...))
+			usedHeight += lipgloss.Height(tabBar)
+		}
+
+		// List
+		usedHeight += m.list.Height()
+
+		// Help
+		// Use lipgloss to measure help height
+		helpHeight := lipgloss.Height(helpView)
+
+		// Calculate gap
+		gap := m.height - usedHeight - helpHeight
+		if gap > 0 {
+			b.WriteString(strings.Repeat("\n", gap))
+		}
+	} else {
+		b.WriteString("\n")
+	}
+
+	b.WriteString(helpView)
+
 	return b.String()
 }
 
