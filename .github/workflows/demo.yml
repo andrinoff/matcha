@@ -32,8 +32,8 @@ jobs:
       - name: Create Dummy Config
         # Create the config in the workspace so we can map HOME to it for the container.
         run: |
-          mkdir -p .config/matcha
-          cat <<EOF > .config/matcha/config.json
+          mkdir -p ~/.config/matcha
+          cat <<EOF > ~/.config/matcha/config.json
           {
             "accounts": [
               {
