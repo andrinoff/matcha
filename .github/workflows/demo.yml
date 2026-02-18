@@ -54,7 +54,6 @@ jobs:
         uses: charmbracelet/vhs-action@v2
         with:
           path: "demo.tape"
-          install-fonts: true
 
       - name: Move GIF to Assets
         run: sudo mv demo.gif public/assets/demo.gif
