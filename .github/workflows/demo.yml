@@ -51,9 +51,11 @@ jobs:
         run: sed -i 's/go run ./.\/matcha/' demo.tape
 
       - name: Run VHS
-        uses: charmbracelet/vhs-action@v2
-        with:
-          path: "demo.tape"
+        run: |
+          sudo apt update
+          sudo apt install -y ffmpeg ttyd
+          go install github.com/charmbracelet/vhs@latest
+          vhs demo.tape
 
       - name: Move GIF to Assets
         run: sudo mv demo.gif public/assets/demo.gif
