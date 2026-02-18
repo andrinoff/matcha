@@ -72,5 +72,5 @@ jobs:
             This PR updates the demo GIF based on the latest release version.
             Generated automatically by the Update Demo VHS workflow.
           branch: "update-demo-gif"
-          base: "main"
+          base: "master"
           add-paths: public/assets/demo.gif
