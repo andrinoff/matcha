@@ -27,7 +27,7 @@ func generateMessageID(from string) string {
 }
 
 // SendEmail constructs a multipart message with plain text, HTML, embedded images, and attachments.
-func SendEmail(account *config.Account, to []string, subject, plainBody, htmlBody string, images map[string][]byte, attachments map[string][]byte, inReplyTo string, references []string) error {
+func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody, htmlBody string, images map[string][]byte, attachments map[string][]byte, inReplyTo string, references []string) error {
 	smtpServer := account.GetSMTPServer()
 	smtpPort := account.GetSMTPPort()
 
@@ -49,11 +49,15 @@ func SendEmail(account *config.Account, to []string, subject, plainBody, htmlBod
 	// Set top-level headers for a mixed message type to support content and attachments
 	headers := map[string]string{
 		"From":         fromHeader,
-		"To":           to[0],
+		"To":           strings.Join(to, ", "),
 		"Subject":      subject,
 		"Date":         time.Now().Format(time.RFC1123Z),
 		"Message-ID":   generateMessageID(account.Email),
 		"Content-Type": "multipart/mixed; boundary=" + mainWriter.Boundary(),
+	}
+
+	if len(cc) > 0 {
+		headers["Cc"] = strings.Join(cc, ", ")
 	}
 
 	if inReplyTo != "" {
@@ -156,8 +160,13 @@ func SendEmail(account *config.Account, to []string, subject, plainBody, htmlBod
 
 	mainWriter.Close() // Finish the main message
 
+	// Combine all recipients for the envelope
+	allRecipients := append([]string{}, to...)
+	allRecipients = append(allRecipients, cc...)
+	allRecipients = append(allRecipients, bcc...)
+
 	addr := fmt.Sprintf("%s:%d", smtpServer, smtpPort)
-	return smtp.SendMail(addr, auth, account.Email, to, msg.Bytes())
+	return smtp.SendMail(addr, auth, account.Email, allRecipients, msg.Bytes())
 }
 
 // wrapBase64 wraps base64-encoded data at 76 characters per line as required by MIME.

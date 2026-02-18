@@ -35,6 +35,8 @@ var (
 const (
 	focusFrom = iota
 	focusTo
+	focusCc
+	focusBcc
 	focusSubject
 	focusBody
 	focusSignature
@@ -46,6 +48,8 @@ const (
 type Composer struct {
 	focusIndex     int
 	toInput        textinput.Model
+	ccInput        textinput.Model
+	bccInput       textinput.Model
 	subjectInput   textinput.Model
 	bodyInput      textarea.Model
 	signatureInput textarea.Model
@@ -88,6 +92,18 @@ func NewComposer(from, to, subject, body string) *Composer {
 	m.toInput.SetValue(to)
 	m.toInput.Prompt = "> "
 	m.toInput.CharLimit = 256
+
+	m.ccInput = textinput.New()
+	m.ccInput.Cursor.Style = cursorStyle
+	m.ccInput.Placeholder = "Cc"
+	m.ccInput.Prompt = "> "
+	m.ccInput.CharLimit = 256
+
+	m.bccInput = textinput.New()
+	m.bccInput.Cursor.Style = cursorStyle
+	m.bccInput.Placeholder = "Bcc"
+	m.bccInput.Prompt = "> "
+	m.bccInput.CharLimit = 256
 
 	m.subjectInput = textinput.New()
 	m.subjectInput.Cursor.Style = cursorStyle
@@ -174,6 +190,8 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		inputWidth := msg.Width - 6
 		m.toInput.Width = inputWidth
+		m.ccInput.Width = inputWidth
+		m.bccInput.Width = inputWidth
 		m.subjectInput.Width = inputWidth
 		m.bodyInput.SetWidth(inputWidth)
 		m.signatureInput.SetWidth(inputWidth)
@@ -283,6 +301,8 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			m.toInput.Blur()
+			m.ccInput.Blur()
+			m.bccInput.Blur()
 			m.subjectInput.Blur()
 			m.bodyInput.Blur()
 			m.signatureInput.Blur()
@@ -290,6 +310,10 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch m.focusIndex {
 			case focusTo:
 				cmds = append(cmds, m.toInput.Focus())
+			case focusCc:
+				cmds = append(cmds, m.ccInput.Focus())
+			case focusBcc:
+				cmds = append(cmds, m.bccInput.Focus())
 			case focusSubject:
 				cmds = append(cmds, m.subjectInput.Focus())
 			case focusBody:
@@ -318,6 +342,8 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, func() tea.Msg {
 					return SendEmailMsg{
 						To:             m.toInput.Value(),
+						Cc:             m.ccInput.Value(),
+						Bcc:            m.bccInput.Value(),
 						Subject:        m.subjectInput.Value(),
 						Body:           m.bodyInput.Value(),
 						AttachmentPath: m.attachmentPath,
@@ -350,6 +376,12 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.suggestions = nil
 			}
 		}
+	case focusCc:
+		m.ccInput, cmd = m.ccInput.Update(msg)
+		cmds = append(cmds, cmd)
+	case focusBcc:
+		m.bccInput, cmd = m.bccInput.Update(msg)
+		cmds = append(cmds, cmd)
 	case focusSubject:
 		m.subjectInput, cmd = m.subjectInput.Update(msg)
 		cmds = append(cmds, cmd)
@@ -431,6 +463,8 @@ func (m *Composer) View() string {
 		"Compose New Email",
 		fromField,
 		toFieldView,
+		m.ccInput.View(),
+		m.bccInput.View(),
 		m.subjectInput.View(),
 		m.bodyInput.View(),
 		signatureLabel,
@@ -568,6 +602,8 @@ func (m *Composer) ToDraft() config.Draft {
 	return config.Draft{
 		ID:             m.draftID,
 		To:             m.toInput.Value(),
+		Cc:             m.ccInput.Value(),
+		Bcc:            m.bccInput.Value(),
 		Subject:        m.subjectInput.Value(),
 		Body:           m.bodyInput.Value(),
 		AttachmentPath: m.attachmentPath,
@@ -581,6 +617,8 @@ func (m *Composer) ToDraft() config.Draft {
 // NewComposerFromDraft creates a composer from an existing draft.
 func NewComposerFromDraft(draft config.Draft, accounts []config.Account) *Composer {
 	m := NewComposerWithAccounts(accounts, draft.AccountID, draft.To, draft.Subject, draft.Body)
+	m.ccInput.SetValue(draft.Cc)
+	m.bccInput.SetValue(draft.Bcc)
 	m.draftID = draft.ID
 	m.attachmentPath = draft.AttachmentPath
 	m.inReplyTo = draft.InReplyTo

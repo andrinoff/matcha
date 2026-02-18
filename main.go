@@ -842,6 +842,10 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
+func (m *mainModel) View() string {
+	return m.current.View()
+}
+
 func (m *mainModel) getEmailByIndex(index int, mailbox tui.MailboxKind) *fetcher.Email {
 	switch mailbox {
 	case tui.MailboxSent:
@@ -1070,10 +1074,6 @@ func (m *mainModel) removeEmailByMailbox(uid uint32, accountID string, mailbox t
 	}
 }
 
-func (m *mainModel) View() string {
-	return m.current.View()
-}
-
 func flattenAndSort(emailsByAccount map[string][]fetcher.Email) []fetcher.Email {
 	var allEmails []fetcher.Email
 	for _, emails := range emailsByAccount {
@@ -1300,13 +1300,29 @@ func markdownToHTML(md []byte) []byte {
 	return buf.Bytes()
 }
 
+func splitEmails(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	var res []string
+	for _, p := range parts {
+		if trimmed := strings.TrimSpace(p); trimmed != "" {
+			res = append(res, trimmed)
+		}
+	}
+	return res
+}
+
 func sendEmail(account *config.Account, msg tui.SendEmailMsg) tea.Cmd {
 	return func() tea.Msg {
 		if account == nil {
 			return tui.EmailResultMsg{Err: fmt.Errorf("no account configured")}
 		}
 
-		recipients := []string{msg.To}
+		recipients := splitEmails(msg.To)
+		cc := splitEmails(msg.Cc)
+		bcc := splitEmails(msg.Bcc)
 		body := msg.Body
 		// Append signature if present
 		if msg.Signature != "" {
@@ -1346,7 +1362,7 @@ func sendEmail(account *config.Account, msg tui.SendEmailMsg) tea.Cmd {
 			}
 		}
 
-		err := sender.SendEmail(account, recipients, msg.Subject, body, string(htmlBody), images, attachments, msg.InReplyTo, msg.References)
+		err := sender.SendEmail(account, recipients, cc, bcc, msg.Subject, body, string(htmlBody), images, attachments, msg.InReplyTo, msg.References)
 		if err != nil {
 			log.Printf("Failed to send email: %v", err)
 			return tui.EmailResultMsg{Err: err}
