@@ -23,6 +23,8 @@ type ViewEmailMsg struct {
 
 type SendEmailMsg struct {
 	To             string
+	Cc             string // Cc recipient(s)
+	Bcc            string // Bcc recipient(s)
 	Subject        string
 	Body           string
 	AttachmentPath string

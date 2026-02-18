@@ -231,6 +231,8 @@ func SearchContacts(query string) []Contact {
 type Draft struct {
 	ID             string    `json:"id"`
 	To             string    `json:"to"`
+	Cc             string    `json:"cc,omitempty"`
+	Bcc            string    `json:"bcc,omitempty"`
 	Subject        string    `json:"subject"`
 	Body           string    `json:"body"`
 	AttachmentPath string    `json:"attachment_path,omitempty"`
