@@ -307,4 +307,10 @@ func TestFetchMoreTriggeredAtListEnd(t *testing.T) {
 	if fetchMsg.Mailbox != MailboxInbox {
 		t.Fatalf("expected MailboxInbox, got %s", fetchMsg.Mailbox)
 	}
+
+	// Default list height is 14, but our minimum limit is 20
+	expectedLimit := uint32(20)
+	if fetchMsg.Limit != expectedLimit {
+		t.Fatalf("expected Limit %d, got %d", expectedLimit, fetchMsg.Limit)
+	}
 }
