@@ -56,8 +56,12 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y ffmpeg ttyd
+          mkdir -p ~/.local/share/fonts
+          wget https://github.com/ryanoasis/nerd-fonts/releases/download/v3.1.1/JetBrainsMono.zip
+          unzip -o JetBrainsMono.zip -d ~/.local/share/fonts
+          fc-cache -fv
           go install github.com/charmbracelet/vhs@latest
-          vhs demo.tape
+          TERM=xterm-256color vhs demo.tape
 
       - name: Move GIF to Assets
         run: sudo mv demo.gif public/assets/demo.gif
