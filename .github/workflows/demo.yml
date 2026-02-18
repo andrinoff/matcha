@@ -55,9 +55,6 @@ jobs:
         with:
           path: "demo.tape"
           install-fonts: true
-        env:
-          # Point HOME to /github/workspace so the app finds .config/matcha/config.json
-          HOME: /github/workspace
 
       - name: Move GIF to Assets
         run: sudo mv demo.gif public/assets/demo.gif
