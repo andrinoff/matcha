@@ -73,16 +73,17 @@ Type "friend@example.com"
 Sleep 400ms
 Tab
 Sleep 300ms
-
+Tab
+Sleep 100ms
+Tab
+Sleep 200ms
 # Type the subject
 Type "Hello from the terminal!"
 Sleep 400ms
 Tab
 Sleep 300ms
-Tab
-Sleep 200ms
-Tab
-Sleep 100ms
+
+
 
 # Type the email body with Markdown
 Type "# Greetings!"

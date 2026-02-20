@@ -24,11 +24,6 @@ jobs:
         with:
           go-version: "stable"
 
-      - name: Build Matcha
-        # We build the binary so we can run it inside the VHS container
-        # (which likely doesn't have Go installed).
-        run: go build -o matcha .
-
       - name: Create Dummy Config
         # Create the config in the workspace so we can map HOME to it for the container.
         run: |
@@ -46,11 +41,6 @@ jobs:
             ]
           }
           EOF
-
-      - name: Prepare Tape
-        # Patch the tape to run the compiled binary instead of "go run ."
-        # This works seamlessly because the typing of this command is 'Hidden' in your tape.
-        run: sed -i 's/go run ./.\/matcha/' demo.tape
 
       - name: Run VHS'
         env:
