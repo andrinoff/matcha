@@ -16,22 +16,19 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
           go-version: "stable"
 
-      - name: Build Matcha
-        # We build the binary so we can run it inside the VHS container
-        # (which likely doesn't have Go installed).
-        run: go build -o matcha .
-
       - name: Create Dummy Config
         # Create the config in the workspace so we can map HOME to it for the container.
         run: |
-          mkdir -p .config/matcha
-          cat <<EOF > .config/matcha/config.json
+          mkdir -p ~/.config/matcha
+          cat <<EOF > ~/.config/matcha/config.json
           {
             "accounts": [
               {
@@ -44,20 +41,37 @@ jobs:
             ]
           }
           EOF
+      - name: Build Matcha
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LATEST_TAG=$(gh release view --json tagName -q ".tagName")
+          echo "Found latest release: $LATEST_VERSION
+
+          git fetch --tags
+          git checkout "$LATEST_TAG"
+          
+          COMMIT=$(git rev-parse --short HEAD)
+          DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+          go build -ldflags="-s -w -X main.version=$LATEST_TAG -X main.commit=$COMMIT -X main.date=$DATE" -o matcha .
 
       - name: Prepare Tape
         # Patch the tape to run the compiled binary instead of "go run ."
         # This works seamlessly because the typing of this command is 'Hidden' in your tape.
         run: sed -i 's/go run ./.\/matcha/' demo.tape
 
-      - name: Run VHS
-        uses: charmbracelet/vhs-action@v2
-        with:
-          path: "demo.tape"
-          install-fonts: true
+      - name: Run VHS'
         env:
-          # Point HOME to /github/workspace so the app finds .config/matcha/config.json
-          HOME: /github/workspace
+          CLICOLOR_FORCE: "1"
+        run: |
+          sudo apt update
+          sudo apt install -y ffmpeg ttyd
+          mkdir -p ~/.local/share/fonts
+          wget https://github.com/ryanoasis/nerd-fonts/releases/download/v3.1.1/JetBrainsMono.zip
+          unzip -o JetBrainsMono.zip -d ~/.local/share/fonts
+          fc-cache -fv
+          go install github.com/charmbracelet/vhs@latest
+          TERM=xterm-256color vhs demo.tape
 
       - name: Move GIF to Assets
         run: sudo mv demo.gif public/assets/demo.gif
@@ -72,5 +86,5 @@ jobs:
             This PR updates the demo GIF based on the latest release version.
             Generated automatically by the Update Demo VHS workflow.
           branch: "update-demo-gif"
-          base: "main"
+          base: "master"
           add-paths: public/assets/demo.gif
