@@ -6,7 +6,7 @@ Output demo.gif
 
 # Terminal settings
 Set FontSize 14
-Set FontFamily "SF Mono,Menlo,Monaco,Cascadia Code,Consolas,monospace"
+Set FontFamily "JetBrainsMono Nerd Font"
 Set Width 1400
 Set Height 800
 Set Theme "Catppuccin Mocha"

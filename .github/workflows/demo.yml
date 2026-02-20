@@ -52,7 +52,9 @@ jobs:
         # This works seamlessly because the typing of this command is 'Hidden' in your tape.
         run: sed -i 's/go run ./.\/matcha/' demo.tape
 
-      - name: Run VHS
+      - name: Run VHS'
+        env:
+          CLICOLOR_FORCE: "1"
         run: |
           sudo apt update
           sudo apt install -y ffmpeg ttyd
