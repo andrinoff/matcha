@@ -6,7 +6,7 @@ Output demo.gif
 
 # Terminal settings
 Set FontSize 14
-Set FontFamily "SF Mono,Menlo,Monaco,Cascadia Code,Consolas,monospace"
+Set FontFamily "JetBrainsMono Nerd Font"
 Set Width 1400
 Set Height 800
 Set Theme "Catppuccin Mocha"
@@ -73,12 +73,17 @@ Type "friend@example.com"
 Sleep 400ms
 Tab
 Sleep 300ms
-
+Tab
+Sleep 100ms
+Tab
+Sleep 200ms
 # Type the subject
 Type "Hello from the terminal!"
 Sleep 400ms
 Tab
 Sleep 300ms
+
+
 
 # Type the email body with Markdown
 Type "# Greetings!"
