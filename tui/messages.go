@@ -281,4 +281,5 @@ type EmailsRefreshedMsg struct {
 // RequestRefreshMsg signals a request to refresh emails from the server.
 type RequestRefreshMsg struct {
 	Mailbox MailboxKind
+	Counts  map[string]int
 }

@@ -163,6 +163,9 @@ func NewInboxSingleAccount(emails []fetcher.Email) *Inbox {
 }
 
 func (m *Inbox) updateList() {
+	// Capture current index to restore later
+	currentIndex := m.list.Index()
+
 	var displayEmails []fetcher.Email
 	var showAccountLabel bool
 
@@ -235,6 +238,16 @@ func (m *Inbox) updateList() {
 	if m.height > 0 {
 		l.SetHeight(m.height / 2)
 	}
+
+	// Restore index
+	// If index is out of bounds (e.g. list shrank), clamp it.
+	if currentIndex >= len(items) {
+		currentIndex = len(items) - 1
+	}
+	if currentIndex < 0 {
+		currentIndex = 0
+	}
+	l.Select(currentIndex)
 
 	m.list = l
 }
@@ -326,8 +339,13 @@ func (m *Inbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "r":
+			// Copy counts to avoid race conditions if used elsewhere (though here it's just passing data)
+			counts := make(map[string]int)
+			for k, v := range m.emailCountByAcct {
+				counts[k] = v
+			}
 			return m, func() tea.Msg {
-				return RequestRefreshMsg{Mailbox: m.mailbox}
+				return RequestRefreshMsg{Mailbox: m.mailbox, Counts: counts}
 			}
 		case "enter":
 			selectedItem, ok := m.list.SelectedItem().(item)

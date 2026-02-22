@@ -179,101 +179,131 @@ func FetchMailboxEmails(account *config.Account, mailbox string, limit, offset u
 		return []Email{}, nil
 	}
 
-	to := mbox.Messages - offset
-	from := uint32(1)
-	if to > limit {
-		from = to - limit + 1
-	}
+	var allEmails []Email
 
-	if to < 1 {
+	// Start from the top minus offset
+	cursor := uint32(0)
+	if mbox.Messages > offset {
+		cursor = mbox.Messages - offset
+	} else {
 		return []Email{}, nil
 	}
 
-	seqset := new(imap.SeqSet)
-	seqset.AddRange(from, to)
-
-	messages := make(chan *imap.Message, limit)
-	done := make(chan error, 1)
-	fetchItems := []imap.FetchItem{imap.FetchEnvelope, imap.FetchUid}
-	go func() {
-		done <- c.Fetch(seqset, fetchItems, messages)
-	}()
-
-	var msgs []*imap.Message
-	for msg := range messages {
-		msgs = append(msgs, msg)
+	// Determine if we should filter
+	fetchEmail := strings.ToLower(strings.TrimSpace(account.FetchEmail))
+	if fetchEmail == "" {
+		fetchEmail = strings.ToLower(strings.TrimSpace(account.Email))
 	}
+	isSentMailbox := mailbox == getSentMailbox(account)
 
-	if err := <-done; err != nil {
-		return nil, err
-	}
-
-	var emails []Email
-	for _, msg := range msgs {
-		if msg == nil || msg.Envelope == nil {
-			continue
+	// Loop until we have enough emails or run out of messages
+	for len(allEmails) < int(limit) && cursor > 0 {
+		// Determine chunk size
+		// Fetch at least 'limit' or 50 messages to reduce round trips
+		chunkSize := limit
+		if chunkSize < 50 {
+			chunkSize = 50
 		}
 
-		var fromAddr string
-		if len(msg.Envelope.From) > 0 {
-			fromAddr = msg.Envelope.From[0].Address()
+		from := uint32(1)
+		if cursor > uint32(chunkSize) {
+			from = cursor - uint32(chunkSize) + 1
 		}
 
-		var toAddrList []string
-		// Build recipient list from To and Cc for matching and display
-		for _, addr := range msg.Envelope.To {
-			toAddrList = append(toAddrList, addr.Address())
-		}
-		for _, addr := range msg.Envelope.Cc {
-			toAddrList = append(toAddrList, addr.Address())
+		seqset := new(imap.SeqSet)
+		seqset.AddRange(from, cursor)
+
+		messages := make(chan *imap.Message, chunkSize)
+		done := make(chan error, 1)
+		fetchItems := []imap.FetchItem{imap.FetchEnvelope, imap.FetchUid}
+
+		go func() {
+			done <- c.Fetch(seqset, fetchItems, messages)
+		}()
+
+		var batchMsgs []*imap.Message
+		for msg := range messages {
+			batchMsgs = append(batchMsgs, msg)
 		}
 
-		// Determine which email to filter on: prefer Account.FetchEmail, fallback to Account.Email
-		fetchEmail := strings.ToLower(strings.TrimSpace(account.FetchEmail))
-		if fetchEmail == "" {
-			fetchEmail = strings.ToLower(strings.TrimSpace(account.Email))
+		if err := <-done; err != nil {
+			return nil, err
 		}
 
-		// Determine if this is a sent mailbox
-		isSentMailbox := mailbox == getSentMailbox(account)
-
-		// Apply different filtering logic based on mailbox type
-		matched := false
-		if isSentMailbox {
-			// For sent mailbox, check if the sender matches the fetchEmail
-			if strings.EqualFold(strings.TrimSpace(fromAddr), fetchEmail) {
-				matched = true
+		// Filter messages in this batch
+		var batchEmails []Email
+		for _, msg := range batchMsgs {
+			if msg == nil || msg.Envelope == nil {
+				continue
 			}
-		} else {
-			// For inbox and other mailboxes, check if any recipient matches the fetchEmail
-			for _, r := range toAddrList {
-				if strings.EqualFold(strings.TrimSpace(r), fetchEmail) {
+
+			var fromAddr string
+			if len(msg.Envelope.From) > 0 {
+				fromAddr = msg.Envelope.From[0].Address()
+			}
+
+			var toAddrList []string
+			for _, addr := range msg.Envelope.To {
+				toAddrList = append(toAddrList, addr.Address())
+			}
+			for _, addr := range msg.Envelope.Cc {
+				toAddrList = append(toAddrList, addr.Address())
+			}
+
+			matched := false
+			if isSentMailbox {
+				if strings.EqualFold(strings.TrimSpace(fromAddr), fetchEmail) {
 					matched = true
-					break
+				}
+			} else {
+				for _, r := range toAddrList {
+					if strings.EqualFold(strings.TrimSpace(r), fetchEmail) {
+						matched = true
+						break
+					}
+				}
+			}
+
+			if !matched {
+				continue
+			}
+
+			batchEmails = append(batchEmails, Email{
+				UID:       msg.Uid,
+				From:      fromAddr,
+				To:        toAddrList,
+				Subject:   decodeHeader(msg.Envelope.Subject),
+				Date:      msg.Envelope.Date,
+				AccountID: account.ID,
+			})
+		}
+
+		// Sort batch Newest -> Oldest (since IMAP usually returns Oldest->Newest or arbitrary)
+		// Assuming seqset order or standard behavior, we want to ensure we append Newest emails first
+		// so that the final list is correct.
+		// Actually, let's just sort the batch by UID desc (Newest first)
+		// Simple bubble sort for small batch
+		for i := 0; i < len(batchEmails); i++ {
+			for j := i + 1; j < len(batchEmails); j++ {
+				if batchEmails[j].UID > batchEmails[i].UID {
+					batchEmails[i], batchEmails[j] = batchEmails[j], batchEmails[i]
 				}
 			}
 		}
 
-		if !matched {
-			// Skip messages not matching the filter criteria
-			continue
-		}
+		// Append to allEmails
+		allEmails = append(allEmails, batchEmails...)
 
-		emails = append(emails, Email{
-			UID:       msg.Uid,
-			From:      fromAddr,
-			To:        toAddrList,
-			Subject:   decodeHeader(msg.Envelope.Subject),
-			Date:      msg.Envelope.Date,
-			AccountID: account.ID,
-		})
+		// Update cursor for next iteration
+		cursor = from - 1
 	}
 
-	for i, j := 0, len(emails)-1; i < j; i, j = i+1, j-1 {
-		emails[i], emails[j] = emails[j], emails[i]
+	// Trim if we have too many
+	if len(allEmails) > int(limit) {
+		allEmails = allEmails[:limit]
 	}
 
-	return emails, nil
+	return allEmails, nil
 }
 
 func FetchEmailBodyFromMailbox(account *config.Account, mailbox string, uid uint32) (string, []Attachment, error) {
