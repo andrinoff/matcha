@@ -28,7 +28,8 @@ type Account struct {
 
 // Config stores the user's email configuration with multiple accounts.
 type Config struct {
-	Accounts []Account `json:"accounts"`
+	Accounts      []Account `json:"accounts"`
+	DisableImages bool      `json:"disable_images,omitempty"`
 }
 
 // GetIMAPServer returns the IMAP server address for the account.

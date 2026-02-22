@@ -28,7 +28,7 @@ func TestEmailViewUpdate(t *testing.T) {
 	}
 
 	t.Run("Focus on attachments", func(t *testing.T) {
-		emailView := NewEmailView(emailWithAttachments, 0, 80, 24, MailboxInbox)
+		emailView := NewEmailView(emailWithAttachments, 0, 80, 24, MailboxInbox, false)
 		if emailView.focusOnAttachments {
 			t.Error("focusOnAttachments should be initially false")
 		}
@@ -50,7 +50,7 @@ func TestEmailViewUpdate(t *testing.T) {
 	})
 
 	t.Run("No focus on attachments when there are none", func(t *testing.T) {
-		emailView := NewEmailView(emailWithoutAttachments, 0, 80, 24, MailboxInbox)
+		emailView := NewEmailView(emailWithoutAttachments, 0, 80, 24, MailboxInbox, false)
 		if emailView.focusOnAttachments {
 			t.Error("focusOnAttachments should be initially false")
 		}
@@ -63,7 +63,7 @@ func TestEmailViewUpdate(t *testing.T) {
 	})
 
 	t.Run("Navigate attachments", func(t *testing.T) {
-		emailView := NewEmailView(emailWithAttachments, 0, 80, 24, MailboxInbox)
+		emailView := NewEmailView(emailWithAttachments, 0, 80, 24, MailboxInbox, false)
 		// Focus on attachments
 		model, _ := emailView.Update(tea.KeyMsg{Type: tea.KeyTab})
 		emailView = model.(*EmailView)
@@ -95,7 +95,7 @@ func TestEmailViewUpdate(t *testing.T) {
 	})
 
 	t.Run("Download attachment", func(t *testing.T) {
-		emailView := NewEmailView(emailWithAttachments, 0, 80, 24, MailboxInbox)
+		emailView := NewEmailView(emailWithAttachments, 0, 80, 24, MailboxInbox, false)
 		// Focus on attachments
 		model, _ := emailView.Update(tea.KeyMsg{Type: tea.KeyTab})
 		emailView = model.(*EmailView)
@@ -124,7 +124,7 @@ func TestEmailViewUpdate(t *testing.T) {
 	})
 
 	t.Run("Reply to email", func(t *testing.T) {
-		emailView := NewEmailView(emailWithAttachments, 0, 80, 24, MailboxInbox)
+		emailView := NewEmailView(emailWithAttachments, 0, 80, 24, MailboxInbox, false)
 
 		_, cmd := emailView.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
 		if cmd == nil {

@@ -33,12 +33,18 @@ type EmailView struct {
 	focusOnAttachments bool
 	accountID          string
 	mailbox            MailboxKind
+	disableImages      bool
+	showImages         bool
 }
 
-func NewEmailView(email fetcher.Email, emailIndex, width, height int, mailbox MailboxKind) *EmailView {
+func NewEmailView(email fetcher.Email, emailIndex, width, height int, mailbox MailboxKind, disableImages bool) *EmailView {
 	// Pass the styles from the tui package to the view package
 	inlineImages := inlineImagesFromAttachments(email.Attachments)
-	body, err := view.ProcessBodyWithInline(email.Body, inlineImages, H1Style, H2Style, BodyStyle)
+
+	// Initial state for showImages matches config unless overridden later
+	showImages := !disableImages
+
+	body, err := view.ProcessBodyWithInline(email.Body, inlineImages, H1Style, H2Style, BodyStyle, !showImages)
 	if err != nil {
 		body = fmt.Sprintf("Error rendering body: %v", err)
 	}
@@ -58,11 +64,13 @@ func NewEmailView(email fetcher.Email, emailIndex, width, height int, mailbox Ma
 	vp.SetContent("\x1b_Ga=d\x1b\\\n" + wrapped + "\n")
 
 	return &EmailView{
-		viewport:   vp,
-		email:      email,
-		emailIndex: emailIndex,
-		accountID:  email.AccountID,
-		mailbox:    mailbox,
+		viewport:      vp,
+		email:         email,
+		emailIndex:    emailIndex,
+		accountID:     email.AccountID,
+		mailbox:       mailbox,
+		disableImages: disableImages,
+		showImages:    showImages,
 	}
 }
 
@@ -118,6 +126,20 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		} else {
 			switch msg.String() {
+			case "i":
+				if view.ImageProtocolSupported() {
+					m.showImages = !m.showImages
+					clearKittyGraphics()
+
+					inlineImages := inlineImagesFromAttachments(m.email.Attachments)
+					body, err := view.ProcessBodyWithInline(m.email.Body, inlineImages, H1Style, H2Style, BodyStyle, !m.showImages)
+					if err != nil {
+						body = fmt.Sprintf("Error rendering body: %v", err)
+					}
+					wrapped := wrapBodyToWidth(body, m.viewport.Width)
+					m.viewport.SetContent("\x1b_Ga=d\x1b\\\n" + wrapped + "\n")
+					return m, nil
+				}
 			case "r":
 				// Clear Kitty graphics before opening composer
 				clearKittyGraphics()
@@ -161,7 +183,7 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// When the window size changes, wrap and clear kitty images to keep placement stable
 		inlineImages := inlineImagesFromAttachments(m.email.Attachments)
-		body, err := view.ProcessBodyWithInline(m.email.Body, inlineImages, H1Style, H2Style, BodyStyle)
+		body, err := view.ProcessBodyWithInline(m.email.Body, inlineImages, H1Style, H2Style, BodyStyle, !m.showImages)
 		if err != nil {
 			body = fmt.Sprintf("Error rendering body: %v", err)
 		}
@@ -188,7 +210,11 @@ func (m *EmailView) View() string {
 	if m.focusOnAttachments {
 		help = helpStyle.Render("↑/↓: navigate • enter: download • esc/tab: back to email body")
 	} else {
-		help = helpStyle.Render("\uf112 r: reply • \uf064 f: forward • \uea81 d: delete • \uea98 a: archive • \uf435 tab: focus attachments • \ueb06 esc: back to inbox")
+		shortcuts := "\uf112 r: reply • \uf064 f: forward • \uea81 d: delete • \uea98 a: archive • \uf435 tab: focus attachments • \ueb06 esc: back to inbox"
+		if view.ImageProtocolSupported() {
+			shortcuts = shortcuts + "• \uf03e i: toggle images"
+		}
+		help = helpStyle.Render(shortcuts)
 	}
 
 	var attachmentView string

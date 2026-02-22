@@ -273,6 +273,11 @@ func konsoleSupported() bool {
 	return false
 }
 
+// ImageProtocolSupported checks if any supported image protocol terminal is detected.
+func ImageProtocolSupported() bool {
+	return imageProtocolSupported()
+}
+
 // imageProtocolSupported checks if any supported image protocol terminal is detected.
 func imageProtocolSupported() bool {
 	return kittySupported() || ghosttySupported() || iterm2Supported() ||
@@ -470,7 +475,7 @@ type InlineImage struct {
 }
 
 // ProcessBodyWithInline renders the body and resolves CID inline images when provided.
-func ProcessBodyWithInline(rawBody string, inline []InlineImage, h1Style, h2Style, bodyStyle lipgloss.Style) (string, error) {
+func ProcessBodyWithInline(rawBody string, inline []InlineImage, h1Style, h2Style, bodyStyle lipgloss.Style, disableImages bool) (string, error) {
 	inlineMap := make(map[string]string, len(inline))
 	for _, img := range inline {
 		cid := strings.TrimSpace(img.CID)
@@ -482,16 +487,16 @@ func ProcessBodyWithInline(rawBody string, inline []InlineImage, h1Style, h2Styl
 		}
 		inlineMap[cid] = img.Base64
 	}
-	return processBody(rawBody, inlineMap, h1Style, h2Style, bodyStyle)
+	return processBody(rawBody, inlineMap, h1Style, h2Style, bodyStyle, disableImages)
 }
 
 // ProcessBody takes a raw email body, decodes it, and formats it as plain
 // text with terminal hyperlinks.
-func ProcessBody(rawBody string, h1Style, h2Style, bodyStyle lipgloss.Style) (string, error) {
-	return processBody(rawBody, nil, h1Style, h2Style, bodyStyle)
+func ProcessBody(rawBody string, h1Style, h2Style, bodyStyle lipgloss.Style, disableImages bool) (string, error) {
+	return processBody(rawBody, nil, h1Style, h2Style, bodyStyle, disableImages)
 }
 
-func processBody(rawBody string, inline map[string]string, h1Style, h2Style, bodyStyle lipgloss.Style) (string, error) {
+func processBody(rawBody string, inline map[string]string, h1Style, h2Style, bodyStyle lipgloss.Style, disableImages bool) (string, error) {
 	decodedBody, err := decodeQuotedPrintable(rawBody)
 	if err != nil {
 		decodedBody = rawBody
@@ -583,7 +588,7 @@ func processBody(rawBody string, inline map[string]string, h1Style, h2Style, bod
 			alt = "Does not contain alt text"
 		}
 
-		if imageProtocolSupported() {
+		if !disableImages && imageProtocolSupported() {
 			var payload string
 			if strings.HasPrefix(src, "data:image/") {
 				payload = dataURIBase64(src)

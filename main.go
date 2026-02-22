@@ -490,11 +490,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case tui.GoToSettingsMsg:
-		if m.config != nil {
-			m.current = tui.NewSettings(m.config.Accounts)
-		} else {
-			m.current = tui.NewSettings(nil)
-		}
+		m.current = tui.NewSettings(m.config)
 		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 		return m, m.current.Init()
 
@@ -529,7 +525,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.emails = allEmails
 
 			// Go back to settings
-			m.current = tui.NewSettings(m.config.Accounts)
+			m.current = tui.NewSettings(m.config)
 			m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 		}
 		return m, m.current.Init()
@@ -568,7 +564,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Find the index for the email view (used for display purposes)
 		emailIndex := m.getEmailIndex(msg.UID, msg.AccountID, msg.Mailbox)
-		emailView := tui.NewEmailView(*email, emailIndex, m.width, m.height, msg.Mailbox)
+		emailView := tui.NewEmailView(*email, emailIndex, m.width, m.height, msg.Mailbox, m.config.DisableImages)
 		m.current = emailView
 		return m, m.current.Init()
 

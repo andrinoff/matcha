@@ -16,9 +16,17 @@ var (
 	dangerStyle              = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
 )
 
-// Settings displays the account management screen.
+type SettingsState int
+
+const (
+	SettingsMain SettingsState = iota
+	SettingsAccounts
+)
+
+// Settings displays the settings screen.
 type Settings struct {
-	accounts         []config.Account
+	cfg              *config.Config
+	state            SettingsState
 	cursor           int
 	confirmingDelete bool
 	width            int
@@ -26,10 +34,14 @@ type Settings struct {
 }
 
 // NewSettings creates a new settings model.
-func NewSettings(accounts []config.Account) *Settings {
+func NewSettings(cfg *config.Config) *Settings {
+	if cfg == nil {
+		cfg = &config.Config{}
+	}
 	return &Settings{
-		accounts: accounts,
-		cursor:   0,
+		cfg:    cfg,
+		state:  SettingsMain,
+		cursor: 0,
 	}
 }
 
@@ -47,68 +59,155 @@ func (m *Settings) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		if m.confirmingDelete {
-			switch msg.String() {
-			case "y", "Y":
-				if m.cursor < len(m.accounts) {
-					accountID := m.accounts[m.cursor].ID
-					m.confirmingDelete = false
-					return m, func() tea.Msg {
-						return DeleteAccountMsg{AccountID: accountID}
-					}
-				}
-			case "n", "N", "esc":
+		if m.state == SettingsMain {
+			return m.updateMain(msg)
+		} else {
+			return m.updateAccounts(msg)
+		}
+	}
+	return m, nil
+}
+
+func (m *Settings) updateMain(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "up", "k":
+		if m.cursor > 0 {
+			m.cursor--
+		}
+	case "down", "j":
+		// Options: 0: Email Accounts, 1: Image Display, 2: Edit Signature
+		if m.cursor < 2 {
+			m.cursor++
+		}
+	case "enter":
+		switch m.cursor {
+		case 0: // Email Accounts
+			m.state = SettingsAccounts
+			m.cursor = 0
+			return m, nil
+		case 1: // Image Display
+			m.cfg.DisableImages = !m.cfg.DisableImages
+			// Save config immediately
+			_ = config.SaveConfig(m.cfg)
+			return m, nil
+		case 2: // Edit Signature
+			return m, func() tea.Msg { return GoToSignatureEditorMsg{} }
+		}
+	case "esc":
+		return m, func() tea.Msg { return GoToChoiceMenuMsg{} }
+	}
+	return m, nil
+}
+
+func (m *Settings) updateAccounts(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.confirmingDelete {
+		switch msg.String() {
+		case "y", "Y":
+			if m.cursor < len(m.cfg.Accounts) {
+				accountID := m.cfg.Accounts[m.cursor].ID
 				m.confirmingDelete = false
-				return m, nil
+				return m, func() tea.Msg {
+					return DeleteAccountMsg{AccountID: accountID}
+				}
 			}
+		case "n", "N", "esc":
+			m.confirmingDelete = false
 			return m, nil
 		}
+		return m, nil
+	}
 
-		switch msg.String() {
-		case "up", "k":
-			if m.cursor > 0 {
-				m.cursor--
-			}
-		case "down", "j":
-			// +2 for "Add Account" and "Signature" options
-			if m.cursor < len(m.accounts)+1 {
-				m.cursor++
-			}
-		case "d":
-			// Delete selected account (not the "Add Account" option)
-			if m.cursor < len(m.accounts) && len(m.accounts) > 0 {
-				m.confirmingDelete = true
-			}
-		case "enter":
-			// If cursor is on "Add Account"
-			if m.cursor == len(m.accounts) {
-				return m, func() tea.Msg { return GoToAddAccountMsg{} }
-			}
-			// If cursor is on "Signature"
-			if m.cursor == len(m.accounts)+1 {
-				return m, func() tea.Msg { return GoToSignatureEditorMsg{} }
-			}
-		case "esc":
-			return m, func() tea.Msg { return GoToChoiceMenuMsg{} }
+	switch msg.String() {
+	case "up", "k":
+		if m.cursor > 0 {
+			m.cursor--
 		}
+	case "down", "j":
+		// +1 for "Add Account" option
+		if m.cursor < len(m.cfg.Accounts) {
+			m.cursor++
+		}
+	case "d":
+		// Delete selected account (not the "Add Account" option)
+		if m.cursor < len(m.cfg.Accounts) && len(m.cfg.Accounts) > 0 {
+			m.confirmingDelete = true
+		}
+	case "enter":
+		// If cursor is on "Add Account"
+		if m.cursor == len(m.cfg.Accounts) {
+			return m, func() tea.Msg { return GoToAddAccountMsg{} }
+		}
+	case "esc":
+		m.state = SettingsMain
+		m.cursor = 0
+		return m, nil
 	}
 	return m, nil
 }
 
 // View renders the settings screen.
 func (m *Settings) View() string {
+	if m.state == SettingsMain {
+		return m.viewMain()
+	}
+	return m.viewAccounts()
+}
+
+func (m *Settings) viewMain() string {
 	var b strings.Builder
 
-	b.WriteString(titleStyle.Render("Account Settings") + "\n\n")
-	b.WriteString(listHeader.Render("Your email accounts:"))
+	b.WriteString(titleStyle.Render("Settings") + "\n\n")
+
+	// Option 0: Email Accounts
+	if m.cursor == 0 {
+		b.WriteString(selectedAccountItemStyle.Render("> Email Accounts"))
+	} else {
+		b.WriteString(accountItemStyle.Render("  Email Accounts"))
+	}
+	b.WriteString("\n")
+
+	// Option 1: Image Display
+	status := "ON"
+	if m.cfg.DisableImages {
+		status = "OFF"
+	}
+	text := fmt.Sprintf("Image Display: %s", status)
+	if m.cursor == 1 {
+		b.WriteString(selectedAccountItemStyle.Render("> " + text))
+	} else {
+		b.WriteString(accountItemStyle.Render("  " + text))
+	}
+	b.WriteString("\n")
+
+	// Option 2: Edit Signature
+	sigText := "Edit Signature"
+	if config.HasSignature() {
+		sigText = "Edit Signature (configured)"
+	}
+	if m.cursor == 2 {
+		b.WriteString(selectedAccountItemStyle.Render("> " + sigText))
+	} else {
+		b.WriteString(accountItemStyle.Render("  " + sigText))
+	}
 	b.WriteString("\n\n")
 
-	if len(m.accounts) == 0 {
+	b.WriteString(helpStyle.Render("↑/↓: navigate • enter: select/toggle • esc: back"))
+
+	return docStyle.Render(b.String())
+}
+
+func (m *Settings) viewAccounts() string {
+	var b strings.Builder
+
+	b.WriteString(titleStyle.Render("Account Settings"))
+	b.WriteString("\n\n")
+
+	if len(m.cfg.Accounts) == 0 {
 		b.WriteString(accountEmailStyle.Render("  No accounts configured.\n"))
 		b.WriteString("\n")
 	}
 
-	for i, account := range m.accounts {
+	for i, account := range m.cfg.Accounts {
 		displayName := account.Email
 		if account.Name != "" {
 			displayName = fmt.Sprintf("%s (%s)", account.Name, account.FetchEmail)
@@ -131,29 +230,17 @@ func (m *Settings) View() string {
 
 	// Add Account option
 	addAccountText := "Add New Account"
-	if m.cursor == len(m.accounts) {
+	if m.cursor == len(m.cfg.Accounts) {
 		b.WriteString(selectedAccountItemStyle.Render(fmt.Sprintf("> %s", addAccountText)))
 	} else {
 		b.WriteString(accountItemStyle.Render(fmt.Sprintf("  %s", addAccountText)))
-	}
-	b.WriteString("\n")
-
-	// Signature option
-	signatureText := "Edit Signature"
-	if config.HasSignature() {
-		signatureText = "Edit Signature (configured)"
-	}
-	if m.cursor == len(m.accounts)+1 {
-		b.WriteString(selectedAccountItemStyle.Render(fmt.Sprintf("> %s", signatureText)))
-	} else {
-		b.WriteString(accountItemStyle.Render(fmt.Sprintf("  %s", signatureText)))
 	}
 	b.WriteString("\n\n")
 
 	b.WriteString(helpStyle.Render("↑/↓: navigate • enter: select • d: delete account • esc: back"))
 
 	if m.confirmingDelete {
-		accountName := m.accounts[m.cursor].Email
+		accountName := m.cfg.Accounts[m.cursor].Email
 		dialog := DialogBoxStyle.Render(
 			lipgloss.JoinVertical(lipgloss.Center,
 				dangerStyle.Render("Delete account?"),
@@ -167,10 +254,10 @@ func (m *Settings) View() string {
 	return docStyle.Render(b.String())
 }
 
-// UpdateAccounts updates the list of accounts.
-func (m *Settings) UpdateAccounts(accounts []config.Account) {
-	m.accounts = accounts
-	if m.cursor >= len(accounts) {
-		m.cursor = len(accounts)
+// UpdateConfig updates the configuration (used when accounts are deleted).
+func (m *Settings) UpdateConfig(cfg *config.Config) {
+	m.cfg = cfg
+	if m.state == SettingsAccounts && m.cursor >= len(cfg.Accounts) {
+		m.cursor = len(cfg.Accounts)
 	}
 }
