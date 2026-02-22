@@ -24,6 +24,7 @@ modules:
         - --share=network
     build-commands:
       - go build -o /app/bin/matcha .
+      - chmod -R u+w /app/.go /app/.cache
       - rm -rf /app/.go /app/.cache
 
     sources:
