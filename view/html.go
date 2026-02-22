@@ -273,6 +273,11 @@ func konsoleSupported() bool {
 	return false
 }
 
+// ImageProtocolSupported checks if any supported image protocol terminal is detected.
+func ImageProtocolSupported() bool {
+	return imageProtocolSupported()
+}
+
 // imageProtocolSupported checks if any supported image protocol terminal is detected.
 func imageProtocolSupported() bool {
 	return kittySupported() || ghosttySupported() || iterm2Supported() ||
