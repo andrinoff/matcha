@@ -30,76 +30,8 @@
 ![Demo GIF](public/assets/demo.gif)
 
 ## Installation
-There are several ways to install Matcha:
 
-### Package Managers
-
-#### Homebrew (macOS & Linux)
-
-```bash
-brew tap floatpane/matcha
-brew install floatpane/matcha/matcha
-```
-
-After installation, run:
-
-```bash
-matcha
-```
-
-> [!WARNING]
-> If you have the [*"other"* Matcha](https://github.com/piqoni/matcha) already installed, you will have to rename the executable
-
-
-### Install using Snap (Linux)
-
-> [!NOTE]
-> When using Snap, the config folder is going to be located at `~/snap/matcha/36/.config`, see [why](https://github.com/floatpane/matcha/issues/117)
-
-```bash
-sudo snap install matcha
-```
-
-### Build from Source
-
-Matcha is written in **Go**. To build it manually:
-
-1. Ensure you have Go installed (`go version`).
-2. Clone the repository:
-
-   ```bash
-   git clone https://github.com/floatpane/matcha.git
-   ```
-
-3. Navigate to the project folder:
-
-   ```bash
-   cd matcha
-   ```
-
-4. Build the binary:
-
-   ```bash
-   go build -trimpath -ldflags="-s -w" -o matcha
-   ```
-
-   For an even smaller binary, compress with UPX (install via `brew install upx` or `apt install upx`):
-
-   ```bash
-   upx --best --lzma matcha
-   ```
-
-> [!WARNING]
-> UPX compression does NOT work on macOS ARM builds. See [#97](https://github.com/floatpane/matcha/pull/97)
-
-5. Run it:
-   ```bash
-   ./matcha
-   ```
-
-### Open Build Service
-
-Also, a build of Matcha is available on [OBS](https://build.opensuse.org/package/show/home:mantarimay:apps/matcha). Thanks, [@mantarimay](https://github.com/mantarimay)!
+View [INSTALLATION.md](docs/INSTALLATION.md)
 
 ## Features
 
