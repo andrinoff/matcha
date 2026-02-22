@@ -2,6 +2,9 @@ id: com.floatpane.matcha
 runtime: org.freedesktop.Sdk
 runtime-version: "23.08"
 sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.golang
+
 command: matcha
 finish-args:
   - --share=network
@@ -13,6 +16,10 @@ modules:
   - name: matcha
     buildsystem: simple
     build-options:
+      append-path: /usr/lib/sdk/golang/bin
+      env:
+        GOCACHE: /app/.cache/go-build
+        GOPATH: /app/.go
       build-args:
         - --share=network
     build-commands:

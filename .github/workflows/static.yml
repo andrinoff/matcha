@@ -42,7 +42,7 @@ jobs:
 
       - name: Build Flatpak Repo
         run: |
-          flatpak-builder --repo=public/repo --force-clean build-dir com.floatpane.matcha.yaml
+          flatpak-builder --user --install-deps-from=flathub --repo=public/repo --force-clean build-dir com.floatpane.matcha.yaml
           flatpak build-update-repo --generate-static-deltas public/repo
 
       - name: Setup Pages
