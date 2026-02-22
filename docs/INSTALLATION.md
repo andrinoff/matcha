@@ -12,6 +12,9 @@ Welcome to the installation guide for Matcha.
   - [Snap](#snap)
   - [Flatpak](#flatpak)
   - [Manual Binary Download](#manual-binary-download-1)
+- [🪟 Windows](#windows)
+  - [WSL](#wsl)
+- [🏗️ Building from Source](#building-from-source)
 
 ##  MacOS
 
@@ -89,3 +92,21 @@ You can download pre-compiled binaries from the [Releases page](https://github.c
    ```bash
    matcha
    ```
+
+## 🪟 Windows
+
+Currently, there is no native support for Windows. Please see issue [#123](https://github.com/floatpane/matcha/issues/123) for more details.
+
+### WSL
+
+You can run Matcha on Windows using [WSL (Windows Subsystem for Linux)](https://learn.microsoft.com/en-us/windows/wsl/install).
+
+Once you have WSL installed and set up, you can follow the [Linux](#linux) installation instructions inside your WSL terminal.
+
+## 🏗️ Building from Source
+
+If you have Go installed, you can build Matcha from source:
+
+```bash
+go build .
+```
