@@ -32,6 +32,7 @@ import (
 const (
 	initialEmailLimit = 20
 	paginationLimit   = 20
+	maxCacheEmails    = 100
 )
 
 // Version variables are injected by the build (GoReleaser ldflags).
@@ -280,17 +281,22 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.current = m.inbox
 		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 
+		counts := make(map[string]int)
+		for k, v := range emailsByAcct {
+			counts[k] = len(v)
+		}
+
 		// Start background refresh
 		return m, tea.Batch(
 			m.current.Init(),
 			func() tea.Msg { return tui.RefreshingEmailsMsg{Mailbox: tui.MailboxInbox} },
-			refreshEmails(m.config, tui.MailboxInbox),
+			refreshEmails(m.config, tui.MailboxInbox, counts),
 		)
 
 	case tui.RequestRefreshMsg:
 		return m, tea.Batch(
 			func() tea.Msg { return tui.RefreshingEmailsMsg{Mailbox: msg.Mailbox} },
-			refreshEmails(m.config, msg.Mailbox),
+			refreshEmails(m.config, msg.Mailbox, msg.Counts),
 		)
 
 	case tui.EmailsRefreshedMsg:
@@ -424,32 +430,40 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.sentByAcct == nil {
 				m.sentByAcct = make(map[string][]fetcher.Email)
 			}
-			m.sentByAcct[msg.AccountID] = append(m.sentByAcct[msg.AccountID], msg.Emails...)
-			m.sentEmails = append(m.sentEmails, msg.Emails...)
+			unique := filterUnique(m.sentByAcct[msg.AccountID], msg.Emails)
+			m.sentByAcct[msg.AccountID] = append(m.sentByAcct[msg.AccountID], unique...)
+			m.sentEmails = append(m.sentEmails, unique...)
 			return m, nil
 		}
 		if msg.Mailbox == tui.MailboxTrash {
 			if m.trashByAcct == nil {
 				m.trashByAcct = make(map[string][]fetcher.Email)
 			}
-			m.trashByAcct[msg.AccountID] = append(m.trashByAcct[msg.AccountID], msg.Emails...)
-			m.trashEmails = append(m.trashEmails, msg.Emails...)
+			unique := filterUnique(m.trashByAcct[msg.AccountID], msg.Emails)
+			m.trashByAcct[msg.AccountID] = append(m.trashByAcct[msg.AccountID], unique...)
+			m.trashEmails = append(m.trashEmails, unique...)
 			return m, nil
 		}
 		if msg.Mailbox == tui.MailboxArchive {
 			if m.archiveByAcct == nil {
 				m.archiveByAcct = make(map[string][]fetcher.Email)
 			}
-			m.archiveByAcct[msg.AccountID] = append(m.archiveByAcct[msg.AccountID], msg.Emails...)
-			m.archiveEmails = append(m.archiveEmails, msg.Emails...)
+			unique := filterUnique(m.archiveByAcct[msg.AccountID], msg.Emails)
+			m.archiveByAcct[msg.AccountID] = append(m.archiveByAcct[msg.AccountID], unique...)
+			m.archiveEmails = append(m.archiveEmails, unique...)
 			return m, nil
 		}
 		// Inbox
 		if m.emailsByAcct == nil {
 			m.emailsByAcct = make(map[string][]fetcher.Email)
 		}
-		m.emailsByAcct[msg.AccountID] = append(m.emailsByAcct[msg.AccountID], msg.Emails...)
-		m.emails = append(m.emails, msg.Emails...)
+		unique := filterUnique(m.emailsByAcct[msg.AccountID], msg.Emails)
+		m.emailsByAcct[msg.AccountID] = append(m.emailsByAcct[msg.AccountID], unique...)
+		m.emails = append(m.emails, unique...)
+
+		// Save to cache
+		go saveEmailsToCache(m.emails)
+
 		return m, nil
 
 	case tui.GoToSendMsg:
@@ -1183,7 +1197,7 @@ func loadCachedEmails() tea.Cmd {
 	}
 }
 
-func refreshEmails(cfg *config.Config, mailbox tui.MailboxKind) tea.Cmd {
+func refreshEmails(cfg *config.Config, mailbox tui.MailboxKind, counts map[string]int) tea.Cmd {
 	return func() tea.Msg {
 		emailsByAccount := make(map[string][]fetcher.Email)
 		var mu sync.Mutex
@@ -1195,10 +1209,18 @@ func refreshEmails(cfg *config.Config, mailbox tui.MailboxKind) tea.Cmd {
 				defer wg.Done()
 				var emails []fetcher.Email
 				var err error
+
+				limit := uint32(initialEmailLimit)
+				if counts != nil {
+					if c, ok := counts[acc.ID]; ok && c > 0 {
+						limit = uint32(c)
+					}
+				}
+
 				if mailbox == tui.MailboxSent {
-					emails, err = fetcher.FetchSentEmails(&acc, initialEmailLimit, 0)
+					emails, err = fetcher.FetchSentEmails(&acc, limit, 0)
 				} else {
-					emails, err = fetcher.FetchEmails(&acc, initialEmailLimit, 0)
+					emails, err = fetcher.FetchEmails(&acc, limit, 0)
 				}
 				if err != nil {
 					log.Printf("Error fetching from %s: %v", acc.Email, err)
@@ -1216,6 +1238,9 @@ func refreshEmails(cfg *config.Config, mailbox tui.MailboxKind) tea.Cmd {
 }
 
 func saveEmailsToCache(emails []fetcher.Email) {
+	if len(emails) > maxCacheEmails {
+		emails = emails[:maxCacheEmails]
+	}
 	var cachedEmails []config.CachedEmail
 	for _, email := range emails {
 		cachedEmails = append(cachedEmails, config.CachedEmail{
@@ -1794,6 +1819,20 @@ func runUpdateCLI() error {
 
 	fmt.Println("Successfully updated matcha to", latestTag)
 	return nil
+}
+
+func filterUnique(existing, incoming []fetcher.Email) []fetcher.Email {
+	seen := make(map[uint32]struct{})
+	for _, e := range existing {
+		seen[e.UID] = struct{}{}
+	}
+	var unique []fetcher.Email
+	for _, e := range incoming {
+		if _, ok := seen[e.UID]; !ok {
+			unique = append(unique, e)
+		}
+	}
+	return unique
 }
 
 func main() {
