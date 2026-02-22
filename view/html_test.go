@@ -513,7 +513,7 @@ func TestProcessBodyWithHyperlinkSupport(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.setupHyperlinks()
 
-			processed, err := ProcessBody(tc.input, h1Style, h2Style, bodyStyle)
+			processed, err := ProcessBody(tc.input, h1Style, h2Style, bodyStyle, false)
 			if err != nil {
 				t.Fatalf("ProcessBody() failed: %v", err)
 			}
@@ -635,7 +635,7 @@ func TestProcessBodyWithImageProtocol(t *testing.T) {
 			tc.clearAllImageEnv()
 			tc.setupImageProtocol()
 
-			processed, err := ProcessBody(tc.input, h1Style, h2Style, bodyStyle)
+			processed, err := ProcessBody(tc.input, h1Style, h2Style, bodyStyle, false)
 			if err != nil {
 				t.Fatalf("ProcessBody() failed: %v", err)
 			}
@@ -685,7 +685,7 @@ func TestProcessBody(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			processed, err := ProcessBody(tc.input, h1Style, h2Style, bodyStyle)
+			processed, err := ProcessBody(tc.input, h1Style, h2Style, bodyStyle, false)
 			if err != nil {
 				t.Fatalf("ProcessBody() failed: %v", err)
 			}

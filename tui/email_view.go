@@ -33,12 +33,13 @@ type EmailView struct {
 	focusOnAttachments bool
 	accountID          string
 	mailbox            MailboxKind
+	disableImages      bool
 }
 
-func NewEmailView(email fetcher.Email, emailIndex, width, height int, mailbox MailboxKind) *EmailView {
+func NewEmailView(email fetcher.Email, emailIndex, width, height int, mailbox MailboxKind, disableImages bool) *EmailView {
 	// Pass the styles from the tui package to the view package
 	inlineImages := inlineImagesFromAttachments(email.Attachments)
-	body, err := view.ProcessBodyWithInline(email.Body, inlineImages, H1Style, H2Style, BodyStyle)
+	body, err := view.ProcessBodyWithInline(email.Body, inlineImages, H1Style, H2Style, BodyStyle, disableImages)
 	if err != nil {
 		body = fmt.Sprintf("Error rendering body: %v", err)
 	}
@@ -58,11 +59,12 @@ func NewEmailView(email fetcher.Email, emailIndex, width, height int, mailbox Ma
 	vp.SetContent("\x1b_Ga=d\x1b\\\n" + wrapped + "\n")
 
 	return &EmailView{
-		viewport:   vp,
-		email:      email,
-		emailIndex: emailIndex,
-		accountID:  email.AccountID,
-		mailbox:    mailbox,
+		viewport:      vp,
+		email:         email,
+		emailIndex:    emailIndex,
+		accountID:     email.AccountID,
+		mailbox:       mailbox,
+		disableImages: disableImages,
 	}
 }
 
@@ -161,7 +163,7 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// When the window size changes, wrap and clear kitty images to keep placement stable
 		inlineImages := inlineImagesFromAttachments(m.email.Attachments)
-		body, err := view.ProcessBodyWithInline(m.email.Body, inlineImages, H1Style, H2Style, BodyStyle)
+		body, err := view.ProcessBodyWithInline(m.email.Body, inlineImages, H1Style, H2Style, BodyStyle, m.disableImages)
 		if err != nil {
 			body = fmt.Sprintf("Error rendering body: %v", err)
 		}
