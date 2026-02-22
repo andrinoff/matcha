@@ -5,7 +5,9 @@ on:
   # Runs on pushes targeting the default branch
   push:
     branches: ["master"]
-
+  # ALSO run when a new GitHub Release is published
+  release:
+    types: [published]
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
@@ -31,13 +33,27 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Install Flatpak Builder
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+
+      - name: Build Flatpak Repo
+        run: |
+          flatpak-builder --repo=public/repo --force-clean build-dir com.floatpane.matcha.yaml
+          flatpak build-update-repo --generate-static-deltas public/repo
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v4
         with:
           # Upload entire repository
-          path: 'public'
+          path: "public"
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
