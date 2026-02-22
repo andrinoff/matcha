@@ -24,6 +24,8 @@ modules:
         - --share=network
     build-commands:
       - go build -o /app/bin/matcha .
+      - rm -rf /app/.go /app/.cache
+
     sources:
       - type: dir
         path: .
