@@ -24,6 +24,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+var linkStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#9BC4FF")) // Cyan
+
 // getTerminalCellSize returns the height of a terminal cell in pixels.
 // It queries the terminal using TIOCGWINSZ to get both character and pixel dimensions.
 // Falls back to a default of 18 pixels if the query fails.
@@ -140,14 +142,14 @@ func hyperlink(url, text string) string {
 
 	if supported {
 		// Use OSC 8 hyperlink sequence for supported terminals
-		return fmt.Sprintf("\x1b]8;;%s\x07%s\x1b]8;;\x07", url, text)
+		return fmt.Sprintf("\x1b]8;;%s\x07%s\x1b]8;;\x07", url, linkStyle.Render(text))
 	} else {
 		// Fallback to plain text format for unsupported terminals
 		// Use HTML-encoded angle brackets to prevent HTML parser from treating them as tags
 		if text == url {
-			return fmt.Sprintf("&lt;%s&gt;", url)
+			return fmt.Sprintf("&lt;%s&gt;", linkStyle.Render(url))
 		}
-		return fmt.Sprintf("%s &lt;%s&gt;", text, url)
+		return fmt.Sprintf("%s &lt;%s&gt;", linkStyle.Render(text), linkStyle.Render(url))
 	}
 }
 
@@ -621,7 +623,7 @@ func processBody(rawBody string, inline map[string]string, h1Style, h2Style, bod
 		if hyperlinkSupported() {
 			s.ReplaceWithHtml(hyperlink(src, fmt.Sprintf("\n [Click here to view image: %s] \n", alt)))
 		} else {
-			s.ReplaceWithHtml(fmt.Sprintf("\n [Image: %s, %s] \n", alt, src))
+			s.ReplaceWithHtml(fmt.Sprintf("\n %s \n", linkStyle.Render(fmt.Sprintf("[Image: %s, %s]", alt, src))))
 		}
 	})
 
