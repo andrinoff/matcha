@@ -137,6 +137,7 @@ func SaveConfig(config *Config) error {
 }
 
 // LoadConfig loads the configuration from the config file and passwords from the keyring.
+// It automatically migrates plain-text passwords to the OS keyring if they exist.
 func LoadConfig() (*Config, error) {
 	path, err := configFile()
 	if err != nil {
@@ -146,12 +147,31 @@ func LoadConfig() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	var config Config
-	if err := json.Unmarshal(data, &config); err != nil {
-		// Try to load legacy single-account config
+	var needsMigration bool
+
+	type rawAccount struct {
+		ID              string `json:"id"`
+		Name            string `json:"name"`
+		Email           string `json:"email"`
+		Password        string `json:"password,omitempty"`
+		ServiceProvider string `json:"service_provider"`
+		FetchEmail      string `json:"fetch_email,omitempty"`
+		IMAPServer      string `json:"imap_server,omitempty"`
+		IMAPPort        int    `json:"imap_port,omitempty"`
+		SMTPServer      string `json:"smtp_server,omitempty"`
+		SMTPPort        int    `json:"smtp_port,omitempty"`
+	}
+	type diskConfig struct {
+		Accounts      []rawAccount `json:"accounts"`
+		DisableImages bool         `json:"disable_images,omitempty"`
+	}
+
+	var raw diskConfig
+	if err := json.Unmarshal(data, &raw); err != nil {
 		var legacyConfig legacyConfigFormat
 		if legacyErr := json.Unmarshal(data, &legacyConfig); legacyErr == nil && legacyConfig.Email != "" {
-			// Convert legacy config to new format
 			config = Config{
 				Accounts: []Account{
 					{
@@ -160,12 +180,11 @@ func LoadConfig() (*Config, error) {
 						Email:           legacyConfig.Email,
 						Password:        legacyConfig.Password,
 						ServiceProvider: legacyConfig.ServiceProvider,
-						// Default FetchEmail to the legacy Email value
-						FetchEmail: legacyConfig.Email,
+						FetchEmail:      legacyConfig.Email,
 					},
 				},
 			}
-			// Save the migrated config (This automatically pushes the password to the keyring)
+			// SaveConfig automatically pushes the password to the keyring and strips it from JSON
 			if saveErr := SaveConfig(&config); saveErr != nil {
 				return nil, saveErr
 			}
@@ -174,10 +193,38 @@ func LoadConfig() (*Config, error) {
 		return nil, err
 	}
 
-	// Fetch passwords from OS Keyring for each account
-	for i := range config.Accounts {
-		if pwd, err := keyring.Get(keyringServiceName, config.Accounts[i].Email); err == nil {
-			config.Accounts[i].Password = pwd
+	config.DisableImages = raw.DisableImages
+	for _, rawAcc := range raw.Accounts {
+		acc := Account{
+			ID:              rawAcc.ID,
+			Name:            rawAcc.Name,
+			Email:           rawAcc.Email,
+			ServiceProvider: rawAcc.ServiceProvider,
+			FetchEmail:      rawAcc.FetchEmail,
+			IMAPServer:      rawAcc.IMAPServer,
+			IMAPPort:        rawAcc.IMAPPort,
+			SMTPServer:      rawAcc.SMTPServer,
+			SMTPPort:        rawAcc.SMTPPort,
+		}
+
+		if rawAcc.Password != "" {
+			// Found a plain-text password! Move it to the OS Keyring.
+			_ = keyring.Set(keyringServiceName, rawAcc.Email, rawAcc.Password)
+			acc.Password = rawAcc.Password
+			needsMigration = true
+		} else {
+			// No plaintext password in JSON, fetch from Keyring as normal.
+			if pwd, err := keyring.Get(keyringServiceName, acc.Email); err == nil {
+				acc.Password = pwd
+			}
+		}
+
+		config.Accounts = append(config.Accounts, acc)
+	}
+
+	if needsMigration {
+		if saveErr := SaveConfig(&config); saveErr != nil {
+			return nil, saveErr
 		}
 	}
 
