@@ -73,7 +73,9 @@ release:
   # Add a footer to the release notes featuring full changelog.
   footer: |
     ---
-    **Full Changelog**: https://github.com/floatpane/matcha/compare/{{ .PreviousTag }}...{{ .Tag }}
+    This version is also available on **[Snapcraft](https://snapcraft.io/matcha)**, **Homebrew**, **[Flatpak](https://matcha.floatpane.com/matcha.flatpakref)**!
+
+    View the [installation instructions](https://github.com/floatpane/matcha/blob/master/docs/INSTALLATION.md) for more details.
 
 # 'brews' configures the Homebrew tap integration.
 brews:
