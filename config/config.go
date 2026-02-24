@@ -6,14 +6,17 @@ import (
 	"path/filepath"
 
 	"github.com/google/uuid"
+	"github.com/zalando/go-keyring"
 )
+
+const keyringServiceName = "matcha-email-client"
 
 // Account stores the configuration for a single email account.
 type Account struct {
 	ID              string `json:"id"`
 	Name            string `json:"name"`
 	Email           string `json:"email"`
-	Password        string `json:"password"`
+	Password        string `json:"-"`                // "-" prevents the password from being saved to config.json
 	ServiceProvider string `json:"service_provider"` // "gmail", "icloud", or "custom"
 	// FetchEmail is the single email address for which messages should be fetched.
 	// If empty, it will default to `Email` when accounts are added.
@@ -108,8 +111,17 @@ func configFile() (string, error) {
 	return filepath.Join(dir, "config.json"), nil
 }
 
-// SaveConfig saves the given configuration to the config file.
+// SaveConfig saves the given configuration to the config file and passwords to the keyring.
 func SaveConfig(config *Config) error {
+	// Save passwords to the OS keyring before writing the JSON file
+	for _, acc := range config.Accounts {
+		if acc.Password != "" {
+			// We ignore the error here because some environments (like headless CI)
+			// might not have a keyring service, but we still want to save the rest of the config.
+			_ = keyring.Set(keyringServiceName, acc.Email, acc.Password)
+		}
+	}
+
 	path, err := configFile()
 	if err != nil {
 		return err
@@ -124,7 +136,7 @@ func SaveConfig(config *Config) error {
 	return os.WriteFile(path, data, 0600)
 }
 
-// LoadConfig loads the configuration from the config file.
+// LoadConfig loads the configuration from the config file and passwords from the keyring.
 func LoadConfig() (*Config, error) {
 	path, err := configFile()
 	if err != nil {
@@ -153,7 +165,7 @@ func LoadConfig() (*Config, error) {
 					},
 				},
 			}
-			// Save the migrated config
+			// Save the migrated config (This automatically pushes the password to the keyring)
 			if saveErr := SaveConfig(&config); saveErr != nil {
 				return nil, saveErr
 			}
@@ -161,6 +173,14 @@ func LoadConfig() (*Config, error) {
 		}
 		return nil, err
 	}
+
+	// Fetch passwords from OS Keyring for each account
+	for i := range config.Accounts {
+		if pwd, err := keyring.Get(keyringServiceName, config.Accounts[i].Email); err == nil {
+			config.Accounts[i].Password = pwd
+		}
+	}
+
 	return &config, nil
 }
 
@@ -184,10 +204,13 @@ func (c *Config) AddAccount(account Account) {
 	c.Accounts = append(c.Accounts, account)
 }
 
-// RemoveAccount removes an account by its ID.
+// RemoveAccount removes an account by its ID and deletes its password from the keyring.
 func (c *Config) RemoveAccount(id string) bool {
 	for i, acc := range c.Accounts {
 		if acc.ID == id {
+			// Delete password from OS Keyring when account is removed
+			_ = keyring.Delete(keyringServiceName, acc.Email)
+
 			c.Accounts = append(c.Accounts[:i], c.Accounts[i+1:]...)
 			return true
 		}
