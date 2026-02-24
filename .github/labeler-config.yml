@@ -20,3 +20,25 @@
   - '\bquestion(s)?\b'
   - '\bhelp\b'
   - '\bhow to\b'
+
+"performance":
+  - '\bperformance\b'
+  - '\boptimiz(e|ation)\b'
+  - '\bspeed\b'
+  - '\befficiency\b'
+
+"dependencies":
+  - '\bchore\(deps\)\b'
+  - '\bfix\(deps\)\b'
+
+"ci":
+  - '\bci\b'
+  - '\bcontinuous integration\b'
+  - '\bbuild\b'
+  - '\bworkflow\b'
+
+"chore":
+  - '\bchore\b'
+  - '\bmaintenance\b'
+  - '\brefactor\b'
+  - '\bcleanup\b'

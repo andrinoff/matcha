@@ -24,6 +24,12 @@ changelog:
     - title: "Dependencies"
       labels:
         - "dependencies"
+    - title: "Continuous Integration"
+      labels:
+        - "ci"
+    - title: "Chores"
+      labels:
+        - "chore"
     - title: "Other Changes"
       labels:
         - "*"
