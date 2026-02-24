@@ -1562,6 +1562,21 @@ func detectInstalledVersion() string {
 				}
 			}
 		}
+
+		if _, err := exec.LookPath("flatpak"); err == nil {
+			if out, err := exec.Command("flatpak", "info", "com.floatpane.matcha").Output(); err == nil {
+				lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+				for _, line := range lines {
+					line = strings.TrimSpace(line)
+					if strings.HasPrefix(line, "Version:") {
+						fields := strings.Fields(line)
+						if len(fields) >= 2 {
+							return fields[1]
+						}
+					}
+				}
+			}
+		}
 	}
 
 	return v
@@ -1667,6 +1682,23 @@ func runUpdateCLI() error {
 				return nil
 			}
 			fmt.Printf("Snap refresh failed: %v\n", err)
+			// fallthrough
+		}
+	}
+	// Detect flatpak
+	if _, err := exec.LookPath("flatpak"); err == nil {
+		// Check if matcha is installed as a flatpak
+		cmdCheck := exec.Command("flatpak", "info", "com.floatpane.matcha")
+		if err := cmdCheck.Run(); err == nil {
+			fmt.Println("Detected Flatpak package — attempting to update.")
+			cmd := exec.Command("flatpak", "update", "-y", "com.floatpane.matcha")
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			if err := cmd.Run(); err == nil {
+				fmt.Println("Successfully updated flatpak.")
+				return nil
+			}
+			fmt.Printf("Flatpak update failed: %v\n", err)
 			// fallthrough
 		}
 	}
