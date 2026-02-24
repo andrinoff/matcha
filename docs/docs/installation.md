@@ -2,20 +2,6 @@
 
 Welcome to the installation guide for Matcha.
 
-## Table of Contents
-
-- [ MacOS](#macos)
-  - [Homebrew](#homebrew)
-  - [Manual Binary Download](#manual-binary-download)
-- [🐧 Linux](#linux)
-  - [Homebrew](#homebrew-1)
-  - [Snap](#snap)
-  - [Flatpak](#flatpak)
-  - [Manual Binary Download](#manual-binary-download-1)
-- [🪟 Windows](#windows)
-  - [WSL](#wsl)
-- [🏗️ Building from Source](#building-from-source)
-
 ##  MacOS
 
 ### 🍺 Homebrew
@@ -101,7 +87,7 @@ Currently, there is no native support for Windows. Please see issue [#123](https
 
 You can run Matcha on Windows using [WSL (Windows Subsystem for Linux)](https://learn.microsoft.com/en-us/windows/wsl/install).
 
-Once you have WSL installed and set up, you can follow the [Linux](#linux) installation instructions inside your WSL terminal.
+Once you have WSL installed and set up, you can follow the [Linux](#-linux) installation instructions inside your WSL terminal.
 
 ## 🏗️ Building from Source
 
