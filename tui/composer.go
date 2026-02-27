@@ -446,7 +446,7 @@ func (m *Composer) View() tea.View {
 		signatureLabel = blurredStyle.Render("Signature:")
 	}
 
-	composerView.WriteString(lipgloss.JoinVertical(lipgloss.Left,
+	mainContent := lipgloss.JoinVertical(lipgloss.Left,
 		"Compose New Email",
 		fromField,
 		toFieldView,
@@ -458,8 +458,24 @@ func (m *Composer) View() tea.View {
 		m.signatureInput.View(),
 		attachmentStyle.Render(attachmentField),
 		button,
-		helpStyle.Render("Markdown/HTML • tab/shift+tab: navigate • esc: save draft & exit"),
-	))
+	)
+
+	helpView := helpStyle.Render("Markdown/HTML • tab/shift+tab: navigate • esc: save draft & exit")
+
+	if m.height > 0 {
+		currentHeight := lipgloss.Height(mainContent) + lipgloss.Height(helpView)
+		gap := m.height - currentHeight
+		if gap >= 0 {
+			mainContent += strings.Repeat("\n", gap+1)
+		} else {
+			mainContent += "\n"
+		}
+	} else {
+		mainContent += "\n\n"
+	}
+
+	composerView.WriteString(mainContent)
+	composerView.WriteString(helpView)
 
 	// Account picker overlay
 	if m.showAccountPicker {

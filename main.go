@@ -122,6 +122,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, func() tea.Msg { return tui.CancelFilePickerMsg{} }
 			case *tui.Inbox, *tui.Login, *tui.TrashArchive:
 				m.current = tui.NewChoice()
+				m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 				return m, m.current.Init()
 			}
 		}
@@ -131,6 +132,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.current = m.inbox
 		} else {
 			m.current = tui.NewChoice()
+			m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 		}
 		return m, nil
 
@@ -153,6 +155,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.current = tui.NewChoice()
+		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 		return m, nil
 
 	case tui.DiscardDraftMsg:
@@ -166,6 +169,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}()
 		}
 		m.current = tui.NewChoice()
+		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 		return m, m.current.Init()
 
 	case tui.Credentials:
@@ -216,6 +220,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		m.current = tui.NewChoice()
+		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 		return m, m.current.Init()
 
 	case tui.GoToInboxMsg:
@@ -520,6 +525,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tui.GoToChoiceMenuMsg:
 		m.current = tui.NewChoice()
+		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 		return m, m.current.Init()
 
 	case tui.DeleteAccountMsg:
@@ -700,12 +706,14 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Err != nil {
 			log.Printf("Failed to send email: %v", msg.Err)
 			m.previousModel = tui.NewChoice()
+			m.previousModel, _ = m.previousModel.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 			m.current = tui.NewStatus(fmt.Sprintf("Error: %v", msg.Err))
 			return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
 				return tui.RestoreViewMsg{}
 			})
 		}
 		m.current = tui.NewChoice()
+		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 		return m, m.current.Init()
 
 	case tui.DeleteEmailMsg:
@@ -775,6 +783,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.current.Init()
 			}
 			m.current = tui.NewChoice()
+			m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 			return m, m.current.Init()
 		}
 
@@ -786,6 +795,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.current.Init()
 			}
 			m.current = tui.NewChoice()
+			m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 			return m, m.current.Init()
 		}
 
@@ -796,6 +806,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.current.Init()
 		}
 		m.current = tui.NewChoice()
+		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 		return m, m.current.Init()
 
 	case tui.DownloadAttachmentMsg:
