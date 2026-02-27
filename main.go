@@ -544,6 +544,33 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 		return m, m.current.Init()
 
+	case tui.GoToAddMailingListMsg:
+		m.current = tui.NewMailingListEditor()
+		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+		return m, m.current.Init()
+
+	case tui.SaveMailingListMsg:
+		if m.config != nil {
+			var addrs []string
+			for _, part := range strings.Split(msg.Addresses, ",") {
+				if trimmed := strings.TrimSpace(part); trimmed != "" {
+					addrs = append(addrs, trimmed)
+				}
+			}
+			m.config.MailingLists = append(m.config.MailingLists, config.MailingList{
+				Name:      msg.Name,
+				Addresses: addrs,
+			})
+			if err := config.SaveConfig(m.config); err != nil {
+				log.Printf("could not save config: %v", err)
+			}
+		}
+		// Return to settings
+		m.current = tui.NewSettings(m.config)
+		// Try to navigate to the mailing list view internally if possible, but NewSettings will go to SettingsMain by default.
+		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+		return m, m.current.Init()
+
 	case tui.GoToSignatureEditorMsg:
 		m.current = tui.NewSignatureEditor()
 		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})

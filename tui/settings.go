@@ -21,6 +21,7 @@ type SettingsState int
 const (
 	SettingsMain SettingsState = iota
 	SettingsAccounts
+	SettingsMailingLists
 )
 
 // Settings displays the settings screen.
@@ -61,6 +62,8 @@ func (m *Settings) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		if m.state == SettingsMain {
 			return m.updateMain(msg)
+		} else if m.state == SettingsMailingLists {
+			return m.updateMailingLists(msg)
 		} else {
 			return m.updateAccounts(msg)
 		}
@@ -75,8 +78,8 @@ func (m *Settings) updateMain(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.cursor--
 		}
 	case "down", "j":
-		// Options: 0: Email Accounts, 1: Image Display, 2: Edit Signature, 3: Contextual Tips
-		if m.cursor < 3 {
+		// Options: 0: Email Accounts, 1: Image Display, 2: Edit Signature, 3: Contextual Tips, 4: Mailing Lists
+		if m.cursor < 4 {
 			m.cursor++
 		}
 	case "enter":
@@ -96,6 +99,10 @@ func (m *Settings) updateMain(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.cfg.HideTips = !m.cfg.HideTips
 			// Save config immediately
 			_ = config.SaveConfig(m.cfg)
+			return m, nil
+		case 4: // Mailing Lists
+			m.state = SettingsMailingLists
+			m.cursor = 0
 			return m, nil
 		}
 	case "esc":
@@ -150,10 +157,56 @@ func (m *Settings) updateAccounts(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m *Settings) updateMailingLists(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if m.confirmingDelete {
+		switch msg.String() {
+		case "y", "Y":
+			if m.cursor < len(m.cfg.MailingLists) {
+				m.cfg.MailingLists = append(m.cfg.MailingLists[:m.cursor], m.cfg.MailingLists[m.cursor+1:]...)
+				_ = config.SaveConfig(m.cfg)
+				if m.cursor >= len(m.cfg.MailingLists) && m.cursor > 0 {
+					m.cursor--
+				}
+				m.confirmingDelete = false
+			}
+		case "n", "N", "esc":
+			m.confirmingDelete = false
+			return m, nil
+		}
+		return m, nil
+	}
+
+	switch msg.String() {
+	case "up", "k":
+		if m.cursor > 0 {
+			m.cursor--
+		}
+	case "down", "j":
+		if m.cursor < len(m.cfg.MailingLists) {
+			m.cursor++
+		}
+	case "d":
+		if m.cursor < len(m.cfg.MailingLists) && len(m.cfg.MailingLists) > 0 {
+			m.confirmingDelete = true
+		}
+	case "enter":
+		if m.cursor == len(m.cfg.MailingLists) {
+			return m, func() tea.Msg { return GoToAddMailingListMsg{} }
+		}
+	case "esc":
+		m.state = SettingsMain
+		m.cursor = 0
+		return m, nil
+	}
+	return m, nil
+}
+
 // View renders the settings screen.
 func (m *Settings) View() tea.View {
 	if m.state == SettingsMain {
 		return tea.NewView(m.viewMain())
+	} else if m.state == SettingsMailingLists {
+		return tea.NewView(m.viewMailingLists())
 	}
 	return tea.NewView(m.viewAccounts())
 }
@@ -207,6 +260,15 @@ func (m *Settings) viewMain() string {
 	} else {
 		b.WriteString(accountItemStyle.Render("  " + tipsText))
 	}
+	b.WriteString("\n")
+
+	// Option 4: Mailing Lists
+	mailingListsText := "Mailing Lists"
+	if m.cursor == 4 {
+		b.WriteString(selectedAccountItemStyle.Render("> " + mailingListsText))
+	} else {
+		b.WriteString(accountItemStyle.Render("  " + mailingListsText))
+	}
 	b.WriteString("\n\n")
 
 	if !m.cfg.HideTips {
@@ -220,6 +282,8 @@ func (m *Settings) viewMain() string {
 			tip = "Configure the signature appended to your outgoing emails."
 		case 3:
 			tip = "Toggle displaying helpful contextual tips like this one."
+		case 4:
+			tip = "Manage groups of email addresses to quickly send to multiple people."
 		}
 		if tip != "" {
 			b.WriteString(TipStyle.Render("Tip: "+tip) + "\n\n")
@@ -302,6 +366,72 @@ func (m *Settings) viewAccounts() string {
 			lipgloss.JoinVertical(lipgloss.Center,
 				dangerStyle.Render("Delete account?"),
 				accountEmailStyle.Render(accountName),
+				HelpStyle.Render("\n(y/n)"),
+			),
+		)
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, dialog)
+	}
+
+	return docStyle.Render(mainContent + helpView)
+}
+
+func (m *Settings) viewMailingLists() string {
+	var b strings.Builder
+
+	b.WriteString(titleStyle.Render("Mailing Lists"))
+	b.WriteString("\n\n")
+
+	if len(m.cfg.MailingLists) == 0 {
+		b.WriteString(accountEmailStyle.Render("  No mailing lists configured.\n"))
+		b.WriteString("\n")
+	}
+
+	for i, list := range m.cfg.MailingLists {
+		displayName := list.Name
+
+		addrCount := fmt.Sprintf("%d address", len(list.Addresses))
+		if len(list.Addresses) != 1 {
+			addrCount += "es"
+		}
+
+		line := fmt.Sprintf("%s - %s", displayName, accountEmailStyle.Render(addrCount))
+
+		if m.cursor == i {
+			b.WriteString(selectedAccountItemStyle.Render(fmt.Sprintf("> %s", line)))
+		} else {
+			b.WriteString(accountItemStyle.Render(fmt.Sprintf("  %s", line)))
+		}
+		b.WriteString("\n")
+	}
+
+	// Add Mailing List option
+	addListText := "Add New Mailing List"
+	if m.cursor == len(m.cfg.MailingLists) {
+		b.WriteString(selectedAccountItemStyle.Render(fmt.Sprintf("> %s", addListText)))
+	} else {
+		b.WriteString(accountItemStyle.Render(fmt.Sprintf("  %s", addListText)))
+	}
+	b.WriteString("\n")
+
+	helpView := helpStyle.Render("↑/↓: navigate • enter: select • d: delete • esc: back")
+	mainContent := b.String()
+
+	if m.height > 0 {
+		contentHeight := strings.Count(mainContent, "\n") + 1
+		gap := m.height - contentHeight - 2 // -2 for margins
+		if gap > 0 {
+			mainContent += strings.Repeat("\n", gap)
+		}
+	} else {
+		mainContent += "\n\n"
+	}
+
+	if m.confirmingDelete {
+		listName := m.cfg.MailingLists[m.cursor].Name
+		dialog := DialogBoxStyle.Render(
+			lipgloss.JoinVertical(lipgloss.Center,
+				dangerStyle.Render("Delete mailing list?"),
+				accountEmailStyle.Render(listName),
 				HelpStyle.Render("\n(y/n)"),
 			),
 		)

@@ -179,6 +179,15 @@ type EmailBodyFetchedMsg struct {
 // GoToAddAccountMsg signals navigation to the add account screen.
 type GoToAddAccountMsg struct{}
 
+// GoToAddMailingListMsg signals navigation to the add mailing list screen.
+type GoToAddMailingListMsg struct{}
+
+// SaveMailingListMsg signals that a new mailing list should be saved.
+type SaveMailingListMsg struct {
+	Name      string
+	Addresses string
+}
+
 // AddAccountMsg signals that a new account should be added.
 type AddAccountMsg struct {
 	Credentials Credentials

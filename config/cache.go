@@ -202,6 +202,23 @@ func SearchContacts(query string) []Contact {
 	}
 
 	var matches []Contact
+
+	// Add mailing lists to matches if they match the query
+	cfg, err := LoadConfig()
+	if err == nil {
+		for _, list := range cfg.MailingLists {
+			if strings.Contains(strings.ToLower(list.Name), query) {
+				// Convert mailing list to a virtual contact
+				matches = append(matches, Contact{
+					Name:     list.Name,
+					Email:    strings.Join(list.Addresses, ", "),
+					UseCount: 9999, // Ensure lists appear at the top
+					LastUsed: time.Now(),
+				})
+			}
+		}
+	}
+
 	for _, c := range cache.Contacts {
 		if strings.Contains(strings.ToLower(c.Email), query) ||
 			strings.Contains(strings.ToLower(c.Name), query) {

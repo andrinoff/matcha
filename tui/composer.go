@@ -211,11 +211,35 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "tab", "enter":
 				// Select the suggestion
 				selected := m.suggestions[m.selectedSuggestion]
-				if selected.Name != "" && selected.Name != selected.Email {
-					m.toInput.SetValue(fmt.Sprintf("%s <%s>", selected.Name, selected.Email))
+
+				var newEmail string
+				if strings.Contains(selected.Email, ",") {
+					// It's a mailing list: insert just the addresses to maintain valid email formatting
+					newEmail = selected.Email
+				} else if selected.Name != "" && selected.Name != selected.Email {
+					newEmail = fmt.Sprintf("%s <%s>", selected.Name, selected.Email)
 				} else {
-					m.toInput.SetValue(selected.Email)
+					newEmail = selected.Email
 				}
+
+				parts := strings.Split(m.toInput.Value(), ",")
+				if len(parts) > 0 {
+					if len(parts) == 1 {
+						parts[0] = newEmail
+					} else {
+						parts[len(parts)-1] = " " + newEmail
+					}
+				} else {
+					parts = []string{newEmail}
+				}
+
+				finalValue := strings.Join(parts, ",")
+				if !strings.HasSuffix(finalValue, ", ") {
+					finalValue += ", "
+				}
+
+				m.toInput.SetValue(finalValue)
+				m.toInput.SetCursor(len(finalValue))
 				m.lastToValue = m.toInput.Value()
 				m.showSuggestions = false
 				m.suggestions = nil
@@ -356,8 +380,13 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		currentValue := m.toInput.Value()
 		if currentValue != m.lastToValue {
 			m.lastToValue = currentValue
-			if len(currentValue) >= 2 {
-				m.suggestions = config.SearchContacts(currentValue)
+
+			// Extract the last comma-separated part for searching
+			parts := strings.Split(currentValue, ",")
+			lastPart := strings.TrimSpace(parts[len(parts)-1])
+
+			if len(lastPart) >= 2 {
+				m.suggestions = config.SearchContacts(lastPart)
 				m.showSuggestions = len(m.suggestions) > 0
 				m.selectedSuggestion = 0
 			} else {

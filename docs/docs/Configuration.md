@@ -27,6 +27,12 @@ Configuration is stored in `~/.config/matcha/config.json`.
       "smtp_server": "smtp.company.com",
       "smtp_port": 587
     }
+  ],
+  "mailing_lists": [
+    {
+      "name": "Team",
+      "addresses": ["alice@example.com", "bob@example.com"]
+    }
   ]
 }
 ```

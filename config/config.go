@@ -29,11 +29,18 @@ type Account struct {
 	SMTPPort   int    `json:"smtp_port,omitempty"`
 }
 
+// MailingList represents a named group of email addresses.
+type MailingList struct {
+	Name      string   `json:"name"`
+	Addresses []string `json:"addresses"`
+}
+
 // Config stores the user's email configuration with multiple accounts.
 type Config struct {
-	Accounts      []Account `json:"accounts"`
-	DisableImages bool      `json:"disable_images,omitempty"`
-	HideTips      bool      `json:"hide_tips,omitempty"`
+	Accounts      []Account     `json:"accounts"`
+	DisableImages bool          `json:"disable_images,omitempty"`
+	HideTips      bool          `json:"hide_tips,omitempty"`
+	MailingLists  []MailingList `json:"mailing_lists,omitempty"`
 }
 
 // GetIMAPServer returns the IMAP server address for the account.
@@ -165,8 +172,9 @@ func LoadConfig() (*Config, error) {
 		SMTPPort        int    `json:"smtp_port,omitempty"`
 	}
 	type diskConfig struct {
-		Accounts      []rawAccount `json:"accounts"`
-		DisableImages bool         `json:"disable_images,omitempty"`
+		Accounts      []rawAccount  `json:"accounts"`
+		DisableImages bool          `json:"disable_images,omitempty"`
+		MailingLists  []MailingList `json:"mailing_lists,omitempty"`
 	}
 
 	var raw diskConfig
@@ -195,6 +203,7 @@ func LoadConfig() (*Config, error) {
 	}
 
 	config.DisableImages = raw.DisableImages
+	config.MailingLists = raw.MailingLists
 	for _, rawAcc := range raw.Accounts {
 		acc := Account{
 			ID:              rawAcc.ID,
