@@ -36,6 +36,8 @@ type Choice struct {
 	UpdateAvailable bool
 	LatestVersion   string
 	CurrentVersion  string
+	width           int
+	height          int
 }
 
 func NewChoice() Choice {
@@ -61,6 +63,10 @@ func (m Choice) Init() tea.Cmd {
 
 func (m Choice) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
 	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "up", "k":
@@ -144,8 +150,18 @@ func (m Choice) View() tea.View {
 		b.WriteString("\n")
 	}
 
-	b.WriteString("\n\n")
-	b.WriteString(helpStyle.Render("Use ↑/↓ to navigate, enter to select, and ctrl+c to quit."))
+	mainContent := b.String()
+	helpView := helpStyle.Render("Use ↑/↓ to navigate, enter to select, and ctrl+c to quit.")
 
-	return tea.NewView(docStyle.Render(b.String()))
+	if m.height > 0 {
+		currentHeight := lipgloss.Height(docStyle.Render(mainContent + helpView))
+		gap := m.height - currentHeight
+		if gap > 0 {
+			mainContent += strings.Repeat("\n", gap)
+		}
+	} else {
+		mainContent += "\n\n"
+	}
+
+	return tea.NewView(docStyle.Render(mainContent + helpView))
 }

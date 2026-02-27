@@ -226,9 +226,20 @@ func (m *Settings) viewMain() string {
 		}
 	}
 
-	b.WriteString(helpStyle.Render("↑/↓: navigate • enter: select/toggle • esc: back"))
+	mainContent := b.String()
+	helpView := helpStyle.Render("↑/↓: navigate • enter: select/toggle • esc: back")
 
-	return docStyle.Render(b.String())
+	if m.height > 0 {
+		currentHeight := lipgloss.Height(docStyle.Render(mainContent + helpView))
+		gap := m.height - currentHeight
+		if gap > 0 {
+			mainContent += strings.Repeat("\n", gap)
+		}
+	} else {
+		mainContent += "\n\n"
+	}
+
+	return docStyle.Render(mainContent + helpView)
 }
 
 func (m *Settings) viewAccounts() string {
@@ -270,9 +281,20 @@ func (m *Settings) viewAccounts() string {
 	} else {
 		b.WriteString(accountItemStyle.Render(fmt.Sprintf("  %s", addAccountText)))
 	}
-	b.WriteString("\n\n")
+	b.WriteString("\n")
 
-	b.WriteString(helpStyle.Render("↑/↓: navigate • enter: select • d: delete account • esc: back"))
+	mainContent := b.String()
+	helpView := helpStyle.Render("↑/↓: navigate • enter: select • d: delete account • esc: back")
+
+	if m.height > 0 {
+		currentHeight := lipgloss.Height(docStyle.Render(mainContent + helpView))
+		gap := m.height - currentHeight
+		if gap > 0 {
+			mainContent += strings.Repeat("\n", gap)
+		}
+	} else {
+		mainContent += "\n\n"
+	}
 
 	if m.confirmingDelete {
 		accountName := m.cfg.Accounts[m.cursor].Email
@@ -286,7 +308,7 @@ func (m *Settings) viewAccounts() string {
 		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, dialog)
 	}
 
-	return docStyle.Render(b.String())
+	return docStyle.Render(mainContent + helpView)
 }
 
 // UpdateConfig updates the configuration (used when accounts are deleted).

@@ -516,45 +516,17 @@ func (m *Inbox) View() tea.View {
 
 	b.WriteString(m.list.View())
 
-	// Calculate remaining height to push help to bottom
-	// m.height is total height.
-	// We need to account for tabs (if present) and the list height.
-	// The list height is set to m.height / 2.
-	// Tabs take about 3 lines (border + padding + content).
+	// Ensure we don't start gap calculation on the same line as the list
+	if !strings.HasSuffix(b.String(), "\n") {
+		b.WriteString("\n")
+	}
 
 	helpView := inboxHelpStyle.Render(m.list.Help.View(m.list))
 
-	// If we have a known height, we can try to fill the space.
 	if m.height > 0 {
-		// Calculate how many lines we have used
-		usedHeight := 0
-		if len(m.tabs) > 1 {
-			// Re-render tabs just to measure height
-			var tabViews []string
-			for i, tab := range m.tabs {
-				label := tab.Label
-				if tab.ID == "" {
-					label = "ALL"
-				}
-
-				if i == m.activeTabIndex {
-					tabViews = append(tabViews, activeTabStyle.Render(label))
-				} else {
-					tabViews = append(tabViews, tabStyle.Render(label))
-				}
-			}
-			tabBar := tabBarStyle.Render(lipgloss.JoinHorizontal(lipgloss.Top, tabViews...))
-			usedHeight += lipgloss.Height(tabBar)
-		}
-
-		// List
-		usedHeight += m.list.Height()
-
-		// Help
-		// Use lipgloss to measure help height
+		usedHeight := lipgloss.Height(b.String())
 		helpHeight := lipgloss.Height(helpView)
 
-		// Calculate gap
 		gap := m.height - usedHeight - helpHeight
 		if gap > 0 {
 			b.WriteString(strings.Repeat("\n", gap))

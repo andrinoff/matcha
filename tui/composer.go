@@ -488,9 +488,24 @@ func (m *Composer) View() tea.View {
 	if !m.hideTips && tip != "" {
 		composerViewElements = append(composerViewElements, TipStyle.Render("Tip: "+tip))
 	}
-	composerViewElements = append(composerViewElements, helpStyle.Render("Markdown/HTML • tab/shift+tab: navigate • esc: save draft & exit"))
 
-	composerView.WriteString(lipgloss.JoinVertical(lipgloss.Left, composerViewElements...))
+	mainContent := lipgloss.JoinVertical(lipgloss.Left, composerViewElements...)
+	helpView := helpStyle.Render("Markdown/HTML • tab/shift+tab: navigate • esc: save draft & exit")
+
+	if m.height > 0 {
+		currentHeight := lipgloss.Height(mainContent) + lipgloss.Height(helpView)
+		gap := m.height - currentHeight
+		if gap >= 0 {
+			mainContent += strings.Repeat("\n", gap+1)
+		} else {
+			mainContent += "\n"
+		}
+	} else {
+		mainContent += "\n\n"
+	}
+
+	composerView.WriteString(mainContent)
+	composerView.WriteString(helpView)
 
 	// Account picker overlay
 	if m.showAccountPicker {
