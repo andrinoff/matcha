@@ -196,18 +196,6 @@ func (m *Settings) viewMain() string {
 	}
 	b.WriteString("\n")
 
-	mainContent := b.String()
-	helpView := helpStyle.Render("↑/↓: navigate • enter: select/toggle • esc: back")
-
-	if m.height > 0 {
-		currentHeight := lipgloss.Height(docStyle.Render(mainContent + helpView))
-		gap := m.height - currentHeight
-		if gap > 0 {
-			mainContent += strings.Repeat("\n", gap)
-		}
-	} else {
-		mainContent += "\n\n"
-	}
 	// Option 3: Contextual Tips
 	tipsStatus := "ON"
 	if m.cfg.HideTips {
@@ -238,7 +226,18 @@ func (m *Settings) viewMain() string {
 		}
 	}
 
-	b.WriteString(helpStyle.Render("↑/↓: navigate • enter: select/toggle • esc: back"))
+	mainContent := b.String()
+	helpView := helpStyle.Render("↑/↓: navigate • enter: select/toggle • esc: back")
+
+	if m.height > 0 {
+		currentHeight := lipgloss.Height(docStyle.Render(mainContent + helpView))
+		gap := m.height - currentHeight
+		if gap > 0 {
+			mainContent += strings.Repeat("\n", gap)
+		}
+	} else {
+		mainContent += "\n\n"
+	}
 
 	return docStyle.Render(mainContent + helpView)
 }

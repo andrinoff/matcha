@@ -448,7 +448,6 @@ func (m *Composer) View() tea.View {
 		signatureLabel = blurredStyle.Render("Signature:")
 	}
 
-	mainContent := lipgloss.JoinVertical(lipgloss.Left,
 	tip := ""
 	switch m.focusIndex {
 	case focusFrom:
@@ -483,8 +482,14 @@ func (m *Composer) View() tea.View {
 		m.signatureInput.View(),
 		attachmentStyle.Render(attachmentField),
 		button,
-	)
+		"",
+	}
 
+	if !m.hideTips && tip != "" {
+		composerViewElements = append(composerViewElements, TipStyle.Render("Tip: "+tip))
+	}
+
+	mainContent := lipgloss.JoinVertical(lipgloss.Left, composerViewElements...)
 	helpView := helpStyle.Render("Markdown/HTML • tab/shift+tab: navigate • esc: save draft & exit")
 
 	if m.height > 0 {
@@ -501,15 +506,6 @@ func (m *Composer) View() tea.View {
 
 	composerView.WriteString(mainContent)
 	composerView.WriteString(helpView)
-		"",
-	}
-
-	if !m.hideTips && tip != "" {
-		composerViewElements = append(composerViewElements, TipStyle.Render("Tip: "+tip))
-	}
-	composerViewElements = append(composerViewElements, helpStyle.Render("Markdown/HTML • tab/shift+tab: navigate • esc: save draft & exit"))
-
-	composerView.WriteString(lipgloss.JoinVertical(lipgloss.Left, composerViewElements...))
 
 	// Account picker overlay
 	if m.showAccountPicker {
