@@ -1,6 +1,6 @@
 "bug": '\b([Bb]ug(s)?|[Ee]rror(s)?|[Ff]ix(es)?|[Ii]ssue(s)?|[Pp]roblem(s)?)\b'
 
-"enhancement": '\b([Ee]nhancement(s)?|[Ff]eature(s)?|[Ii]dea(s)?|[Ss]uggestion(s)?)\b'
+"enhancement": '\b([Ee]nhancement(s)?|[Ff]eature(s)?|[Ii]dea(s)?|[Ss]uggestion(s)?[Ff]eat(s)?)\b'
 
 "documentation": '\b([Dd]ocumentation|[Dd]ocs|[Rr]eadme)\b'
 
