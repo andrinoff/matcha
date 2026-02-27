@@ -36,7 +36,7 @@ jobs:
                 "name": "Matcha Client",
                 "email": "matcha@floatpane.com",
                 "password": "dummy-password",
-                "service_provider": "custom"
+                "service_provider": "custom",
                 "fetch_email": "matcha@floatpane.com"
               }
             ]
