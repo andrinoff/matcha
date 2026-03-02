@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/floatpane/matcha/config"
@@ -14,6 +15,9 @@ var (
 	selectedAccountItemStyle = lipgloss.NewStyle().PaddingLeft(2).Foreground(lipgloss.Color("42"))
 	accountEmailStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	dangerStyle              = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
+
+	settingsFocusedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+	settingsBlurredStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 )
 
 type SettingsState int
@@ -22,6 +26,7 @@ const (
 	SettingsMain SettingsState = iota
 	SettingsAccounts
 	SettingsMailingLists
+	SettingsSMIMEConfig
 )
 
 // Settings displays the settings screen.
@@ -32,6 +37,12 @@ type Settings struct {
 	confirmingDelete bool
 	width            int
 	height           int
+
+	// S/MIME Config fields
+	editingAccountIdx int
+	focusIndex        int
+	smimeCertInput    textinput.Model
+	smimeKeyInput     textinput.Model
 }
 
 // NewSettings creates a new settings model.
@@ -39,24 +50,42 @@ func NewSettings(cfg *config.Config) *Settings {
 	if cfg == nil {
 		cfg = &config.Config{}
 	}
+
+	certInput := textinput.New()
+	certInput.Placeholder = "/path/to/cert.pem"
+	certInput.Prompt = "> "
+	certInput.CharLimit = 256
+
+	keyInput := textinput.New()
+	keyInput.Placeholder = "/path/to/private_key.pem"
+	keyInput.Prompt = "> "
+	keyInput.CharLimit = 256
+
 	return &Settings{
-		cfg:    cfg,
-		state:  SettingsMain,
-		cursor: 0,
+		cfg:            cfg,
+		state:          SettingsMain,
+		cursor:         0,
+		smimeCertInput: certInput,
+		smimeKeyInput:  keyInput,
 	}
 }
 
 // Init initializes the settings model.
 func (m *Settings) Init() tea.Cmd {
-	return nil
+	return textinput.Blink
 }
 
 // Update handles messages for the settings model.
 func (m *Settings) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmds []tea.Cmd
+	var cmd tea.Cmd
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.smimeCertInput.SetWidth(m.width - 6)
+		m.smimeKeyInput.SetWidth(m.width - 6)
 		return m, nil
 
 	case tea.KeyPressMsg:
@@ -64,11 +93,25 @@ func (m *Settings) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateMain(msg)
 		} else if m.state == SettingsMailingLists {
 			return m.updateMailingLists(msg)
+		} else if m.state == SettingsSMIMEConfig {
+			var m2 *Settings
+			m2, cmd = m.updateSMIMEConfig(msg)
+			cmds = append(cmds, cmd)
+			return m2, tea.Batch(cmds...)
 		} else {
 			return m.updateAccounts(msg)
 		}
 	}
-	return m, nil
+
+	// Handle generic messages (like textinput.Blink) for active text inputs
+	if m.state == SettingsSMIMEConfig {
+		m.smimeCertInput, cmd = m.smimeCertInput.Update(msg)
+		cmds = append(cmds, cmd)
+		m.smimeKeyInput, cmd = m.smimeKeyInput.Update(msg)
+		cmds = append(cmds, cmd)
+	}
+
+	return m, tea.Batch(cmds...)
 }
 
 func (m *Settings) updateMain(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
@@ -145,9 +188,19 @@ func (m *Settings) updateAccounts(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.confirmingDelete = true
 		}
 	case "enter":
-		// If cursor is on "Add Account"
 		if m.cursor == len(m.cfg.Accounts) {
+			// If cursor is on "Add Account"
 			return m, func() tea.Msg { return GoToAddAccountMsg{} }
+		} else if m.cursor < len(m.cfg.Accounts) {
+			// Edit S/MIME configuration for this account
+			m.editingAccountIdx = m.cursor
+			m.state = SettingsSMIMEConfig
+			m.smimeCertInput.SetValue(m.cfg.Accounts[m.cursor].SMIMECert)
+			m.smimeKeyInput.SetValue(m.cfg.Accounts[m.cursor].SMIMEKey)
+			m.focusIndex = 0
+			m.smimeCertInput.Focus()
+			m.smimeKeyInput.Blur()
+			return m, textinput.Blink
 		}
 	case "esc":
 		m.state = SettingsMain
@@ -155,6 +208,71 @@ func (m *Settings) updateAccounts(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	return m, nil
+}
+
+func (m *Settings) updateSMIMEConfig(msg tea.KeyPressMsg) (*Settings, tea.Cmd) {
+	var cmds []tea.Cmd
+	var cmd tea.Cmd
+
+	switch msg.String() {
+	case "esc":
+		m.state = SettingsAccounts
+		return m, nil
+	case "tab", "shift+tab", "up", "down":
+		if msg.String() == "shift+tab" || msg.String() == "up" {
+			m.focusIndex--
+			if m.focusIndex < 0 {
+				m.focusIndex = 3
+			}
+		} else {
+			m.focusIndex++
+			if m.focusIndex > 3 {
+				m.focusIndex = 0
+			}
+		}
+
+		m.smimeCertInput.Blur()
+		m.smimeKeyInput.Blur()
+
+		if m.focusIndex == 0 {
+			cmds = append(cmds, m.smimeCertInput.Focus())
+		} else if m.focusIndex == 1 {
+			cmds = append(cmds, m.smimeKeyInput.Focus())
+		}
+		return m, tea.Batch(cmds...)
+	case "enter":
+		if m.focusIndex == 0 {
+			m.focusIndex = 1
+			m.smimeCertInput.Blur()
+			cmds = append(cmds, m.smimeKeyInput.Focus())
+			return m, tea.Batch(cmds...)
+		} else if m.focusIndex == 1 {
+			m.focusIndex = 2
+			m.smimeKeyInput.Blur()
+			return m, nil
+		} else if m.focusIndex == 2 {
+			// Save
+			m.cfg.Accounts[m.editingAccountIdx].SMIMECert = m.smimeCertInput.Value()
+			m.cfg.Accounts[m.editingAccountIdx].SMIMEKey = m.smimeKeyInput.Value()
+			_ = config.SaveConfig(m.cfg)
+			m.state = SettingsAccounts
+			return m, nil
+		} else if m.focusIndex == 3 {
+			// Cancel
+			m.state = SettingsAccounts
+			return m, nil
+		}
+	}
+
+	if m.focusIndex == 0 {
+		m.smimeCertInput, cmd = m.smimeCertInput.Update(msg)
+		cmds = append(cmds, cmd)
+	} else if m.focusIndex == 1 {
+		m.smimeKeyInput, cmd = m.smimeKeyInput.Update(msg)
+		cmds = append(cmds, cmd)
+	}
+
+	return m, tea.Batch(cmds...)
 }
 
 func (m *Settings) updateMailingLists(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
@@ -207,6 +325,8 @@ func (m *Settings) View() tea.View {
 		return tea.NewView(m.viewMain())
 	} else if m.state == SettingsMailingLists {
 		return tea.NewView(m.viewMailingLists())
+	} else if m.state == SettingsSMIMEConfig {
+		return tea.NewView(m.viewSMIMEConfig())
 	}
 	return tea.NewView(m.viewAccounts())
 }
@@ -328,6 +448,11 @@ func (m *Settings) viewAccounts() string {
 			providerInfo = fmt.Sprintf("custom: %s", account.IMAPServer)
 		}
 
+		// Show indicator if S/MIME is configured
+		if account.SMIMECert != "" && account.SMIMEKey != "" {
+			providerInfo += " [S/MIME Configured]"
+		}
+
 		line := fmt.Sprintf("%s - %s", displayName, accountEmailStyle.Render(providerInfo))
 
 		if m.cursor == i {
@@ -348,7 +473,7 @@ func (m *Settings) viewAccounts() string {
 	b.WriteString("\n")
 
 	mainContent := b.String()
-	helpView := helpStyle.Render("↑/↓: navigate • enter: select • d: delete account • esc: back")
+	helpView := helpStyle.Render("↑/↓: navigate • enter: edit account/add new • d: delete account • esc: back")
 
 	if m.height > 0 {
 		currentHeight := lipgloss.Height(docStyle.Render(mainContent + helpView))
@@ -370,6 +495,63 @@ func (m *Settings) viewAccounts() string {
 			),
 		)
 		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, dialog)
+	}
+
+	return docStyle.Render(mainContent + helpView)
+}
+
+func (m *Settings) viewSMIMEConfig() string {
+	var b strings.Builder
+
+	account := m.cfg.Accounts[m.editingAccountIdx]
+	b.WriteString(titleStyle.Render(fmt.Sprintf("S/MIME Configuration for %s", account.Email)))
+	b.WriteString("\n\n")
+
+	// Cert Input
+	if m.focusIndex == 0 {
+		b.WriteString(settingsFocusedStyle.Render("Certificate (PEM) Path:\n"))
+	} else {
+		b.WriteString(settingsBlurredStyle.Render("Certificate (PEM) Path:\n"))
+	}
+	b.WriteString(m.smimeCertInput.View() + "\n\n")
+
+	// Key Input
+	if m.focusIndex == 1 {
+		b.WriteString(settingsFocusedStyle.Render("Private Key (PEM) Path:\n"))
+	} else {
+		b.WriteString(settingsBlurredStyle.Render("Private Key (PEM) Path:\n"))
+	}
+	b.WriteString(m.smimeKeyInput.View() + "\n\n")
+
+	// Buttons
+	saveBtn := "[ Save ]"
+	cancelBtn := "[ Cancel ]"
+
+	if m.focusIndex == 2 {
+		saveBtn = settingsFocusedStyle.Render(saveBtn)
+	} else {
+		saveBtn = settingsBlurredStyle.Render(saveBtn)
+	}
+
+	if m.focusIndex == 3 {
+		cancelBtn = settingsFocusedStyle.Render(cancelBtn)
+	} else {
+		cancelBtn = settingsBlurredStyle.Render(cancelBtn)
+	}
+
+	b.WriteString(saveBtn + "  " + cancelBtn + "\n\n")
+
+	mainContent := b.String()
+	helpView := helpStyle.Render("tab/shift+tab: navigate • enter: save/next • esc: back")
+
+	if m.height > 0 {
+		currentHeight := lipgloss.Height(docStyle.Render(mainContent + helpView))
+		gap := m.height - currentHeight
+		if gap > 0 {
+			mainContent += strings.Repeat("\n", gap)
+		}
+	} else {
+		mainContent += "\n\n"
 	}
 
 	return docStyle.Render(mainContent + helpView)

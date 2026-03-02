@@ -15,6 +15,8 @@ Configuration is stored in `~/.config/matcha/config.json`.
       "email": "john@gmail.com",
       "service_provider": "gmail",
       "fetch_email": "john@gmail.com"
+      "smime_cert": "/home/jane/.certs/jane_smime_cert.pem",
+      "smime_key": "/home/jane/.certs/jane_smime_private.pem"
     },
     {
       "id": "unique-id-2",
@@ -33,7 +35,9 @@ Configuration is stored in `~/.config/matcha/config.json`.
       "name": "Team",
       "addresses": ["alice@example.com", "bob@example.com"]
     }
-  ]
+  ],
+  "disable_images": true,
+  "hide_tips": true
 }
 ```
 
