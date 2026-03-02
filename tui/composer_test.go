@@ -67,8 +67,15 @@ func TestComposerUpdate(t *testing.T) {
 		// Simulate pressing Tab again to move to the 'Send' button.
 		model, _ = composer.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 		composer = model.(*Composer)
-		if composer.focusIndex != focusSend {
+		if composer.focusIndex != focusSignSMIME {
 			t.Errorf("After seven Tabs, focusIndex should be %d (focusSend), got %d", focusSend, composer.focusIndex)
+		}
+
+		// Simulate pressing Tab again to move to the 'Send' button.
+		model, _ = composer.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+		composer = model.(*Composer)
+		if composer.focusIndex != focusSend {
+			t.Errorf("After eight Tabs, focusIndex should be %d (focusSend), got %d", focusSend, composer.focusIndex)
 		}
 
 		// Simulate one more Tab to wrap around.
@@ -76,7 +83,7 @@ func TestComposerUpdate(t *testing.T) {
 		model, _ = composer.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 		composer = model.(*Composer)
 		if composer.focusIndex != focusTo {
-			t.Errorf("After eight Tabs, focusIndex should wrap to %d (focusTo) since single account skips From, got %d", focusTo, composer.focusIndex)
+			t.Errorf("After nine Tabs, focusIndex should wrap to %d (focusTo) since single account skips From, got %d", focusTo, composer.focusIndex)
 		}
 	})
 
@@ -202,7 +209,9 @@ func TestComposerUpdate(t *testing.T) {
 		multiComposer = model.(*Composer)
 		model, _ = multiComposer.Update(tea.KeyPressMsg{Code: tea.KeyTab}) // Signature -> Attachment
 		multiComposer = model.(*Composer)
-		model, _ = multiComposer.Update(tea.KeyPressMsg{Code: tea.KeyTab}) // Attachment -> Send
+		model, _ = multiComposer.Update(tea.KeyPressMsg{Code: tea.KeyTab}) // Attachment -> S/MIME
+		multiComposer = model.(*Composer)
+		model, _ = multiComposer.Update(tea.KeyPressMsg{Code: tea.KeyTab}) // S/MIME -> Send
 		multiComposer = model.(*Composer)
 		model, _ = multiComposer.Update(tea.KeyPressMsg{Code: tea.KeyTab}) // Send -> From (wrap)
 		multiComposer = model.(*Composer)
