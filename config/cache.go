@@ -246,19 +246,19 @@ func SearchContacts(query string) []Contact {
 
 // Draft stores a saved email draft.
 type Draft struct {
-	ID             string    `json:"id"`
-	To             string    `json:"to"`
-	Cc             string    `json:"cc,omitempty"`
-	Bcc            string    `json:"bcc,omitempty"`
-	Subject        string    `json:"subject"`
-	Body           string    `json:"body"`
-	AttachmentPath string    `json:"attachment_path,omitempty"`
-	AccountID      string    `json:"account_id"`
-	InReplyTo      string    `json:"in_reply_to,omitempty"`
-	References     []string  `json:"references,omitempty"`
-	QuotedText     string    `json:"quoted_text,omitempty"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID              string    `json:"id"`
+	To              string    `json:"to"`
+	Cc              string    `json:"cc,omitempty"`
+	Bcc             string    `json:"bcc,omitempty"`
+	Subject         string    `json:"subject"`
+	Body            string    `json:"body"`
+	AttachmentPaths []string  `json:"attachment_paths,omitempty"`
+	AccountID       string    `json:"account_id"`
+	InReplyTo       string    `json:"in_reply_to,omitempty"`
+	References      []string  `json:"references,omitempty"`
+	QuotedText      string    `json:"quoted_text,omitempty"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 // DraftsCache stores all saved drafts.

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"charm.land/bubbles/v2/textarea"
@@ -47,19 +48,19 @@ const (
 
 // Composer model holds the state of the email composition UI.
 type Composer struct {
-	focusIndex     int
-	toInput        textinput.Model
-	ccInput        textinput.Model
-	bccInput       textinput.Model
-	subjectInput   textinput.Model
-	bodyInput      textarea.Model
-	signatureInput textarea.Model
-	attachmentPath string
-	encryptSMIME   bool
-	width          int
-	height         int
-	confirmingExit bool
-	hideTips       bool
+	focusIndex      int
+	toInput         textinput.Model
+	ccInput         textinput.Model
+	bccInput        textinput.Model
+	subjectInput    textinput.Model
+	bodyInput       textarea.Model
+	signatureInput  textarea.Model
+	attachmentPaths []string
+	encryptSMIME    bool
+	width           int
+	height          int
+	confirmingExit  bool
+	hideTips        bool
 
 	// Multi-account support
 	accounts           []config.Account
@@ -194,7 +195,13 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.signatureInput.SetWidth(inputWidth)
 
 	case FileSelectedMsg:
-		m.attachmentPath = msg.Path
+		// Avoid duplicates
+		for _, p := range m.attachmentPaths {
+			if p == msg.Path {
+				return m, nil
+			}
+		}
+		m.attachmentPaths = append(m.attachmentPaths, msg.Path)
 		return m, nil
 
 	case tea.KeyPressMsg:
@@ -340,6 +347,12 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Batch(cmds...)
 
+		case "backspace", "delete", "d":
+			if m.focusIndex == focusAttachment && len(m.attachmentPaths) > 0 {
+				m.attachmentPaths = m.attachmentPaths[:len(m.attachmentPaths)-1]
+				return m, nil
+			}
+
 		case "enter", " ":
 			switch m.focusIndex {
 			case focusFrom:
@@ -365,19 +378,19 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					return m, func() tea.Msg {
 						return SendEmailMsg{
-							To:             m.toInput.Value(),
-							Cc:             m.ccInput.Value(),
-							Bcc:            m.bccInput.Value(),
-							Subject:        m.subjectInput.Value(),
-							Body:           m.bodyInput.Value(),
-							AttachmentPath: m.attachmentPath,
-							AccountID:      accountID,
-							QuotedText:     m.quotedText,
-							InReplyTo:      m.inReplyTo,
-							References:     m.references,
-							Signature:      m.signatureInput.Value(),
-							SignSMIME:      acc != nil && acc.SMIMESignByDefault,
-							EncryptSMIME:   m.encryptSMIME,
+							To:              m.toInput.Value(),
+							Cc:              m.ccInput.Value(),
+							Bcc:             m.bccInput.Value(),
+							Subject:         m.subjectInput.Value(),
+							Body:            m.bodyInput.Value(),
+							AttachmentPaths: m.attachmentPaths,
+							AccountID:       accountID,
+							QuotedText:      m.quotedText,
+							InReplyTo:       m.inReplyTo,
+							References:      m.references,
+							Signature:       m.signatureInput.Value(),
+							SignSMIME:       acc != nil && acc.SMIMESignByDefault,
+							EncryptSMIME:    m.encryptSMIME,
 						}
 					}
 				}
@@ -454,15 +467,24 @@ func (m *Composer) View() tea.View {
 	}
 
 	var attachmentField string
-	attachmentText := "None (Press Enter to select)"
-	if m.attachmentPath != "" {
-		attachmentText = m.attachmentPath
-	}
-
-	if m.focusIndex == focusAttachment {
-		attachmentField = focusedStyle.Render(fmt.Sprintf("> Attachment: %s", attachmentText))
+	if len(m.attachmentPaths) == 0 {
+		attachmentText := "None (Enter to add)"
+		if m.focusIndex == focusAttachment {
+			attachmentField = focusedStyle.Render(fmt.Sprintf("> Attachments: %s", attachmentText))
+		} else {
+			attachmentField = blurredStyle.Render(fmt.Sprintf("  Attachments: %s", attachmentText))
+		}
 	} else {
-		attachmentField = blurredStyle.Render(fmt.Sprintf("  Attachment: %s", attachmentText))
+		var names []string
+		for _, p := range m.attachmentPaths {
+			names = append(names, filepath.Base(p))
+		}
+		attachmentText := strings.Join(names, ", ")
+		if m.focusIndex == focusAttachment {
+			attachmentField = focusedStyle.Render(fmt.Sprintf("> Attachments (%d): %s", len(m.attachmentPaths), attachmentText))
+		} else {
+			attachmentField = blurredStyle.Render(fmt.Sprintf("  Attachments (%d): %s", len(m.attachmentPaths), attachmentText))
+		}
 	}
 
 	encToggle := "[ ]"
@@ -517,7 +539,7 @@ func (m *Composer) View() tea.View {
 	case focusSignature:
 		tip = "Your email signature. This will be appended to the end of the email."
 	case focusAttachment:
-		tip = "Press Enter to select a file to attach to this email."
+		tip = "Enter: add file • backspace/d: remove last attachment"
 	case focusEncryptSMIME:
 		tip = "Press Space or Enter to toggle S/MIME encryption on or off."
 	case focusSend:
@@ -649,9 +671,9 @@ func (m *Composer) GetBody() string {
 	return m.bodyInput.Value()
 }
 
-// GetAttachmentPath returns the current attachment path.
-func (m *Composer) GetAttachmentPath() string {
-	return m.attachmentPath
+// GetAttachmentPaths returns the current attachment paths.
+func (m *Composer) GetAttachmentPaths() []string {
+	return m.attachmentPaths
 }
 
 // GetSignature returns the current signature value.
@@ -688,17 +710,17 @@ func (m *Composer) GetReferences() []string {
 // ToDraft converts the composer state to a Draft for saving.
 func (m *Composer) ToDraft() config.Draft {
 	return config.Draft{
-		ID:             m.draftID,
-		To:             m.toInput.Value(),
-		Cc:             m.ccInput.Value(),
-		Bcc:            m.bccInput.Value(),
-		Subject:        m.subjectInput.Value(),
-		Body:           m.bodyInput.Value(),
-		AttachmentPath: m.attachmentPath,
-		AccountID:      m.GetSelectedAccountID(),
-		InReplyTo:      m.inReplyTo,
-		References:     m.references,
-		QuotedText:     m.quotedText,
+		ID:              m.draftID,
+		To:              m.toInput.Value(),
+		Cc:              m.ccInput.Value(),
+		Bcc:             m.bccInput.Value(),
+		Subject:         m.subjectInput.Value(),
+		Body:            m.bodyInput.Value(),
+		AttachmentPaths: m.attachmentPaths,
+		AccountID:       m.GetSelectedAccountID(),
+		InReplyTo:       m.inReplyTo,
+		References:      m.references,
+		QuotedText:      m.quotedText,
 	}
 }
 
@@ -708,7 +730,7 @@ func NewComposerFromDraft(draft config.Draft, accounts []config.Account, hideTip
 	m.ccInput.SetValue(draft.Cc)
 	m.bccInput.SetValue(draft.Bcc)
 	m.draftID = draft.ID
-	m.attachmentPath = draft.AttachmentPath
+	m.attachmentPaths = draft.AttachmentPaths
 	m.inReplyTo = draft.InReplyTo
 	m.references = draft.References
 	m.quotedText = draft.QuotedText
