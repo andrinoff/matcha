@@ -41,7 +41,6 @@ const (
 	focusBody
 	focusSignature
 	focusAttachment
-	focusSignSMIME
 	focusEncryptSMIME
 	focusSend
 )
@@ -56,7 +55,6 @@ type Composer struct {
 	bodyInput      textarea.Model
 	signatureInput textarea.Model
 	attachmentPath string
-	signSMIME      bool
 	encryptSMIME   bool
 	width          int
 	height         int
@@ -145,8 +143,6 @@ func NewComposerWithAccounts(accounts []config.Account, selectedAccountID string
 	for i, acc := range accounts {
 		if acc.ID == selectedAccountID {
 			m.selectedAccountIdx = i
-			// LOAD DEFAULT
-			m.encryptSMIME = acc.SMIMEEncryptByDefault
 			break
 		}
 	}
@@ -355,11 +351,6 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if msg.String() == "enter" {
 					return m, func() tea.Msg { return GoToFilePickerMsg{} }
 				}
-			case focusSignSMIME:
-				if msg.String() == "enter" || msg.String() == " " {
-					m.signSMIME = !m.signSMIME
-				}
-				return m, nil
 			case focusEncryptSMIME:
 				if msg.String() == "enter" || msg.String() == " " {
 					m.encryptSMIME = !m.encryptSMIME
@@ -385,7 +376,7 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							InReplyTo:      m.inReplyTo,
 							References:     m.references,
 							Signature:      m.signatureInput.Value(),
-							SignSMIME:      m.signSMIME,
+							SignSMIME:      acc != nil && acc.SMIMESignByDefault,
 							EncryptSMIME:   m.encryptSMIME,
 						}
 					}
@@ -474,15 +465,6 @@ func (m *Composer) View() tea.View {
 		attachmentField = blurredStyle.Render(fmt.Sprintf("  Attachment: %s", attachmentText))
 	}
 
-	smimeToggle := "[ ]"
-	if m.signSMIME {
-		smimeToggle = "[x]"
-	}
-	smimeField := blurredStyle.Render(fmt.Sprintf("  Sign Email (S/MIME): %s", smimeToggle))
-	if m.focusIndex == focusSignSMIME {
-		smimeField = focusedStyle.Render(fmt.Sprintf("> Sign Email (S/MIME): %s", smimeToggle))
-	}
-
 	encToggle := "[ ]"
 	if m.encryptSMIME {
 		encToggle = "[x]"
@@ -536,8 +518,6 @@ func (m *Composer) View() tea.View {
 		tip = "Your email signature. This will be appended to the end of the email."
 	case focusAttachment:
 		tip = "Press Enter to select a file to attach to this email."
-	case focusSignSMIME:
-		tip = "Press Space or Enter to toggle S/MIME signing on or off."
 	case focusEncryptSMIME:
 		tip = "Press Space or Enter to toggle S/MIME encryption on or off."
 	case focusSend:
@@ -555,7 +535,6 @@ func (m *Composer) View() tea.View {
 		signatureLabel,
 		m.signatureInput.View(),
 		attachmentStyle.Render(attachmentField),
-		smimeToggleStyle.Render(smimeField),
 		smimeToggleStyle.Render(encField),
 		button,
 		"",

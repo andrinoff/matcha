@@ -250,7 +250,7 @@ func (m *Settings) updateSMIMEConfig(msg tea.KeyPressMsg) (*Settings, tea.Cmd) {
 			return m, nil
 		} else if m.focusIndex == 2 {
 			if msg.String() == "enter" || msg.String() == " " {
-				m.cfg.Accounts[m.editingAccountIdx].SMIMEEncryptByDefault = !m.cfg.Accounts[m.editingAccountIdx].SMIMEEncryptByDefault
+				m.cfg.Accounts[m.editingAccountIdx].SMIMESignByDefault = !m.cfg.Accounts[m.editingAccountIdx].SMIMESignByDefault
 			}
 			return m, nil
 		} else if m.focusIndex == 3 && msg.String() == "enter" {
@@ -521,14 +521,14 @@ func (m *Settings) viewSMIMEConfig() string {
 	}
 	b.WriteString(m.smimeKeyInput.View() + "\n\n")
 
-	encStatus := "OFF"
-	if account.SMIMEEncryptByDefault {
-		encStatus = "ON"
+	signStatus := "OFF"
+	if account.SMIMESignByDefault {
+		signStatus = "ON"
 	}
 	if m.focusIndex == 2 {
-		b.WriteString(settingsFocusedStyle.Render(fmt.Sprintf("> Encrypt By Default: %s\n\n", encStatus)))
+		b.WriteString(settingsFocusedStyle.Render(fmt.Sprintf("> Sign By Default: %s\n\n", signStatus)))
 	} else {
-		b.WriteString(settingsBlurredStyle.Render(fmt.Sprintf("  Encrypt By Default: %s\n\n", encStatus)))
+		b.WriteString(settingsBlurredStyle.Render(fmt.Sprintf("  Sign By Default: %s\n\n", signStatus)))
 	}
 
 	saveBtn := "[ Save ]"
