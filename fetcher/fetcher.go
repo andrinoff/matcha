@@ -5,6 +5,8 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -34,6 +36,7 @@ type Attachment struct {
 	Inline           bool   // True when the part is meant to be displayed inline
 	IsSMIMESignature bool   // True if this attachment is an S/MIME signature
 	SMIMEVerified    bool   // True if the S/MIME signature was verified successfully
+	IsSMIMEEncrypted bool   // True if the S/MIME content was successfully decrypted
 }
 
 type Email struct {
@@ -125,6 +128,7 @@ func connect(account *config.Account) (*client.Client, error) {
 	var c *client.Client
 	var err error
 
+	// If using standard non-implicit ports (1143 or 143), use Dial + STARTTLS
 	if imapPort == 1143 || imapPort == 143 {
 		c, err = client.Dial(addr)
 		if err != nil {
@@ -134,6 +138,7 @@ func connect(account *config.Account) (*client.Client, error) {
 			return nil, err
 		}
 	} else {
+		// Otherwise default to implicit TLS (port 993)
 		c, err = client.DialTLS(addr, tlsConfig)
 		if err != nil {
 			return nil, err
@@ -158,6 +163,7 @@ func getSentMailbox(account *config.Account) string {
 	}
 }
 
+// getMailboxByAttr finds a mailbox with the given IMAP attribute (e.g., \All, \Sent, \Trash).
 func getMailboxByAttr(c *client.Client, attr string) (string, error) {
 	mailboxes := make(chan *imap.MailboxInfo, 10)
 	done := make(chan error, 1)
@@ -203,6 +209,8 @@ func FetchMailboxEmails(account *config.Account, mailbox string, limit, offset u
 	}
 
 	var allEmails []Email
+
+	// Start from the top minus offset
 	cursor := uint32(0)
 	if mbox.Messages > offset {
 		cursor = mbox.Messages - offset
@@ -210,13 +218,17 @@ func FetchMailboxEmails(account *config.Account, mailbox string, limit, offset u
 		return []Email{}, nil
 	}
 
+	// Determine if we should filter
 	fetchEmail := strings.ToLower(strings.TrimSpace(account.FetchEmail))
 	if fetchEmail == "" {
 		fetchEmail = strings.ToLower(strings.TrimSpace(account.Email))
 	}
 	isSentMailbox := mailbox == getSentMailbox(account)
 
+	// Loop until we have enough emails or run out of messages
 	for len(allEmails) < int(limit) && cursor > 0 {
+		// Determine chunk size
+		// Fetch at least 'limit' or 50 messages to reduce round trips
 		chunkSize := limit
 		if chunkSize < 50 {
 			chunkSize = 50
@@ -247,6 +259,7 @@ func FetchMailboxEmails(account *config.Account, mailbox string, limit, offset u
 			return nil, err
 		}
 
+		// Filter messages in this batch
 		var batchEmails []Email
 		for _, msg := range batchMsgs {
 			if msg == nil || msg.Envelope == nil {
@@ -294,6 +307,11 @@ func FetchMailboxEmails(account *config.Account, mailbox string, limit, offset u
 			})
 		}
 
+		// Sort batch Newest -> Oldest (since IMAP usually returns Oldest->Newest or arbitrary)
+		// Assuming seqset order or standard behavior, we want to ensure we append Newest emails first
+		// so that the final list is correct.
+		// Actually, let's just sort the batch by UID desc (Newest first)
+		// Simple bubble sort for small batch
 		for i := 0; i < len(batchEmails); i++ {
 			for j := i + 1; j < len(batchEmails); j++ {
 				if batchEmails[j].UID > batchEmails[i].UID {
@@ -302,10 +320,14 @@ func FetchMailboxEmails(account *config.Account, mailbox string, limit, offset u
 			}
 		}
 
+		// Append to allEmails
 		allEmails = append(allEmails, batchEmails...)
+
+		// Update cursor for next iteration
 		cursor = from - 1
 	}
 
+	// Trim if we have too many
 	if len(allEmails) > int(limit) {
 		allEmails = allEmails[:limit]
 	}
@@ -326,6 +348,27 @@ func FetchEmailBodyFromMailbox(account *config.Account, mailbox string, uid uint
 
 	seqset := new(imap.SeqSet)
 	seqset.AddNum(uid)
+
+	fetchWholeMessage := func() ([]byte, error) {
+		fetchItem := imap.FetchItem("BODY.PEEK[]")
+		section, _ := imap.ParseBodySectionName(fetchItem)
+		partMessages := make(chan *imap.Message, 1)
+		partDone := make(chan error, 1)
+		go func() {
+			partDone <- c.UidFetch(seqset, []imap.FetchItem{fetchItem}, partMessages)
+		}()
+		if err := <-partDone; err != nil {
+			return nil, err
+		}
+		partMsg := <-partMessages
+		if partMsg != nil {
+			literal := partMsg.GetBody(section)
+			if literal != nil {
+				return ioutil.ReadAll(literal)
+			}
+		}
+		return nil, fmt.Errorf("could not fetch whole message")
+	}
 
 	fetchInlinePart := func(partID, encoding string) ([]byte, error) {
 		fetchItem := imap.FetchItem(fmt.Sprintf("BODY.PEEK[%s]", partID))
@@ -362,28 +405,6 @@ func FetchEmailBodyFromMailbox(account *config.Account, mailbox string, uid uint
 		return decodeAttachmentData(rawBytes, encoding)
 	}
 
-	// Replace fetchRawItem with this helper to grab the raw wire-bytes of the entire email
-	fetchWholeMessage := func() ([]byte, error) {
-		fetchItem := imap.FetchItem("BODY.PEEK[]")
-		section, _ := imap.ParseBodySectionName(fetchItem)
-		partMessages := make(chan *imap.Message, 1)
-		partDone := make(chan error, 1)
-		go func() {
-			partDone <- c.UidFetch(seqset, []imap.FetchItem{fetchItem}, partMessages)
-		}()
-		if err := <-partDone; err != nil {
-			return nil, err
-		}
-		partMsg := <-partMessages
-		if partMsg != nil {
-			literal := partMsg.GetBody(section)
-			if literal != nil {
-				return ioutil.ReadAll(literal)
-			}
-		}
-		return nil, fmt.Errorf("could not fetch whole message")
-	}
-
 	messages := make(chan *imap.Message, 1)
 	done := make(chan error, 1)
 	fetchItems := []imap.FetchItem{imap.FetchBodyStructure}
@@ -403,8 +424,11 @@ func FetchEmailBodyFromMailbox(account *config.Account, mailbox string, uid uint
 	var plainPartID, plainPartEncoding string
 	var htmlPartID, htmlPartEncoding string
 	var attachments []Attachment
+	var extractedBody string // Used if we intercept and decrypt a payload
+
 	var checkPart func(part *imap.BodyStructure, partID string)
 	checkPart = func(part *imap.BodyStructure, partID string) {
+		// Check for text content (prefer html over plain)
 		if part.MIMEType == "text" {
 			sub := strings.ToLower(part.MIMESubType)
 			switch sub {
@@ -421,26 +445,33 @@ func FetchEmailBodyFromMailbox(account *config.Account, mailbox string, uid uint
 			}
 		}
 
+		// Check for attachments using multiple methods
 		filename := ""
+		// First try the Filename() method which handles various cases
 		if fn, err := part.Filename(); err == nil && fn != "" {
 			filename = fn
 		}
+		// Fallback: check DispositionParams
 		if filename == "" {
 			if fn, ok := part.DispositionParams["filename"]; ok && fn != "" {
 				filename = fn
 			}
 		}
+		// Fallback: check Params (for name parameter)
 		if filename == "" {
 			if fn, ok := part.Params["name"]; ok && fn != "" {
 				filename = fn
 			}
 		}
+		// Fallback: check Params for filename
 		if filename == "" {
 			if fn, ok := part.Params["filename"]; ok && fn != "" {
 				filename = fn
 			}
 		}
 
+		// Add as attachment if it has a disposition or a filename (and not just plain text).
+		// Allow inline parts without filenames (common for cid images).
 		contentID := strings.Trim(part.Id, "<>")
 		mimeType := fmt.Sprintf("%s/%s", strings.ToLower(part.MIMEType), strings.ToLower(part.MIMESubType))
 		isCID := contentID != ""
@@ -449,92 +480,206 @@ func FetchEmailBodyFromMailbox(account *config.Account, mailbox string, uid uint
 		if filename == "" && isInline && strings.HasPrefix(mimeType, "image/") {
 			filename = "inline"
 		}
-		if (filename != "" || isCID) && (part.Disposition == "attachment" || isInline || part.MIMEType != "text") {
-			att := Attachment{
-				Filename:  filename,
-				PartID:    partID,
-				Encoding:  part.Encoding,
-				MIMEType:  mimeType,
-				ContentID: contentID,
-				Inline:    isInline,
+
+		// === S/MIME ENCRYPTION AND OPAQUE VERIFICATION ===
+		if filename == "smime.p7m" || mimeType == "application/pkcs7-mime" {
+			data, err := fetchInlinePart(partID, part.Encoding)
+			if err != nil && partID == "1" {
+				// Fallback for single-part messages where PEEK[1] fails
+				data, err = fetchInlinePart("TEXT", part.Encoding)
 			}
-			if att.Inline && strings.HasPrefix(att.MIMEType, "image/") {
-				if data, err := fetchInlinePart(partID, part.Encoding); err == nil {
-					att.Data = data
+
+			if err != nil {
+				extractedBody = fmt.Sprintf("**S/MIME Error:** Failed to fetch encrypted part from IMAP server: %v\n", err)
+				htmlPartID = "extracted"
+			} else {
+				p7, parseErr := pkcs7.Parse(data)
+				if parseErr != nil {
+					// Fallback: IMAP servers sometimes drop the transfer-encoding header.
+					// We manually strip newlines and attempt a base64 decode just in case.
+					cleanData := bytes.ReplaceAll(data, []byte("\n"), []byte(""))
+					cleanData = bytes.ReplaceAll(cleanData, []byte("\r"), []byte(""))
+					if decoded, b64err := base64.StdEncoding.DecodeString(string(cleanData)); b64err == nil {
+						p7, parseErr = pkcs7.Parse(decoded)
+					}
+				}
+
+				if parseErr != nil {
+					extractedBody = fmt.Sprintf("**S/MIME Error:** Failed to parse PKCS7 payload: %v\n", parseErr)
+					htmlPartID = "extracted"
+				} else {
+					var innerBytes []byte
+					isEncrypted, isOpaqueSigned, smimeTrusted := false, false, false
+					decryptionErr := ""
+
+					// 1. Try to Decrypt
+					if account.SMIMECert != "" && account.SMIMEKey != "" {
+						cData, err1 := os.ReadFile(account.SMIMECert)
+						kData, err2 := os.ReadFile(account.SMIMEKey)
+						if err1 != nil || err2 != nil {
+							decryptionErr = fmt.Sprintf("Failed to read cert/key files. Cert: %v, Key: %v", err1, err2)
+						} else {
+							cBlock, _ := pem.Decode(cData)
+							kBlock, _ := pem.Decode(kData)
+							if cBlock == nil || kBlock == nil {
+								decryptionErr = "Failed to decode PEM blocks from cert/key files."
+							} else {
+								cert, err3 := x509.ParseCertificate(cBlock.Bytes)
+								var privKey any
+								var err4 error
+								if key, err := x509.ParsePKCS8PrivateKey(kBlock.Bytes); err == nil {
+									privKey = key
+								} else if key, err := x509.ParsePKCS1PrivateKey(kBlock.Bytes); err == nil {
+									privKey = key
+								} else if key, err := x509.ParseECPrivateKey(kBlock.Bytes); err == nil {
+									privKey = key
+								} else {
+									err4 = errors.New("unsupported private key format")
+								}
+
+								if err3 != nil || err4 != nil {
+									decryptionErr = fmt.Sprintf("Failed to parse cert/key. Cert: %v, Key: %v", err3, err4)
+								} else {
+									dec, err := p7.Decrypt(cert, privKey)
+									if err == nil {
+										innerBytes = dec
+										isEncrypted = true
+									} else {
+										decryptionErr = fmt.Sprintf("PKCS7 Decrypt failed: %v", err)
+									}
+								}
+							}
+						}
+					} else {
+						// Only set error if it actually is enveloped data (encrypted)
+						// If it's just opaque signed, we shouldn't error out.
+						decryptionErr = "S/MIME Cert or Key path is missing in settings."
+					}
+
+					// 2. If not encrypted, check if it's an opaque signature
+					if !isEncrypted && len(p7.Signers) > 0 {
+						isOpaqueSigned = true
+						innerBytes = p7.Content
+						decryptionErr = "" // Clear encryption error because it wasn't encrypted to begin with
+						roots, _ := x509.SystemCertPool()
+						if roots == nil {
+							roots = x509.NewCertPool()
+						}
+						if err := p7.VerifyWithChain(roots); err == nil {
+							smimeTrusted = true
+						}
+					}
+
+					// 3. Parse Inner MIME payload
+					if len(innerBytes) > 0 {
+						mr, err := mail.CreateReader(bytes.NewReader(innerBytes))
+						if err == nil {
+							for {
+								p, err := mr.NextPart()
+								if err != nil {
+									break
+								}
+								cType, _, _ := mime.ParseMediaType(p.Header.Get("Content-Type"))
+								disp, dParams, _ := mime.ParseMediaType(p.Header.Get("Content-Disposition"))
+								b, _ := ioutil.ReadAll(p.Body) // Auto-decodes quoted-printable/base64
+
+								if disp == "attachment" || disp == "inline" || (!strings.HasPrefix(cType, "multipart/") && cType != "text/plain" && cType != "text/html") {
+									fn := dParams["filename"]
+									if fn == "" {
+										_, cp, _ := mime.ParseMediaType(p.Header.Get("Content-Type"))
+										fn = cp["name"]
+									}
+									attachments = append(attachments, Attachment{
+										Filename: fn, Data: b, MIMEType: cType, Inline: disp == "inline",
+									})
+								} else {
+									if cType == "text/html" {
+										extractedBody = string(b)
+										htmlPartID = "extracted" // Skip IMAP fetch
+									} else if cType == "text/plain" && extractedBody == "" {
+										extractedBody = string(b)
+										plainPartID = "extracted"
+									}
+								}
+							}
+						} else {
+							extractedBody = fmt.Sprintf("**S/MIME Error:** Failed to read inner decrypted MIME: %v\n\n```\n%s\n```", err, string(innerBytes))
+							htmlPartID = "extracted"
+						}
+
+						attachments = append(attachments, Attachment{
+							Filename:         "smime-status.internal",
+							IsSMIMESignature: isOpaqueSigned,
+							SMIMEVerified:    smimeTrusted,
+							IsSMIMEEncrypted: isEncrypted,
+						})
+						return // Stop checking IMAP structure, we hijacked it
+					} else {
+						extractedBody = fmt.Sprintf("**S/MIME Decryption Failed:** %s\n", decryptionErr)
+						htmlPartID = "extracted"
+					}
 				}
 			}
+		}
 
-			// Validate and Verify S/MIME signatures under the hood
-			if filename == "smime.p7s" || mimeType == "application/pkcs7-signature" {
-				att.IsSMIMESignature = true
-				if data, err := fetchInlinePart(partID, part.Encoding); err == nil {
-					att.Data = data
-					p7, err := pkcs7.Parse(data)
-					if err == nil {
-						// Extract the outer multipart/signed boundary
-						boundary := msg.BodyStructure.Params["boundary"]
-						if boundary != "" {
-							// Fetch the RAW, unmodified email bytes
-							rawEmail, err := fetchWholeMessage()
-							if err == nil {
-								fullBoundary := []byte("--" + boundary)
-
-								// Find where the signed content begins
-								firstIdx := bytes.Index(rawEmail, fullBoundary)
-								if firstIdx != -1 {
-									startIdx := firstIdx + len(fullBoundary)
-									if startIdx < len(rawEmail) && rawEmail[startIdx] == '\r' {
-										startIdx++
+		// === S/MIME DETACHED SIGNATURE VERIFICATION ===
+		if filename == "smime.p7s" || mimeType == "application/pkcs7-signature" {
+			att := Attachment{
+				Filename:         filename,
+				PartID:           partID,
+				Encoding:         part.Encoding,
+				MIMEType:         mimeType,
+				ContentID:        contentID,
+				Inline:           isInline,
+				IsSMIMESignature: true,
+			}
+			if data, err := fetchInlinePart(partID, part.Encoding); err == nil {
+				att.Data = data
+				p7, err := pkcs7.Parse(data)
+				if err == nil {
+					boundary := msg.BodyStructure.Params["boundary"]
+					if boundary != "" {
+						rawEmail, err := fetchWholeMessage()
+						if err == nil {
+							fullBoundary := []byte("--" + boundary)
+							firstIdx := bytes.Index(rawEmail, fullBoundary)
+							if firstIdx != -1 {
+								startIdx := firstIdx + len(fullBoundary)
+								if startIdx < len(rawEmail) && rawEmail[startIdx] == '\r' {
+									startIdx++
+								}
+								if startIdx < len(rawEmail) && rawEmail[startIdx] == '\n' {
+									startIdx++
+								}
+								secondIdx := bytes.Index(rawEmail[startIdx:], fullBoundary)
+								if secondIdx != -1 {
+									endIdx := startIdx + secondIdx
+									if endIdx > 0 && rawEmail[endIdx-1] == '\n' {
+										endIdx--
 									}
-									if startIdx < len(rawEmail) && rawEmail[startIdx] == '\n' {
-										startIdx++
+									if endIdx > 0 && rawEmail[endIdx-1] == '\r' {
+										endIdx--
+									}
+									signedData := rawEmail[startIdx:endIdx]
+									canonical := bytes.ReplaceAll(signedData, []byte("\r\n"), []byte("\n"))
+									canonical = bytes.ReplaceAll(canonical, []byte("\n"), []byte("\r\n"))
+
+									roots, _ := x509.SystemCertPool()
+									if roots == nil {
+										roots = x509.NewCertPool()
 									}
 
-									// Find where the signed content ends
-									secondIdx := bytes.Index(rawEmail[startIdx:], fullBoundary)
-									if secondIdx != -1 {
-										endIdx := startIdx + secondIdx
-
-										// Strip the trailing CRLF that belongs to the boundary, not the content
-										if endIdx > 0 && rawEmail[endIdx-1] == '\n' {
-											endIdx--
-										}
-										if endIdx > 0 && rawEmail[endIdx-1] == '\r' {
-											endIdx--
-										}
-
-										signedData := rawEmail[startIdx:endIdx]
-
-										// Enforce canonical CRLF line endings as required by S/MIME RFCs
-										canonical := bytes.ReplaceAll(signedData, []byte("\r\n"), []byte("\n"))
-										canonical = bytes.ReplaceAll(canonical, []byte("\n"), []byte("\r\n"))
-
-										roots, _ := x509.SystemCertPool()
-										if roots == nil {
-											roots = x509.NewCertPool()
-										}
-
-										// Try exact canonical match first
-										p7.Content = canonical
+									p7.Content = canonical
+									if err := p7.VerifyWithChain(roots); err == nil {
+										att.SMIMEVerified = true
+									} else {
+										p7.Content = append(canonical, '\r', '\n')
 										if err := p7.VerifyWithChain(roots); err == nil {
 											att.SMIMEVerified = true
 										} else {
-											// Try with a trailing CRLF (some servers insist on hashing the terminal empty line)
-											p7.Content = append(canonical, '\r', '\n')
+											p7.Content = bytes.TrimRight(canonical, "\r\n")
 											if err := p7.VerifyWithChain(roots); err == nil {
 												att.SMIMEVerified = true
-											} else {
-												// Try without any trailing newlines
-												p7.Content = bytes.TrimRight(canonical, "\r\n")
-												if err := p7.VerifyWithChain(roots); err == nil {
-													att.SMIMEVerified = true
-												} else {
-													if os.Getenv("DEBUG_SMIME") != "" {
-														f, _ := os.OpenFile("smime_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-														defer f.Close()
-														f.WriteString(fmt.Sprintf("S/MIME Raw Verify Error: %v\n", err))
-													}
-												}
 											}
 										}
 									}
@@ -544,13 +689,28 @@ func FetchEmailBodyFromMailbox(account *config.Account, mailbox string, uid uint
 					}
 				}
 			}
-
+			attachments = append(attachments, att)
+		} else if (filename != "" || isCID) && (part.Disposition == "attachment" || isInline || part.MIMEType != "text") {
+			att := Attachment{
+				Filename:  filename,
+				PartID:    partID,
+				Encoding:  part.Encoding, // Store encoding for proper decoding
+				MIMEType:  mimeType,
+				ContentID: contentID,
+				Inline:    isInline,
+			}
+			if att.Inline && strings.HasPrefix(att.MIMEType, "image/") {
+				if data, err := fetchInlinePart(partID, part.Encoding); err == nil {
+					att.Data = data
+				}
+			}
 			attachments = append(attachments, att)
 		}
 	}
 
 	var findParts func(*imap.BodyStructure, string)
 	findParts = func(bs *imap.BodyStructure, prefix string) {
+		// If this is a non-multipart message, check the body structure itself
 		if len(bs.Parts) == 0 {
 			partID := prefix
 			if partID == "" {
@@ -560,18 +720,26 @@ func FetchEmailBodyFromMailbox(account *config.Account, mailbox string, uid uint
 			return
 		}
 
+		// Iterate through parts
 		for i, part := range bs.Parts {
 			partID := fmt.Sprintf("%d", i+1)
 			if prefix != "" {
 				partID = fmt.Sprintf("%s.%d", prefix, i+1)
 			}
+
 			checkPart(part, partID)
+
 			if len(part.Parts) > 0 {
 				findParts(part, partID)
 			}
 		}
 	}
 	findParts(msg.BodyStructure, "")
+
+	// If we hijacked and decrypted the body, return it immediately
+	if extractedBody != "" {
+		return extractedBody, attachments, nil
+	}
 
 	var body string
 	textPartID := ""
@@ -616,6 +784,7 @@ func FetchEmailBodyFromMailbox(account *config.Account, mailbox string, uid uint
 			literal := partMsg.GetBody(section)
 			if literal != nil {
 				buf, _ := ioutil.ReadAll(literal)
+				// Use the encoding from BodyStructure to decode
 				if decoded, err := decodeAttachmentData(buf, textPartEncoding); err == nil {
 					body = string(decoded)
 				} else {
@@ -731,8 +900,10 @@ func ArchiveEmailFromMailbox(account *config.Account, mailbox string, uid uint32
 	var archiveMailbox string
 	switch account.ServiceProvider {
 	case "gmail":
+		// For Gmail, find the mailbox with the \All attribute
 		archiveMailbox, err = getMailboxByAttr(c, imap.AllAttr)
 		if err != nil {
+			// Fallback to hardcoded path if attribute lookup fails
 			archiveMailbox = "[Gmail]/All Mail"
 		}
 	default:
@@ -748,6 +919,8 @@ func ArchiveEmailFromMailbox(account *config.Account, mailbox string, uid uint32
 
 	return c.UidMove(seqSet, archiveMailbox)
 }
+
+// Convenience wrappers defaulting to INBOX for existing call sites.
 
 func FetchEmails(account *config.Account, limit, offset uint32) ([]Email, error) {
 	return FetchMailboxEmails(account, "INBOX", limit, offset)
@@ -789,6 +962,7 @@ func ArchiveSentEmail(account *config.Account, uid uint32) error {
 	return ArchiveEmailFromMailbox(account, getSentMailbox(account), uid)
 }
 
+// getTrashMailbox returns the trash mailbox name for the account
 func getTrashMailbox(account *config.Account) string {
 	switch account.ServiceProvider {
 	case "gmail":
@@ -800,6 +974,7 @@ func getTrashMailbox(account *config.Account) string {
 	}
 }
 
+// getArchiveMailbox returns the archive/all mail mailbox name for the account
 func getArchiveMailbox(account *config.Account) string {
 	switch account.ServiceProvider {
 	case "gmail":
@@ -811,6 +986,7 @@ func getArchiveMailbox(account *config.Account) string {
 	}
 }
 
+// FetchTrashEmails fetches emails from the trash folder
 func FetchTrashEmails(account *config.Account, limit, offset uint32) ([]Email, error) {
 	c, err := connect(account)
 	if err != nil {
@@ -818,14 +994,18 @@ func FetchTrashEmails(account *config.Account, limit, offset uint32) ([]Email, e
 	}
 	defer c.Logout()
 
+	// Try to find trash by attribute first
 	trashMailbox, err := getMailboxByAttr(c, imap.TrashAttr)
 	if err != nil {
+		// Fallback to hardcoded path
 		trashMailbox = getTrashMailbox(account)
 	}
 
 	return FetchMailboxEmails(account, trashMailbox, limit, offset)
 }
 
+// FetchArchiveEmails fetches emails from the archive/all mail folder
+// Archive contains all emails, so we match where user is sender OR recipient
 func FetchArchiveEmails(account *config.Account, limit, offset uint32) ([]Email, error) {
 	c, err := connect(account)
 	if err != nil {
@@ -833,8 +1013,10 @@ func FetchArchiveEmails(account *config.Account, limit, offset uint32) ([]Email,
 	}
 	defer c.Logout()
 
+	// Try to find archive by attribute first (Gmail uses \All)
 	archiveMailbox, err := getMailboxByAttr(c, imap.AllAttr)
 	if err != nil {
+		// Fallback to hardcoded path
 		archiveMailbox = getArchiveMailbox(account)
 	}
 
@@ -876,6 +1058,7 @@ func FetchArchiveEmails(account *config.Account, limit, offset uint32) ([]Email,
 		return nil, err
 	}
 
+	// Determine which email to filter on: prefer Account.FetchEmail, fallback to Account.Email
 	fetchEmail := strings.ToLower(strings.TrimSpace(account.FetchEmail))
 	if fetchEmail == "" {
 		fetchEmail = strings.ToLower(strings.TrimSpace(account.Email))
@@ -900,10 +1083,13 @@ func FetchArchiveEmails(account *config.Account, limit, offset uint32) ([]Email,
 			toAddrList = append(toAddrList, addr.Address())
 		}
 
+		// For archive/All Mail, match emails where user is sender OR recipient
 		matched := false
+		// Check if user is the sender
 		if strings.EqualFold(strings.TrimSpace(fromAddr), fetchEmail) {
 			matched = true
 		}
+		// Check if user is a recipient
 		if !matched {
 			for _, r := range toAddrList {
 				if strings.EqualFold(strings.TrimSpace(r), fetchEmail) {
@@ -927,6 +1113,7 @@ func FetchArchiveEmails(account *config.Account, limit, offset uint32) ([]Email,
 		})
 	}
 
+	// Reverse to get newest first
 	for i, j := 0, len(emails)-1; i < j; i, j = i+1, j-1 {
 		emails[i], emails[j] = emails[j], emails[i]
 	}
@@ -934,6 +1121,7 @@ func FetchArchiveEmails(account *config.Account, limit, offset uint32) ([]Email,
 	return emails, nil
 }
 
+// FetchTrashEmailBody fetches the body of an email from trash
 func FetchTrashEmailBody(account *config.Account, uid uint32) (string, []Attachment, error) {
 	c, err := connect(account)
 	if err != nil {
@@ -949,6 +1137,7 @@ func FetchTrashEmailBody(account *config.Account, uid uint32) (string, []Attachm
 	return FetchEmailBodyFromMailbox(account, trashMailbox, uid)
 }
 
+// FetchArchiveEmailBody fetches the body of an email from archive
 func FetchArchiveEmailBody(account *config.Account, uid uint32) (string, []Attachment, error) {
 	c, err := connect(account)
 	if err != nil {
@@ -964,6 +1153,7 @@ func FetchArchiveEmailBody(account *config.Account, uid uint32) (string, []Attac
 	return FetchEmailBodyFromMailbox(account, archiveMailbox, uid)
 }
 
+// FetchTrashAttachment fetches an attachment from trash
 func FetchTrashAttachment(account *config.Account, uid uint32, partID string, encoding string) ([]byte, error) {
 	c, err := connect(account)
 	if err != nil {
@@ -979,6 +1169,7 @@ func FetchTrashAttachment(account *config.Account, uid uint32, partID string, en
 	return FetchAttachmentFromMailbox(account, trashMailbox, uid, partID, encoding)
 }
 
+// FetchArchiveAttachment fetches an attachment from archive
 func FetchArchiveAttachment(account *config.Account, uid uint32, partID string, encoding string) ([]byte, error) {
 	c, err := connect(account)
 	if err != nil {
@@ -994,6 +1185,7 @@ func FetchArchiveAttachment(account *config.Account, uid uint32, partID string, 
 	return FetchAttachmentFromMailbox(account, archiveMailbox, uid, partID, encoding)
 }
 
+// DeleteTrashEmail permanently deletes an email from trash
 func DeleteTrashEmail(account *config.Account, uid uint32) error {
 	c, err := connect(account)
 	if err != nil {
@@ -1009,6 +1201,7 @@ func DeleteTrashEmail(account *config.Account, uid uint32) error {
 	return DeleteEmailFromMailbox(account, trashMailbox, uid)
 }
 
+// DeleteArchiveEmail deletes an email from archive (moves to trash)
 func DeleteArchiveEmail(account *config.Account, uid uint32) error {
 	c, err := connect(account)
 	if err != nil {

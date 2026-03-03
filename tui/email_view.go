@@ -37,20 +37,22 @@ type EmailView struct {
 	showImages         bool
 	isSMIME            bool
 	smimeTrusted       bool
+	isEncrypted        bool
 }
 
 func NewEmailView(email fetcher.Email, emailIndex, width, height int, mailbox MailboxKind, disableImages bool) *EmailView {
 	isSMIME := false
 	smimeTrusted := false
+	isEncrypted := false
 	var filteredAtts []fetcher.Attachment
 
-	// Hide S/MIME attachment files from the view and detect trust status
 	for _, att := range email.Attachments {
-		if att.IsSMIMESignature || att.Filename == "smime.p7s" || att.MIMEType == "application/pkcs7-signature" {
-			isSMIME = true
-			if att.SMIMEVerified {
-				smimeTrusted = true
-			}
+		if att.Filename == "smime-status.internal" {
+			isSMIME = att.IsSMIMESignature || att.IsSMIMEEncrypted
+			smimeTrusted = att.SMIMEVerified
+			isEncrypted = att.IsSMIMEEncrypted
+		} else if att.IsSMIMESignature || att.Filename == "smime.p7s" || att.Filename == "smime.p7m" || strings.HasPrefix(att.MIMEType, "application/pkcs7") {
+			// Skip UI rendering
 		} else {
 			filteredAtts = append(filteredAtts, att)
 		}
@@ -94,6 +96,7 @@ func NewEmailView(email fetcher.Email, emailIndex, width, height int, mailbox Ma
 		showImages:    showImages,
 		isSMIME:       isSMIME,
 		smimeTrusted:  smimeTrusted,
+		isEncrypted:   isEncrypted,
 	}
 }
 
@@ -222,10 +225,14 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *EmailView) View() tea.View {
 	// Clear all Kitty graphics before rendering to prevent image stacking on scroll.
+	// This must be done synchronously via stdout before the frame is drawn,
+	// as escape sequences in the return string execute too late.
 	clearKittyGraphics()
 
 	smimeStatus := ""
-	if m.isSMIME {
+	if m.isEncrypted {
+		smimeStatus = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Render(" [S/MIME: 🔒 Encrypted]")
+	} else if m.isSMIME {
 		if m.smimeTrusted {
 			smimeStatus = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Render(" [S/MIME: ✅ Trusted]")
 		} else {

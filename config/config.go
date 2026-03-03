@@ -30,8 +30,9 @@ type Account struct {
 	Insecure   bool   `json:"insecure,omitempty"`
 
 	// S/MIME settings
-	SMIMECert string `json:"smime_cert,omitempty"` // Path to the public certificate PEM
-	SMIMEKey  string `json:"smime_key,omitempty"`  // Path to the private key PEM
+	SMIMECert             string `json:"smime_cert,omitempty"`               // Path to the public certificate PEM
+	SMIMEKey              string `json:"smime_key,omitempty"`                // Path to the private key PEM
+	SMIMEEncryptByDefault bool   `json:"smime_encrypt_by_default,omitempty"` // Whether to enable S/MIME encryption by default
 }
 
 // MailingList represents a named group of email addresses.
@@ -106,7 +107,12 @@ func (a *Account) GetSMTPPort() int {
 	}
 }
 
-// configDir returns the path to the configuration directory.
+// GetConfigDir returns the path to the configuration directory (exported).
+func GetConfigDir() (string, error) {
+	return configDir()
+}
+
+// configDir returns the path to the configuration directory (internal).
 func configDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -126,8 +132,11 @@ func configFile() (string, error) {
 
 // SaveConfig saves the given configuration to the config file and passwords to the keyring.
 func SaveConfig(config *Config) error {
+	// Save passwords to the OS keyring before writing the JSON file
 	for _, acc := range config.Accounts {
 		if acc.Password != "" {
+			// We ignore the error here because some environments (like headless CI)
+			// might not have a keyring service, but we still want to save the rest of the config.
 			_ = keyring.Set(keyringServiceName, acc.Email, acc.Password)
 		}
 	}
@@ -147,6 +156,7 @@ func SaveConfig(config *Config) error {
 }
 
 // LoadConfig loads the configuration from the config file and passwords from the keyring.
+// It automatically migrates plain-text passwords to the OS keyring if they exist.
 func LoadConfig() (*Config, error) {
 	path, err := configFile()
 	if err != nil {
@@ -161,24 +171,25 @@ func LoadConfig() (*Config, error) {
 	var needsMigration bool
 
 	type rawAccount struct {
-		ID              string `json:"id"`
-		Name            string `json:"name"`
-		Email           string `json:"email"`
-		Password        string `json:"password,omitempty"`
-		ServiceProvider string `json:"service_provider"`
-		FetchEmail      string `json:"fetch_email,omitempty"`
-		IMAPServer      string `json:"imap_server,omitempty"`
-		IMAPPort        int    `json:"imap_port,omitempty"`
-		SMTPServer      string `json:"smtp_server,omitempty"`
-		SMTPPort        int    `json:"smtp_port,omitempty"`
-		Insecure        bool   `json:"insecure,omitempty"`
-		SMIMECert       string `json:"smime_cert,omitempty"`
-		SMIMEKey        string `json:"smime_key,omitempty"`
+		ID                    string `json:"id"`
+		Name                  string `json:"name"`
+		Email                 string `json:"email"`
+		Password              string `json:"password,omitempty"`
+		ServiceProvider       string `json:"service_provider"`
+		FetchEmail            string `json:"fetch_email,omitempty"`
+		IMAPServer            string `json:"imap_server,omitempty"`
+		IMAPPort              int    `json:"imap_port,omitempty"`
+		SMTPServer            string `json:"smtp_server,omitempty"`
+		SMTPPort              int    `json:"smtp_port,omitempty"`
+		Insecure              bool   `json:"insecure,omitempty"`
+		SMIMECert             string `json:"smime_cert,omitempty"`
+		SMIMEKey              string `json:"smime_key,omitempty"`
+		SMIMEEncryptByDefault bool   `json:"smime_encrypt_by_default,omitempty"`
 	}
 	type diskConfig struct {
 		Accounts      []rawAccount  `json:"accounts"`
 		DisableImages bool          `json:"disable_images,omitempty"`
-		HideTips      bool          `json:"hide_tips,omitempty"` // Added missing field here
+		HideTips      bool          `json:"hide_tips,omitempty"`
 		MailingLists  []MailingList `json:"mailing_lists,omitempty"`
 	}
 
@@ -198,6 +209,7 @@ func LoadConfig() (*Config, error) {
 					},
 				},
 			}
+			// SaveConfig automatically pushes the password to the keyring and strips it from JSON
 			if saveErr := SaveConfig(&config); saveErr != nil {
 				return nil, saveErr
 			}
@@ -207,30 +219,32 @@ func LoadConfig() (*Config, error) {
 	}
 
 	config.DisableImages = raw.DisableImages
-	config.HideTips = raw.HideTips // Assign the loaded value to the main config
+	config.HideTips = raw.HideTips
 	config.MailingLists = raw.MailingLists
-
 	for _, rawAcc := range raw.Accounts {
 		acc := Account{
-			ID:              rawAcc.ID,
-			Name:            rawAcc.Name,
-			Email:           rawAcc.Email,
-			ServiceProvider: rawAcc.ServiceProvider,
-			FetchEmail:      rawAcc.FetchEmail,
-			IMAPServer:      rawAcc.IMAPServer,
-			IMAPPort:        rawAcc.IMAPPort,
-			SMTPServer:      rawAcc.SMTPServer,
-			SMTPPort:        rawAcc.SMTPPort,
-			Insecure:        rawAcc.Insecure,
-			SMIMECert:       rawAcc.SMIMECert,
-			SMIMEKey:        rawAcc.SMIMEKey,
+			ID:                    rawAcc.ID,
+			Name:                  rawAcc.Name,
+			Email:                 rawAcc.Email,
+			ServiceProvider:       rawAcc.ServiceProvider,
+			FetchEmail:            rawAcc.FetchEmail,
+			IMAPServer:            rawAcc.IMAPServer,
+			IMAPPort:              rawAcc.IMAPPort,
+			SMTPServer:            rawAcc.SMTPServer,
+			SMTPPort:              rawAcc.SMTPPort,
+			Insecure:              rawAcc.Insecure,
+			SMIMECert:             rawAcc.SMIMECert,
+			SMIMEKey:              rawAcc.SMIMEKey,
+			SMIMEEncryptByDefault: rawAcc.SMIMEEncryptByDefault,
 		}
 
 		if rawAcc.Password != "" {
+			// Found a plain-text password! Move it to the OS Keyring.
 			_ = keyring.Set(keyringServiceName, rawAcc.Email, rawAcc.Password)
 			acc.Password = rawAcc.Password
 			needsMigration = true
 		} else {
+			// No plaintext password in JSON, fetch from Keyring as normal.
 			if pwd, err := keyring.Get(keyringServiceName, acc.Email); err == nil {
 				acc.Password = pwd
 			}
@@ -248,6 +262,7 @@ func LoadConfig() (*Config, error) {
 	return &config, nil
 }
 
+// legacyConfigFormat represents the old single-account configuration format.
 type legacyConfigFormat struct {
 	ServiceProvider string `json:"service_provider"`
 	Email           string `json:"email"`
@@ -255,20 +270,25 @@ type legacyConfigFormat struct {
 	Name            string `json:"name"`
 }
 
+// AddAccount adds a new account to the configuration.
 func (c *Config) AddAccount(account Account) {
 	if account.ID == "" {
 		account.ID = uuid.New().String()
 	}
+	// Ensure FetchEmail defaults to the login Email if not explicitly set.
 	if account.FetchEmail == "" && account.Email != "" {
 		account.FetchEmail = account.Email
 	}
 	c.Accounts = append(c.Accounts, account)
 }
 
+// RemoveAccount removes an account by its ID and deletes its password from the keyring.
 func (c *Config) RemoveAccount(id string) bool {
 	for i, acc := range c.Accounts {
 		if acc.ID == id {
+			// Delete password from OS Keyring when account is removed
 			_ = keyring.Delete(keyringServiceName, acc.Email)
+
 			c.Accounts = append(c.Accounts[:i], c.Accounts[i+1:]...)
 			return true
 		}
@@ -276,6 +296,7 @@ func (c *Config) RemoveAccount(id string) bool {
 	return false
 }
 
+// GetAccountByID returns an account by its ID.
 func (c *Config) GetAccountByID(id string) *Account {
 	for i := range c.Accounts {
 		if c.Accounts[i].ID == id {
@@ -285,6 +306,7 @@ func (c *Config) GetAccountByID(id string) *Account {
 	return nil
 }
 
+// GetAccountByEmail returns an account by its email address.
 func (c *Config) GetAccountByEmail(email string) *Account {
 	for i := range c.Accounts {
 		if c.Accounts[i].Email == email {
@@ -294,10 +316,12 @@ func (c *Config) GetAccountByEmail(email string) *Account {
 	return nil
 }
 
+// HasAccounts returns true if there are any configured accounts.
 func (c *Config) HasAccounts() bool {
 	return len(c.Accounts) > 0
 }
 
+// GetFirstAccount returns the first account or nil if none exist.
 func (c *Config) GetFirstAccount() *Account {
 	if len(c.Accounts) > 0 {
 		return &c.Accounts[0]

@@ -103,7 +103,6 @@ func (m *Settings) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// Handle generic messages (like textinput.Blink) for active text inputs
 	if m.state == SettingsSMIMEConfig {
 		m.smimeCertInput, cmd = m.smimeCertInput.Update(msg)
 		cmds = append(cmds, cmd)
@@ -188,11 +187,10 @@ func (m *Settings) updateAccounts(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.confirmingDelete = true
 		}
 	case "enter":
+		// If cursor is on "Add Account"
 		if m.cursor == len(m.cfg.Accounts) {
-			// If cursor is on "Add Account"
 			return m, func() tea.Msg { return GoToAddAccountMsg{} }
 		} else if m.cursor < len(m.cfg.Accounts) {
-			// Edit S/MIME configuration for this account
 			m.editingAccountIdx = m.cursor
 			m.state = SettingsSMIMEConfig
 			m.smimeCertInput.SetValue(m.cfg.Accounts[m.cursor].SMIMECert)
@@ -222,11 +220,11 @@ func (m *Settings) updateSMIMEConfig(msg tea.KeyPressMsg) (*Settings, tea.Cmd) {
 		if msg.String() == "shift+tab" || msg.String() == "up" {
 			m.focusIndex--
 			if m.focusIndex < 0 {
-				m.focusIndex = 3
+				m.focusIndex = 4
 			}
 		} else {
 			m.focusIndex++
-			if m.focusIndex > 3 {
+			if m.focusIndex > 4 {
 				m.focusIndex = 0
 			}
 		}
@@ -240,25 +238,28 @@ func (m *Settings) updateSMIMEConfig(msg tea.KeyPressMsg) (*Settings, tea.Cmd) {
 			cmds = append(cmds, m.smimeKeyInput.Focus())
 		}
 		return m, tea.Batch(cmds...)
-	case "enter":
-		if m.focusIndex == 0 {
+	case "enter", " ":
+		if m.focusIndex == 0 && msg.String() == "enter" {
 			m.focusIndex = 1
 			m.smimeCertInput.Blur()
 			cmds = append(cmds, m.smimeKeyInput.Focus())
 			return m, tea.Batch(cmds...)
-		} else if m.focusIndex == 1 {
+		} else if m.focusIndex == 1 && msg.String() == "enter" {
 			m.focusIndex = 2
 			m.smimeKeyInput.Blur()
 			return m, nil
 		} else if m.focusIndex == 2 {
-			// Save
+			if msg.String() == "enter" || msg.String() == " " {
+				m.cfg.Accounts[m.editingAccountIdx].SMIMEEncryptByDefault = !m.cfg.Accounts[m.editingAccountIdx].SMIMEEncryptByDefault
+			}
+			return m, nil
+		} else if m.focusIndex == 3 && msg.String() == "enter" {
 			m.cfg.Accounts[m.editingAccountIdx].SMIMECert = m.smimeCertInput.Value()
 			m.cfg.Accounts[m.editingAccountIdx].SMIMEKey = m.smimeKeyInput.Value()
 			_ = config.SaveConfig(m.cfg)
 			m.state = SettingsAccounts
 			return m, nil
-		} else if m.focusIndex == 3 {
-			// Cancel
+		} else if m.focusIndex == 4 && msg.String() == "enter" {
 			m.state = SettingsAccounts
 			return m, nil
 		}
@@ -448,7 +449,6 @@ func (m *Settings) viewAccounts() string {
 			providerInfo = fmt.Sprintf("custom: %s", account.IMAPServer)
 		}
 
-		// Show indicator if S/MIME is configured
 		if account.SMIMECert != "" && account.SMIMEKey != "" {
 			providerInfo += " [S/MIME Configured]"
 		}
@@ -473,7 +473,7 @@ func (m *Settings) viewAccounts() string {
 	b.WriteString("\n")
 
 	mainContent := b.String()
-	helpView := helpStyle.Render("↑/↓: navigate • enter: edit account/add new • d: delete account • esc: back")
+	helpView := helpStyle.Render("↑/↓: navigate • enter: select • d: delete account • esc: back")
 
 	if m.height > 0 {
 		currentHeight := lipgloss.Height(docStyle.Render(mainContent + helpView))
@@ -507,7 +507,6 @@ func (m *Settings) viewSMIMEConfig() string {
 	b.WriteString(titleStyle.Render(fmt.Sprintf("S/MIME Configuration for %s", account.Email)))
 	b.WriteString("\n\n")
 
-	// Cert Input
 	if m.focusIndex == 0 {
 		b.WriteString(settingsFocusedStyle.Render("Certificate (PEM) Path:\n"))
 	} else {
@@ -515,7 +514,6 @@ func (m *Settings) viewSMIMEConfig() string {
 	}
 	b.WriteString(m.smimeCertInput.View() + "\n\n")
 
-	// Key Input
 	if m.focusIndex == 1 {
 		b.WriteString(settingsFocusedStyle.Render("Private Key (PEM) Path:\n"))
 	} else {
@@ -523,17 +521,26 @@ func (m *Settings) viewSMIMEConfig() string {
 	}
 	b.WriteString(m.smimeKeyInput.View() + "\n\n")
 
-	// Buttons
+	encStatus := "OFF"
+	if account.SMIMEEncryptByDefault {
+		encStatus = "ON"
+	}
+	if m.focusIndex == 2 {
+		b.WriteString(settingsFocusedStyle.Render(fmt.Sprintf("> Encrypt By Default: %s\n\n", encStatus)))
+	} else {
+		b.WriteString(settingsBlurredStyle.Render(fmt.Sprintf("  Encrypt By Default: %s\n\n", encStatus)))
+	}
+
 	saveBtn := "[ Save ]"
 	cancelBtn := "[ Cancel ]"
 
-	if m.focusIndex == 2 {
+	if m.focusIndex == 3 {
 		saveBtn = settingsFocusedStyle.Render(saveBtn)
 	} else {
 		saveBtn = settingsBlurredStyle.Render(saveBtn)
 	}
 
-	if m.focusIndex == 3 {
+	if m.focusIndex == 4 {
 		cancelBtn = settingsFocusedStyle.Render(cancelBtn)
 	} else {
 		cancelBtn = settingsBlurredStyle.Render(cancelBtn)

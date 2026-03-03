@@ -33,8 +33,8 @@ func generateMessageID(from string) string {
 	return fmt.Sprintf("<%x@%s>", buf, from)
 }
 
-// SendEmail constructs a multipart message with plain text, HTML, embedded images, and attachments. Includes optional S/MIME signing support.
-func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody, htmlBody string, images map[string][]byte, attachments map[string][]byte, inReplyTo string, references []string, signSMIME bool) error {
+// SendEmail constructs a multipart message with plain text, HTML, embedded images, and attachments.
+func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody, htmlBody string, images map[string][]byte, attachments map[string][]byte, inReplyTo string, references []string, signSMIME bool, encryptSMIME bool) error {
 	smtpServer := account.GetSMTPServer()
 	smtpPort := account.GetSMTPPort()
 
@@ -49,7 +49,12 @@ func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody
 		fromHeader = fmt.Sprintf("%s <%s>", account.Name, account.FetchEmail)
 	}
 
-	// Message headers
+	// Main message buffer
+	var innerMsg bytes.Buffer
+	innerWriter := multipart.NewWriter(&innerMsg)
+	innerHeaders := fmt.Sprintf("Content-Type: multipart/mixed; boundary=\"%s\"\r\n\r\n", innerWriter.Boundary())
+
+	// Set top-level headers for a mixed message type to support content and attachments
 	headers := map[string]string{
 		"From":         fromHeader,
 		"To":           strings.Join(to, ", "),
@@ -72,12 +77,8 @@ func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody
 		}
 	}
 
-	// Build the inner message (the part that gets signed if S/MIME is enabled)
-	var innerMsg bytes.Buffer
-	innerWriter := multipart.NewWriter(&innerMsg)
-	innerHeaders := fmt.Sprintf("Content-Type: multipart/mixed; boundary=\"%s\"\r\n\r\n", innerWriter.Boundary())
-
 	// --- Body Part (multipart/related) ---
+	// This part contains the multipart/alternative (text/html) and any inline images.
 	relatedHeader := textproto.MIMEHeader{}
 	relatedBoundary := "related-" + innerWriter.Boundary()
 	relatedHeader.Set("Content-Type", "multipart/related; boundary=\""+relatedBoundary+"\"")
@@ -99,6 +100,7 @@ func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody
 	altWriter := multipart.NewWriter(altPartWriter)
 	altWriter.SetBoundary(altBoundary)
 
+	// Plain text part
 	textHeader := textproto.MIMEHeader{
 		"Content-Type":              {"text/plain; charset=UTF-8"},
 		"Content-Transfer-Encoding": {"quoted-printable"},
@@ -111,6 +113,7 @@ func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody
 	fmt.Fprint(qpText, plainBody)
 	qpText.Close()
 
+	// HTML part
 	htmlHeader := textproto.MIMEHeader{
 		"Content-Type":              {"text/html; charset=UTF-8"},
 		"Content-Transfer-Encoding": {"quoted-printable"},
@@ -123,7 +126,7 @@ func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody
 	fmt.Fprint(qpHTML, htmlBody)
 	qpHTML.Close()
 
-	altWriter.Close()
+	altWriter.Close() // Finish the alternative part
 
 	// --- Inline Images ---
 	for cid, data := range images {
@@ -132,18 +135,22 @@ func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody
 		if mimeType == "" {
 			mimeType = "application/octet-stream"
 		}
+
 		imgHeader := textproto.MIMEHeader{}
 		imgHeader.Set("Content-Type", mimeType)
 		imgHeader.Set("Content-Transfer-Encoding", "base64")
 		imgHeader.Set("Content-ID", "<"+cid+">")
 		imgHeader.Set("Content-Disposition", "inline; filename=\""+cid+"\"")
+
 		imgPart, err := relatedWriter.CreatePart(imgHeader)
 		if err != nil {
 			return err
 		}
+		// data is already base64 encoded, but needs MIME line wrapping (76 chars per line)
 		imgPart.Write([]byte(wrapBase64(string(data))))
 	}
-	relatedWriter.Close()
+
+	relatedWriter.Close() // Finish the related part
 
 	// --- Attachments ---
 	for filename, data := range attachments {
@@ -151,19 +158,23 @@ func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody
 		if mimeType == "" {
 			mimeType = "application/octet-stream"
 		}
+
 		partHeader := textproto.MIMEHeader{}
 		partHeader.Set("Content-Type", mimeType)
 		partHeader.Set("Content-Transfer-Encoding", "base64")
 		partHeader.Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
+
 		attachmentPart, err := innerWriter.CreatePart(partHeader)
 		if err != nil {
 			return err
 		}
-		attachmentPart.Write([]byte(wrapBase64(base64.StdEncoding.EncodeToString(data))))
+		encodedData := base64.StdEncoding.EncodeToString(data)
+		// MIME requires base64 to be line-wrapped at 76 characters
+		attachmentPart.Write([]byte(wrapBase64(encodedData)))
 	}
-	innerWriter.Close()
 
-	// Compile the final payload
+	innerWriter.Close() // Finish the inner message
+
 	var msg bytes.Buffer
 	for k, v := range headers {
 		fmt.Fprintf(&msg, "%s: %s\r\n", k, v)
@@ -171,18 +182,21 @@ func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody
 
 	innerBodyBytes := append([]byte(innerHeaders), innerMsg.Bytes()...)
 
+	var payloadToEncrypt []byte
+
+	// Handle S/MIME Detached Signing
 	if signSMIME {
 		if account.SMIMECert == "" || account.SMIMEKey == "" {
-			return errors.New("S/MIME certificate or key path is missing in account configuration")
+			return errors.New("S/MIME certificate or key path is missing")
 		}
 
 		certData, err := os.ReadFile(account.SMIMECert)
 		if err != nil {
-			return fmt.Errorf("failed reading smime_cert: %v", err)
+			return err
 		}
 		keyData, err := os.ReadFile(account.SMIMEKey)
 		if err != nil {
-			return fmt.Errorf("failed reading smime_key: %v", err)
+			return err
 		}
 
 		certBlock, _ := pem.Decode(certData)
@@ -206,7 +220,6 @@ func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody
 			}
 		}
 
-		// Ensure body has canonical line endings (\r\n) for signing
 		canonicalBody := bytes.ReplaceAll(innerBodyBytes, []byte("\r\n"), []byte("\n"))
 		canonicalBody = bytes.ReplaceAll(canonicalBody, []byte("\n"), []byte("\r\n"))
 
@@ -223,31 +236,96 @@ func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody
 		}
 
 		outerBoundary := "signed-" + innerWriter.Boundary()
-		fmt.Fprintf(&msg, "Content-Type: multipart/signed; protocol=\"application/pkcs7-signature\"; micalg=\"sha-256\"; boundary=\"%s\"\r\n\r\n", outerBoundary)
-		fmt.Fprintf(&msg, "This is a cryptographically signed message in MIME format.\r\n\r\n")
+		var signedMsg bytes.Buffer
+		fmt.Fprintf(&signedMsg, "Content-Type: multipart/signed; protocol=\"application/pkcs7-signature\"; micalg=\"sha-256\"; boundary=\"%s\"\r\n\r\n", outerBoundary)
+		fmt.Fprintf(&signedMsg, "This is a cryptographically signed message in MIME format.\r\n\r\n")
+		fmt.Fprintf(&signedMsg, "--%s\r\n", outerBoundary)
+		signedMsg.Write(canonicalBody)
+		fmt.Fprintf(&signedMsg, "\r\n--%s\r\n", outerBoundary)
+		fmt.Fprintf(&signedMsg, "Content-Type: application/pkcs7-signature; name=\"smime.p7s\"\r\n")
+		fmt.Fprintf(&signedMsg, "Content-Transfer-Encoding: base64\r\n")
+		fmt.Fprintf(&signedMsg, "Content-Disposition: attachment; filename=\"smime.p7s\"\r\n\r\n")
+		signedMsg.WriteString(wrapBase64(base64.StdEncoding.EncodeToString(detachedSig)))
+		fmt.Fprintf(&signedMsg, "\r\n--%s--\r\n", outerBoundary)
 
-		fmt.Fprintf(&msg, "--%s\r\n", outerBoundary)
-		msg.Write(canonicalBody)
-		fmt.Fprintf(&msg, "\r\n--%s\r\n", outerBoundary)
-
-		fmt.Fprintf(&msg, "Content-Type: application/pkcs7-signature; name=\"smime.p7s\"\r\n")
-		fmt.Fprintf(&msg, "Content-Transfer-Encoding: base64\r\n")
-		fmt.Fprintf(&msg, "Content-Disposition: attachment; filename=\"smime.p7s\"\r\n\r\n")
-		msg.WriteString(wrapBase64(base64.StdEncoding.EncodeToString(detachedSig)))
-		fmt.Fprintf(&msg, "\r\n--%s--\r\n", outerBoundary)
-
+		if encryptSMIME {
+			payloadToEncrypt = bytes.ReplaceAll(signedMsg.Bytes(), []byte("\r\n"), []byte("\n"))
+			payloadToEncrypt = bytes.ReplaceAll(payloadToEncrypt, []byte("\n"), []byte("\r\n"))
+		} else {
+			msg.Write(signedMsg.Bytes())
+		}
 	} else {
-		// Just output normal mixed multipart
-		fmt.Fprintf(&msg, "Content-Type: multipart/mixed; boundary=\"%s\"\r\n\r\n", innerWriter.Boundary())
-		msg.Write(innerMsg.Bytes())
+		canonicalBody := bytes.ReplaceAll(innerBodyBytes, []byte("\r\n"), []byte("\n"))
+		canonicalBody = bytes.ReplaceAll(canonicalBody, []byte("\n"), []byte("\r\n"))
+
+		if encryptSMIME {
+			payloadToEncrypt = canonicalBody
+		} else {
+			fmt.Fprintf(&msg, "Content-Type: multipart/mixed; boundary=\"%s\"\r\n\r\n", innerWriter.Boundary())
+			msg.Write(innerMsg.Bytes())
+		}
 	}
 
+	// Handle S/MIME Encryption
+	if encryptSMIME {
+		// Include the sender's own email so it can be decrypted in the Sent folder
+		allRecipients := append([]string{account.Email}, to...)
+		allRecipients = append(allRecipients, cc...)
+		allRecipients = append(allRecipients, bcc...)
+
+		cfgDir, _ := config.GetConfigDir()
+		certsDir := filepath.Join(cfgDir, "certs")
+		var certs []*x509.Certificate
+
+		for _, em := range allRecipients {
+			em = strings.TrimSpace(em)
+			if strings.Contains(em, "<") {
+				parts := strings.Split(em, "<")
+				if len(parts) == 2 {
+					em = strings.TrimSuffix(parts[1], ">")
+				}
+			}
+
+			var certPath string
+			// If this is our own account, use the path from settings rather than requiring it in the certs folder
+			if strings.EqualFold(em, account.Email) && account.SMIMECert != "" {
+				certPath = account.SMIMECert
+			} else {
+				certPath = filepath.Join(certsDir, em+".pem")
+			}
+
+			if certData, err := os.ReadFile(certPath); err == nil {
+				if block, _ := pem.Decode(certData); block != nil {
+					if cert, err := x509.ParseCertificate(block.Bytes); err == nil {
+						certs = append(certs, cert)
+					}
+				}
+			}
+		}
+
+		if len(certs) == 0 {
+			return errors.New("cannot encrypt: no valid public certificates found for recipients")
+		}
+
+		encryptedDer, err := pkcs7.Encrypt(payloadToEncrypt, certs)
+		if err != nil {
+			return err
+		}
+
+		msg.WriteString("Content-Type: application/pkcs7-mime; smime-type=enveloped-data; name=\"smime.p7m\"\r\n")
+		msg.WriteString("Content-Transfer-Encoding: base64\r\n")
+		msg.WriteString("Content-Disposition: attachment; filename=\"smime.p7m\"\r\n\r\n")
+		msg.WriteString(wrapBase64(base64.StdEncoding.EncodeToString(encryptedDer)))
+	}
+
+	// Combine all recipients for the envelope
 	allRecipients := append([]string{}, to...)
 	allRecipients = append(allRecipients, cc...)
 	allRecipients = append(allRecipients, bcc...)
 
 	addr := fmt.Sprintf("%s:%d", smtpServer, smtpPort)
 
+	// Custom SMTP dialer to support skipping TLS verification for Proton Bridge
 	c, err := smtp.Dial(addr)
 	if err != nil {
 		return err
@@ -258,6 +336,7 @@ func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody
 		return err
 	}
 
+	// Trigger STARTTLS if supported
 	if ok, _ := c.Extension("STARTTLS"); ok {
 		tlsConfig := &tls.Config{
 			ServerName:         smtpServer,
@@ -268,6 +347,7 @@ func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody
 		}
 	}
 
+	// Authenticate
 	if auth != nil {
 		if ok, _ := c.Extension("AUTH"); ok {
 			if err = c.Auth(auth); err != nil {
@@ -276,6 +356,7 @@ func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody
 		}
 	}
 
+	// Send Envelope
 	if err = c.Mail(account.Email); err != nil {
 		return err
 	}
@@ -285,6 +366,7 @@ func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody
 		}
 	}
 
+	// Write Data
 	w, err := c.Data()
 	if err != nil {
 		return err
@@ -301,6 +383,7 @@ func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody
 	return c.Quit()
 }
 
+// wrapBase64 wraps base64-encoded data at 76 characters per line as required by MIME.
 func wrapBase64(data string) string {
 	const lineLength = 76
 	var result strings.Builder
