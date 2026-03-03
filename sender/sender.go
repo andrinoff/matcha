@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"mime"
 	"mime/multipart"
+	"mime/quotedprintable"
 	"net/smtp"
 	"net/textproto"
 	"os"
@@ -98,17 +99,30 @@ func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody
 	altWriter := multipart.NewWriter(altPartWriter)
 	altWriter.SetBoundary(altBoundary)
 
-	textPart, err := altWriter.CreatePart(textproto.MIMEHeader{"Content-Type": {"text/plain; charset=UTF-8"}})
+	textHeader := textproto.MIMEHeader{
+		"Content-Type":              {"text/plain; charset=UTF-8"},
+		"Content-Transfer-Encoding": {"quoted-printable"},
+	}
+	textPart, err := altWriter.CreatePart(textHeader)
 	if err != nil {
 		return err
 	}
-	fmt.Fprint(textPart, plainBody)
+	qpText := quotedprintable.NewWriter(textPart)
+	fmt.Fprint(qpText, plainBody)
+	qpText.Close()
 
-	htmlPart, err := altWriter.CreatePart(textproto.MIMEHeader{"Content-Type": {"text/html; charset=UTF-8"}})
+	htmlHeader := textproto.MIMEHeader{
+		"Content-Type":              {"text/html; charset=UTF-8"},
+		"Content-Transfer-Encoding": {"quoted-printable"},
+	}
+	htmlPart, err := altWriter.CreatePart(htmlHeader)
 	if err != nil {
 		return err
 	}
-	fmt.Fprint(htmlPart, htmlBody)
+	qpHTML := quotedprintable.NewWriter(htmlPart)
+	fmt.Fprint(qpHTML, htmlBody)
+	qpHTML.Close()
+
 	altWriter.Close()
 
 	// --- Inline Images ---

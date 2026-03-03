@@ -35,9 +35,28 @@ type EmailView struct {
 	mailbox            MailboxKind
 	disableImages      bool
 	showImages         bool
+	isSMIME            bool
+	smimeTrusted       bool
 }
 
 func NewEmailView(email fetcher.Email, emailIndex, width, height int, mailbox MailboxKind, disableImages bool) *EmailView {
+	isSMIME := false
+	smimeTrusted := false
+	var filteredAtts []fetcher.Attachment
+
+	// Hide S/MIME attachment files from the view and detect trust status
+	for _, att := range email.Attachments {
+		if att.IsSMIMESignature || att.Filename == "smime.p7s" || att.MIMEType == "application/pkcs7-signature" {
+			isSMIME = true
+			if att.SMIMEVerified {
+				smimeTrusted = true
+			}
+		} else {
+			filteredAtts = append(filteredAtts, att)
+		}
+	}
+	email.Attachments = filteredAtts
+
 	// Pass the styles from the tui package to the view package
 	inlineImages := inlineImagesFromAttachments(email.Attachments)
 
@@ -73,6 +92,8 @@ func NewEmailView(email fetcher.Email, emailIndex, width, height int, mailbox Ma
 		mailbox:       mailbox,
 		disableImages: disableImages,
 		showImages:    showImages,
+		isSMIME:       isSMIME,
+		smimeTrusted:  smimeTrusted,
 	}
 }
 
@@ -201,11 +222,18 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *EmailView) View() tea.View {
 	// Clear all Kitty graphics before rendering to prevent image stacking on scroll.
-	// This must be done synchronously via stdout before the frame is drawn,
-	// as escape sequences in the return string execute too late.
 	clearKittyGraphics()
 
-	header := fmt.Sprintf("From: %s | Subject: %s", m.email.From, m.email.Subject)
+	smimeStatus := ""
+	if m.isSMIME {
+		if m.smimeTrusted {
+			smimeStatus = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Render(" [S/MIME: ✅ Trusted]")
+		} else {
+			smimeStatus = lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(" [S/MIME: ❌ Untrusted]")
+		}
+	}
+
+	header := fmt.Sprintf("From: %s | Subject: %s%s", m.email.From, m.email.Subject, smimeStatus)
 	styledHeader := emailHeaderStyle.Width(m.viewport.Width()).Render(header)
 
 	var help string
