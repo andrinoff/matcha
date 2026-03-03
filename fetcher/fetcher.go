@@ -3,7 +3,10 @@ package fetcher
 import (
 	"bytes"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
+	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -17,19 +20,23 @@ import (
 	"github.com/emersion/go-imap/client"
 	"github.com/emersion/go-message/mail"
 	"github.com/floatpane/matcha/config"
+	"go.mozilla.org/pkcs7"
 	"golang.org/x/text/encoding/ianaindex"
 	"golang.org/x/text/transform"
 )
 
 // Attachment holds data for an email attachment.
 type Attachment struct {
-	Filename  string
-	PartID    string // Keep PartID to fetch on demand
-	Data      []byte
-	Encoding  string // Store encoding for proper decoding
-	MIMEType  string // Full MIME type (e.g., image/png)
-	ContentID string // Content-ID for inline assets (e.g., cid: references)
-	Inline    bool   // True when the part is meant to be displayed inline
+	Filename         string
+	PartID           string // Keep PartID to fetch on demand
+	Data             []byte
+	Encoding         string // Store encoding for proper decoding
+	MIMEType         string // Full MIME type (e.g., image/png)
+	ContentID        string // Content-ID for inline assets (e.g., cid: references)
+	Inline           bool   // True when the part is meant to be displayed inline
+	IsSMIMESignature bool   // True if this attachment is an S/MIME signature
+	SMIMEVerified    bool   // True if the S/MIME signature was verified successfully
+	IsSMIMEEncrypted bool   // True if the S/MIME content was successfully decrypted
 }
 
 type Email struct {
@@ -342,6 +349,27 @@ func FetchEmailBodyFromMailbox(account *config.Account, mailbox string, uid uint
 	seqset := new(imap.SeqSet)
 	seqset.AddNum(uid)
 
+	fetchWholeMessage := func() ([]byte, error) {
+		fetchItem := imap.FetchItem("BODY.PEEK[]")
+		section, _ := imap.ParseBodySectionName(fetchItem)
+		partMessages := make(chan *imap.Message, 1)
+		partDone := make(chan error, 1)
+		go func() {
+			partDone <- c.UidFetch(seqset, []imap.FetchItem{fetchItem}, partMessages)
+		}()
+		if err := <-partDone; err != nil {
+			return nil, err
+		}
+		partMsg := <-partMessages
+		if partMsg != nil {
+			literal := partMsg.GetBody(section)
+			if literal != nil {
+				return ioutil.ReadAll(literal)
+			}
+		}
+		return nil, fmt.Errorf("could not fetch whole message")
+	}
+
 	fetchInlinePart := func(partID, encoding string) ([]byte, error) {
 		fetchItem := imap.FetchItem(fmt.Sprintf("BODY.PEEK[%s]", partID))
 		section, err := imap.ParseBodySectionName(fetchItem)
@@ -396,6 +424,8 @@ func FetchEmailBodyFromMailbox(account *config.Account, mailbox string, uid uint
 	var plainPartID, plainPartEncoding string
 	var htmlPartID, htmlPartEncoding string
 	var attachments []Attachment
+	var extractedBody string // Used if we intercept and decrypt a payload
+
 	var checkPart func(part *imap.BodyStructure, partID string)
 	checkPart = func(part *imap.BodyStructure, partID string) {
 		// Check for text content (prefer html over plain)
@@ -450,7 +480,217 @@ func FetchEmailBodyFromMailbox(account *config.Account, mailbox string, uid uint
 		if filename == "" && isInline && strings.HasPrefix(mimeType, "image/") {
 			filename = "inline"
 		}
-		if (filename != "" || isCID) && (part.Disposition == "attachment" || isInline || part.MIMEType != "text") {
+
+		// === S/MIME ENCRYPTION AND OPAQUE VERIFICATION ===
+		if filename == "smime.p7m" || mimeType == "application/pkcs7-mime" {
+			data, err := fetchInlinePart(partID, part.Encoding)
+			if err != nil && partID == "1" {
+				// Fallback for single-part messages where PEEK[1] fails
+				data, err = fetchInlinePart("TEXT", part.Encoding)
+			}
+
+			if err != nil {
+				extractedBody = fmt.Sprintf("**S/MIME Error:** Failed to fetch encrypted part from IMAP server: %v\n", err)
+				htmlPartID = "extracted"
+			} else {
+				p7, parseErr := pkcs7.Parse(data)
+				if parseErr != nil {
+					// Fallback: IMAP servers sometimes drop the transfer-encoding header.
+					// We manually strip newlines and attempt a base64 decode just in case.
+					cleanData := bytes.ReplaceAll(data, []byte("\n"), []byte(""))
+					cleanData = bytes.ReplaceAll(cleanData, []byte("\r"), []byte(""))
+					if decoded, b64err := base64.StdEncoding.DecodeString(string(cleanData)); b64err == nil {
+						p7, parseErr = pkcs7.Parse(decoded)
+					}
+				}
+
+				if parseErr != nil {
+					extractedBody = fmt.Sprintf("**S/MIME Error:** Failed to parse PKCS7 payload: %v\n", parseErr)
+					htmlPartID = "extracted"
+				} else {
+					var innerBytes []byte
+					isEncrypted, isOpaqueSigned, smimeTrusted := false, false, false
+					decryptionErr := ""
+
+					// 1. Try to Decrypt
+					if account.SMIMECert != "" && account.SMIMEKey != "" {
+						cData, err1 := os.ReadFile(account.SMIMECert)
+						kData, err2 := os.ReadFile(account.SMIMEKey)
+						if err1 != nil || err2 != nil {
+							decryptionErr = fmt.Sprintf("Failed to read cert/key files. Cert: %v, Key: %v", err1, err2)
+						} else {
+							cBlock, _ := pem.Decode(cData)
+							kBlock, _ := pem.Decode(kData)
+							if cBlock == nil || kBlock == nil {
+								decryptionErr = "Failed to decode PEM blocks from cert/key files."
+							} else {
+								cert, err3 := x509.ParseCertificate(cBlock.Bytes)
+								var privKey any
+								var err4 error
+								if key, err := x509.ParsePKCS8PrivateKey(kBlock.Bytes); err == nil {
+									privKey = key
+								} else if key, err := x509.ParsePKCS1PrivateKey(kBlock.Bytes); err == nil {
+									privKey = key
+								} else if key, err := x509.ParseECPrivateKey(kBlock.Bytes); err == nil {
+									privKey = key
+								} else {
+									err4 = errors.New("unsupported private key format")
+								}
+
+								if err3 != nil || err4 != nil {
+									decryptionErr = fmt.Sprintf("Failed to parse cert/key. Cert: %v, Key: %v", err3, err4)
+								} else {
+									dec, err := p7.Decrypt(cert, privKey)
+									if err == nil {
+										innerBytes = dec
+										isEncrypted = true
+									} else {
+										decryptionErr = fmt.Sprintf("PKCS7 Decrypt failed: %v", err)
+									}
+								}
+							}
+						}
+					} else {
+						// Only set error if it actually is enveloped data (encrypted)
+						// If it's just opaque signed, we shouldn't error out.
+						decryptionErr = "S/MIME Cert or Key path is missing in settings."
+					}
+
+					// 2. If not encrypted, check if it's an opaque signature
+					if !isEncrypted && len(p7.Signers) > 0 {
+						isOpaqueSigned = true
+						innerBytes = p7.Content
+						decryptionErr = "" // Clear encryption error because it wasn't encrypted to begin with
+						roots, _ := x509.SystemCertPool()
+						if roots == nil {
+							roots = x509.NewCertPool()
+						}
+						if err := p7.VerifyWithChain(roots); err == nil {
+							smimeTrusted = true
+						}
+					}
+
+					// 3. Parse Inner MIME payload
+					if len(innerBytes) > 0 {
+						mr, err := mail.CreateReader(bytes.NewReader(innerBytes))
+						if err == nil {
+							for {
+								p, err := mr.NextPart()
+								if err != nil {
+									break
+								}
+								cType, _, _ := mime.ParseMediaType(p.Header.Get("Content-Type"))
+								disp, dParams, _ := mime.ParseMediaType(p.Header.Get("Content-Disposition"))
+								b, _ := ioutil.ReadAll(p.Body) // Auto-decodes quoted-printable/base64
+
+								if disp == "attachment" || disp == "inline" || (!strings.HasPrefix(cType, "multipart/") && cType != "text/plain" && cType != "text/html") {
+									fn := dParams["filename"]
+									if fn == "" {
+										_, cp, _ := mime.ParseMediaType(p.Header.Get("Content-Type"))
+										fn = cp["name"]
+									}
+									attachments = append(attachments, Attachment{
+										Filename: fn, Data: b, MIMEType: cType, Inline: disp == "inline",
+									})
+								} else {
+									if cType == "text/html" {
+										extractedBody = string(b)
+										htmlPartID = "extracted" // Skip IMAP fetch
+									} else if cType == "text/plain" && extractedBody == "" {
+										extractedBody = string(b)
+										plainPartID = "extracted"
+									}
+								}
+							}
+						} else {
+							extractedBody = fmt.Sprintf("**S/MIME Error:** Failed to read inner decrypted MIME: %v\n\n```\n%s\n```", err, string(innerBytes))
+							htmlPartID = "extracted"
+						}
+
+						attachments = append(attachments, Attachment{
+							Filename:         "smime-status.internal",
+							IsSMIMESignature: isOpaqueSigned,
+							SMIMEVerified:    smimeTrusted,
+							IsSMIMEEncrypted: isEncrypted,
+						})
+						return // Stop checking IMAP structure, we hijacked it
+					} else {
+						extractedBody = fmt.Sprintf("**S/MIME Decryption Failed:** %s\n", decryptionErr)
+						htmlPartID = "extracted"
+					}
+				}
+			}
+		}
+
+		// === S/MIME DETACHED SIGNATURE VERIFICATION ===
+		if filename == "smime.p7s" || mimeType == "application/pkcs7-signature" {
+			att := Attachment{
+				Filename:         filename,
+				PartID:           partID,
+				Encoding:         part.Encoding,
+				MIMEType:         mimeType,
+				ContentID:        contentID,
+				Inline:           isInline,
+				IsSMIMESignature: true,
+			}
+			if data, err := fetchInlinePart(partID, part.Encoding); err == nil {
+				att.Data = data
+				p7, err := pkcs7.Parse(data)
+				if err == nil {
+					boundary := msg.BodyStructure.Params["boundary"]
+					if boundary != "" {
+						rawEmail, err := fetchWholeMessage()
+						if err == nil {
+							fullBoundary := []byte("--" + boundary)
+							firstIdx := bytes.Index(rawEmail, fullBoundary)
+							if firstIdx != -1 {
+								startIdx := firstIdx + len(fullBoundary)
+								if startIdx < len(rawEmail) && rawEmail[startIdx] == '\r' {
+									startIdx++
+								}
+								if startIdx < len(rawEmail) && rawEmail[startIdx] == '\n' {
+									startIdx++
+								}
+								secondIdx := bytes.Index(rawEmail[startIdx:], fullBoundary)
+								if secondIdx != -1 {
+									endIdx := startIdx + secondIdx
+									if endIdx > 0 && rawEmail[endIdx-1] == '\n' {
+										endIdx--
+									}
+									if endIdx > 0 && rawEmail[endIdx-1] == '\r' {
+										endIdx--
+									}
+									signedData := rawEmail[startIdx:endIdx]
+									canonical := bytes.ReplaceAll(signedData, []byte("\r\n"), []byte("\n"))
+									canonical = bytes.ReplaceAll(canonical, []byte("\n"), []byte("\r\n"))
+
+									roots, _ := x509.SystemCertPool()
+									if roots == nil {
+										roots = x509.NewCertPool()
+									}
+
+									p7.Content = canonical
+									if err := p7.VerifyWithChain(roots); err == nil {
+										att.SMIMEVerified = true
+									} else {
+										p7.Content = append(canonical, '\r', '\n')
+										if err := p7.VerifyWithChain(roots); err == nil {
+											att.SMIMEVerified = true
+										} else {
+											p7.Content = bytes.TrimRight(canonical, "\r\n")
+											if err := p7.VerifyWithChain(roots); err == nil {
+												att.SMIMEVerified = true
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+			attachments = append(attachments, att)
+		} else if (filename != "" || isCID) && (part.Disposition == "attachment" || isInline || part.MIMEType != "text") {
 			att := Attachment{
 				Filename:  filename,
 				PartID:    partID,
@@ -495,6 +735,11 @@ func FetchEmailBodyFromMailbox(account *config.Account, mailbox string, uid uint
 		}
 	}
 	findParts(msg.BodyStructure, "")
+
+	// If we hijacked and decrypted the body, return it immediately
+	if extractedBody != "" {
+		return extractedBody, attachments, nil
+	}
 
 	var body string
 	textPartID := ""

@@ -28,6 +28,11 @@ type Account struct {
 	SMTPServer string `json:"smtp_server,omitempty"`
 	SMTPPort   int    `json:"smtp_port,omitempty"`
 	Insecure   bool   `json:"insecure,omitempty"`
+
+	// S/MIME settings
+	SMIMECert          string `json:"smime_cert,omitempty"`            // Path to the public certificate PEM
+	SMIMEKey           string `json:"smime_key,omitempty"`             // Path to the private key PEM
+	SMIMESignByDefault bool   `json:"smime_sign_by_default,omitempty"` // Whether to enable S/MIME signing by default
 }
 
 // MailingList represents a named group of email addresses.
@@ -102,7 +107,12 @@ func (a *Account) GetSMTPPort() int {
 	}
 }
 
-// configDir returns the path to the configuration directory.
+// GetConfigDir returns the path to the configuration directory (exported).
+func GetConfigDir() (string, error) {
+	return configDir()
+}
+
+// configDir returns the path to the configuration directory (internal).
 func configDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -161,21 +171,25 @@ func LoadConfig() (*Config, error) {
 	var needsMigration bool
 
 	type rawAccount struct {
-		ID              string `json:"id"`
-		Name            string `json:"name"`
-		Email           string `json:"email"`
-		Password        string `json:"password,omitempty"`
-		ServiceProvider string `json:"service_provider"`
-		FetchEmail      string `json:"fetch_email,omitempty"`
-		IMAPServer      string `json:"imap_server,omitempty"`
-		IMAPPort        int    `json:"imap_port,omitempty"`
-		SMTPServer      string `json:"smtp_server,omitempty"`
-		SMTPPort        int    `json:"smtp_port,omitempty"`
-		Insecure        bool   `json:"insecure,omitempty"`
+		ID                 string `json:"id"`
+		Name               string `json:"name"`
+		Email              string `json:"email"`
+		Password           string `json:"password,omitempty"`
+		ServiceProvider    string `json:"service_provider"`
+		FetchEmail         string `json:"fetch_email,omitempty"`
+		IMAPServer         string `json:"imap_server,omitempty"`
+		IMAPPort           int    `json:"imap_port,omitempty"`
+		SMTPServer         string `json:"smtp_server,omitempty"`
+		SMTPPort           int    `json:"smtp_port,omitempty"`
+		Insecure           bool   `json:"insecure,omitempty"`
+		SMIMECert          string `json:"smime_cert,omitempty"`
+		SMIMEKey           string `json:"smime_key,omitempty"`
+		SMIMESignByDefault bool   `json:"smime_sign_by_default,omitempty"`
 	}
 	type diskConfig struct {
 		Accounts      []rawAccount  `json:"accounts"`
 		DisableImages bool          `json:"disable_images,omitempty"`
+		HideTips      bool          `json:"hide_tips,omitempty"`
 		MailingLists  []MailingList `json:"mailing_lists,omitempty"`
 	}
 
@@ -205,19 +219,23 @@ func LoadConfig() (*Config, error) {
 	}
 
 	config.DisableImages = raw.DisableImages
+	config.HideTips = raw.HideTips
 	config.MailingLists = raw.MailingLists
 	for _, rawAcc := range raw.Accounts {
 		acc := Account{
-			ID:              rawAcc.ID,
-			Name:            rawAcc.Name,
-			Email:           rawAcc.Email,
-			ServiceProvider: rawAcc.ServiceProvider,
-			FetchEmail:      rawAcc.FetchEmail,
-			IMAPServer:      rawAcc.IMAPServer,
-			IMAPPort:        rawAcc.IMAPPort,
-			SMTPServer:      rawAcc.SMTPServer,
-			SMTPPort:        rawAcc.SMTPPort,
-			Insecure:        rawAcc.Insecure,
+			ID:                 rawAcc.ID,
+			Name:               rawAcc.Name,
+			Email:              rawAcc.Email,
+			ServiceProvider:    rawAcc.ServiceProvider,
+			FetchEmail:         rawAcc.FetchEmail,
+			IMAPServer:         rawAcc.IMAPServer,
+			IMAPPort:           rawAcc.IMAPPort,
+			SMTPServer:         rawAcc.SMTPServer,
+			SMTPPort:           rawAcc.SMTPPort,
+			Insecure:           rawAcc.Insecure,
+			SMIMECert:          rawAcc.SMIMECert,
+			SMIMEKey:           rawAcc.SMIMEKey,
+			SMIMESignByDefault: rawAcc.SMIMESignByDefault,
 		}
 
 		if rawAcc.Password != "" {

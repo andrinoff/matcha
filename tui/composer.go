@@ -29,6 +29,7 @@ var (
 	emailRecipientStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true)
 	attachmentStyle     = lipgloss.NewStyle().PaddingLeft(4).Foreground(lipgloss.Color("240"))
 	fromSelectorStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+	smimeToggleStyle    = lipgloss.NewStyle().PaddingLeft(4).Foreground(lipgloss.Color("240"))
 )
 
 const (
@@ -40,6 +41,7 @@ const (
 	focusBody
 	focusSignature
 	focusAttachment
+	focusEncryptSMIME
 	focusSend
 )
 
@@ -53,6 +55,7 @@ type Composer struct {
 	bodyInput      textarea.Model
 	signatureInput textarea.Model
 	attachmentPath string
+	encryptSMIME   bool
 	width          int
 	height         int
 	confirmingExit bool
@@ -337,34 +340,45 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Batch(cmds...)
 
-		case "enter":
+		case "enter", " ":
 			switch m.focusIndex {
 			case focusFrom:
-				if len(m.accounts) > 1 {
+				if len(m.accounts) > 1 && msg.String() == "enter" {
 					m.showAccountPicker = true
 				}
 				return m, nil
 			case focusAttachment:
-				return m, func() tea.Msg { return GoToFilePickerMsg{} }
-			case focusSend:
-				acc := m.getSelectedAccount()
-				accountID := ""
-				if acc != nil {
-					accountID = acc.ID
+				if msg.String() == "enter" {
+					return m, func() tea.Msg { return GoToFilePickerMsg{} }
 				}
-				return m, func() tea.Msg {
-					return SendEmailMsg{
-						To:             m.toInput.Value(),
-						Cc:             m.ccInput.Value(),
-						Bcc:            m.bccInput.Value(),
-						Subject:        m.subjectInput.Value(),
-						Body:           m.bodyInput.Value(),
-						AttachmentPath: m.attachmentPath,
-						AccountID:      accountID,
-						QuotedText:     m.quotedText,
-						InReplyTo:      m.inReplyTo,
-						References:     m.references,
-						Signature:      m.signatureInput.Value(),
+			case focusEncryptSMIME:
+				if msg.String() == "enter" || msg.String() == " " {
+					m.encryptSMIME = !m.encryptSMIME
+				}
+				return m, nil
+			case focusSend:
+				if msg.String() == "enter" {
+					acc := m.getSelectedAccount()
+					accountID := ""
+					if acc != nil {
+						accountID = acc.ID
+					}
+					return m, func() tea.Msg {
+						return SendEmailMsg{
+							To:             m.toInput.Value(),
+							Cc:             m.ccInput.Value(),
+							Bcc:            m.bccInput.Value(),
+							Subject:        m.subjectInput.Value(),
+							Body:           m.bodyInput.Value(),
+							AttachmentPath: m.attachmentPath,
+							AccountID:      accountID,
+							QuotedText:     m.quotedText,
+							InReplyTo:      m.inReplyTo,
+							References:     m.references,
+							Signature:      m.signatureInput.Value(),
+							SignSMIME:      acc != nil && acc.SMIMESignByDefault,
+							EncryptSMIME:   m.encryptSMIME,
+						}
 					}
 				}
 			}
@@ -451,6 +465,15 @@ func (m *Composer) View() tea.View {
 		attachmentField = blurredStyle.Render(fmt.Sprintf("  Attachment: %s", attachmentText))
 	}
 
+	encToggle := "[ ]"
+	if m.encryptSMIME {
+		encToggle = "[x]"
+	}
+	encField := blurredStyle.Render(fmt.Sprintf("  Encrypt Email (S/MIME): %s", encToggle))
+	if m.focusIndex == focusEncryptSMIME {
+		encField = focusedStyle.Render(fmt.Sprintf("> Encrypt Email (S/MIME): %s", encToggle))
+	}
+
 	// Build To field with suggestions
 	toFieldView := m.toInput.View()
 	if m.showSuggestions && len(m.suggestions) > 0 {
@@ -495,6 +518,8 @@ func (m *Composer) View() tea.View {
 		tip = "Your email signature. This will be appended to the end of the email."
 	case focusAttachment:
 		tip = "Press Enter to select a file to attach to this email."
+	case focusEncryptSMIME:
+		tip = "Press Space or Enter to toggle S/MIME encryption on or off."
 	case focusSend:
 		tip = "Press Enter to send the email."
 	}
@@ -510,6 +535,7 @@ func (m *Composer) View() tea.View {
 		signatureLabel,
 		m.signatureInput.View(),
 		attachmentStyle.Render(attachmentField),
+		smimeToggleStyle.Render(encField),
 		button,
 		"",
 	}

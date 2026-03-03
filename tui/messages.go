@@ -33,12 +33,14 @@ type SendEmailMsg struct {
 	AccountID      string // ID of the account to send from
 	QuotedText     string // Hidden quoted text appended when sending
 	Signature      string // Signature to append to email body
+	SignSMIME      bool   // Whether to sign the email using S/MIME
+	EncryptSMIME   bool   // Whether to encrypt the email using S/MIME
 }
 
 type Credentials struct {
 	Provider   string
 	Name       string
-	Host       string // Host (this was the previous \"Email Address\" field in the UI)
+	Host       string // Host (this was the previous "Email Address" field in the UI)
 	FetchEmail string // Single email address to fetch messages for. If empty, code should default this to Host when creating the account.
 	Password   string
 	IMAPServer string
