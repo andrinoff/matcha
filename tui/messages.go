@@ -22,19 +22,19 @@ type ViewEmailMsg struct {
 }
 
 type SendEmailMsg struct {
-	To             string
-	Cc             string // Cc recipient(s)
-	Bcc            string // Bcc recipient(s)
-	Subject        string
-	Body           string
-	AttachmentPath string
-	InReplyTo      string
-	References     []string
-	AccountID      string // ID of the account to send from
-	QuotedText     string // Hidden quoted text appended when sending
-	Signature      string // Signature to append to email body
-	SignSMIME      bool   // Whether to sign the email using S/MIME
-	EncryptSMIME   bool   // Whether to encrypt the email using S/MIME
+	To              string
+	Cc              string // Cc recipient(s)
+	Bcc             string // Bcc recipient(s)
+	Subject         string
+	Body            string
+	AttachmentPaths []string
+	InReplyTo       string
+	References      []string
+	AccountID       string // ID of the account to send from
+	QuotedText      string // Hidden quoted text appended when sending
+	Signature       string // Signature to append to email body
+	SignSMIME       bool   // Whether to sign the email using S/MIME
+	EncryptSMIME    bool   // Whether to encrypt the email using S/MIME
 }
 
 type Credentials struct {

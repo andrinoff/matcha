@@ -1451,14 +1451,14 @@ func sendEmail(account *config.Account, msg tui.SendEmailMsg) tea.Cmd {
 
 		htmlBody := markdownToHTML([]byte(body))
 
-		if msg.AttachmentPath != "" {
-			fileData, err := os.ReadFile(msg.AttachmentPath)
+		for _, attachPath := range msg.AttachmentPaths {
+			fileData, err := os.ReadFile(attachPath)
 			if err != nil {
-				log.Printf("Could not read attachment file %s: %v", msg.AttachmentPath, err)
-			} else {
-				_, filename := filepath.Split(msg.AttachmentPath)
-				attachments[filename] = fileData
+				log.Printf("Could not read attachment file %s: %v", attachPath, err)
+				continue
 			}
+			_, filename := filepath.Split(attachPath)
+			attachments[filename] = fileData
 		}
 
 		err := sender.SendEmail(account, recipients, cc, bcc, msg.Subject, body, string(htmlBody), images, attachments, msg.InReplyTo, msg.References, msg.SignSMIME, msg.EncryptSMIME)
