@@ -12,6 +12,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	_ "image/gif"
@@ -305,10 +306,30 @@ func debugImageProtocol(format string, args ...interface{}) {
 	}
 }
 
+// remoteImageCache caches fetched remote images (URL -> base64 PNG string).
+var remoteImageCache sync.Map
+
+// nextImageID is an auto-incrementing counter for Kitty image IDs.
+var nextImageID uint32 = 1000
+
+// allocImageID returns a unique Kitty image ID.
+func allocImageID() uint32 {
+	id := nextImageID
+	nextImageID++
+	return id
+}
+
 func fetchRemoteBase64(url string) string {
 	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
 		return ""
 	}
+
+	// Check cache first
+	if cached, ok := remoteImageCache.Load(url); ok {
+		debugImageProtocol("remote cache hit url=%s", url)
+		return cached.(string)
+	}
+
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
@@ -340,6 +361,7 @@ func fetchRemoteBase64(url string) string {
 
 	encoded := base64.StdEncoding.EncodeToString(buf.Bytes())
 	debugImageProtocol("remote fetch ok url=%s len=%d", url, len(encoded))
+	remoteImageCache.Store(url, encoded)
 	return encoded
 }
 
@@ -472,28 +494,83 @@ func imageRows(payload string) int {
 	return rows
 }
 
+// kittyUploadImage uploads image data to the terminal with a unique ID using
+// the Kitty graphics protocol transmit action (a=t). The image is stored in
+// the terminal's memory and can be displayed later by ID without re-sending data.
+func kittyUploadImage(payload string, id uint32) {
+	if payload == "" {
+		return
+	}
+
+	const chunkSize = 4096
+	for offset := 0; offset < len(payload); offset += chunkSize {
+		end := offset + chunkSize
+		if end > len(payload) {
+			end = len(payload)
+		}
+		more := "0"
+		if end < len(payload) {
+			more = "1"
+		}
+
+		chunk := payload[offset:end]
+		if offset == 0 {
+			// a=t: transmit (upload) only, don't display yet
+			// i=ID: assign this image ID
+			fmt.Fprintf(os.Stdout, "\x1b_Gf=100,a=t,i=%d,q=2,m=%s;%s\x1b\\", id, more, chunk)
+		} else {
+			fmt.Fprintf(os.Stdout, "\x1b_Gm=%s;%s\x1b\\", more, chunk)
+		}
+	}
+	os.Stdout.Sync()
+}
+
+// kittyDisplayImage displays a previously uploaded image by its ID at the
+// current cursor position. This is very fast since no image data is transmitted.
+func kittyDisplayImage(id uint32) string {
+	// a=p: put (display) an already-uploaded image by ID
+	// C=1: cursor does not move
+	return fmt.Sprintf("\x1b_Ga=p,i=%d,q=2,C=1\x1b\\", id)
+}
+
+// iterm2ImageEscapeOnly returns only the iTerm2 image protocol escape sequence
+// without any row placeholders. Used for out-of-band rendering to stdout.
+func iterm2ImageEscapeOnly(payload string) string {
+	if payload == "" {
+		return ""
+	}
+	return fmt.Sprintf("\x1b]1337;File=inline=1:%s\x07", payload)
+}
+
 // RenderImageToStdout writes an image directly to stdout at the given screen
 // row using cursor positioning. This bypasses bubbletea's cell-based renderer
 // which cannot handle graphics protocol escape sequences.
-func RenderImageToStdout(placement ImagePlacement, screenRow int) {
+//
+// For Kitty-protocol terminals, images are uploaded once and then displayed by
+// ID on subsequent calls, making scroll rendering nearly instant.
+func RenderImageToStdout(placement *ImagePlacement, screenRow int) {
 	if placement.Base64 == "" {
 		return
 	}
 
-	var seq string
-	if kittySupported() || ghosttySupported() || weztermSupported() || waystSupported() || konsoleSupported() {
-		seq = kittyInlineImage(placement.Base64)
-	} else if iterm2Supported() || warpSupported() {
-		seq = iterm2InlineImage(placement.Base64)
-	}
-	if seq == "" {
-		return
-	}
+	useKitty := kittySupported() || ghosttySupported() || weztermSupported() || waystSupported() || konsoleSupported()
+	useIterm2 := iterm2Supported() || warpSupported()
 
-	// Save cursor, move to target row, write image, restore cursor.
-	// screenRow is 1-based for ANSI escape sequences.
-	fmt.Fprintf(os.Stdout, "\x1b[s\x1b[%d;1H%s\x1b[u", screenRow+1, seq)
-	os.Stdout.Sync()
+	if useKitty {
+		// Upload once, display by ID on subsequent renders
+		if !placement.Uploaded {
+			placement.ID = allocImageID()
+			kittyUploadImage(placement.Base64, placement.ID)
+			placement.Uploaded = true
+		}
+		seq := kittyDisplayImage(placement.ID)
+		fmt.Fprintf(os.Stdout, "\x1b[s\x1b[%d;1H%s\x1b[u", screenRow+1, seq)
+		os.Stdout.Sync()
+	} else if useIterm2 {
+		seq := iterm2ImageEscapeOnly(placement.Base64)
+		fmt.Fprintf(os.Stdout, "\x1b[s\x1b[%d;1H%s\x1b[u", screenRow+1, seq)
+		os.Stdout.Sync()
+	}
 }
 
 // expandImageRowPlaceholders replaces image row placeholders with actual newlines.
@@ -521,9 +598,11 @@ type InlineImage struct {
 // line in the email body. Images are rendered directly to stdout (bypassing
 // bubbletea's cell-based renderer which cannot handle graphics protocols).
 type ImagePlacement struct {
-	Line   int    // Line number in the processed body text where the image starts
-	Base64 string // Base64-encoded image data (PNG)
-	Rows   int    // Number of terminal rows the image occupies
+	Line     int    // Line number in the processed body text where the image starts
+	Base64   string // Base64-encoded image data (PNG)
+	Rows     int    // Number of terminal rows the image occupies
+	Uploaded bool   // Whether the image has been uploaded to the terminal via Kitty ID
+	ID       uint32 // Kitty image ID for display-by-reference
 }
 
 // ProcessBodyWithInline renders the body and resolves CID inline images when provided.

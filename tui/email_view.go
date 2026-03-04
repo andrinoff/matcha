@@ -13,8 +13,8 @@ import (
 	"github.com/floatpane/matcha/view"
 )
 
-// clearKittyGraphics sends the Kitty graphics protocol delete command directly to stdout
-func clearKittyGraphics() {
+// ClearKittyGraphics sends the Kitty graphics protocol delete command directly to stdout.
+func ClearKittyGraphics() {
 	// Delete all images: a=d (action=delete), d=A (delete all)
 	os.Stdout.WriteString("\x1b_Ga=d,d=A\x1b\\")
 	os.Stdout.Sync()
@@ -119,7 +119,7 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			// Clear Kitty graphics before returning to mailbox
-			clearKittyGraphics()
+			ClearKittyGraphics()
 			return m, func() tea.Msg { return BackToMailboxMsg{Mailbox: m.mailbox} }
 		}
 
@@ -157,7 +157,7 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "i":
 				if view.ImageProtocolSupported() {
 					m.showImages = !m.showImages
-					clearKittyGraphics()
+					ClearKittyGraphics()
 
 					inlineImages := inlineImagesFromAttachments(m.email.Attachments)
 					body, placements, err := view.ProcessBodyWithInline(m.email.Body, inlineImages, H1Style, H2Style, BodyStyle, !m.showImages)
@@ -171,17 +171,17 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			case "r":
 				// Clear Kitty graphics before opening composer
-				clearKittyGraphics()
+				ClearKittyGraphics()
 				return m, func() tea.Msg { return ReplyToEmailMsg{Email: m.email} }
 			case "f":
 				// Clear Kitty graphics before opening composer
-				clearKittyGraphics()
+				ClearKittyGraphics()
 				return m, func() tea.Msg { return ForwardEmailMsg{Email: m.email} }
 			case "d":
 				accountID := m.accountID
 				uid := m.email.UID
 				// Clear Kitty graphics before transitioning
-				clearKittyGraphics()
+				ClearKittyGraphics()
 				return m, func() tea.Msg {
 					return DeleteEmailMsg{UID: uid, AccountID: accountID, Mailbox: m.mailbox}
 				}
@@ -189,7 +189,7 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				accountID := m.accountID
 				uid := m.email.UID
 				// Clear Kitty graphics before transitioning
-				clearKittyGraphics()
+				ClearKittyGraphics()
 				return m, func() tea.Msg {
 					return ArchiveEmailMsg{UID: uid, AccountID: accountID, Mailbox: m.mailbox}
 				}
@@ -211,7 +211,7 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport.SetHeight(msg.Height - headerHeight - attachmentHeight)
 
 		// When the window size changes, wrap and clear kitty images to keep placement stable
-		clearKittyGraphics()
+		ClearKittyGraphics()
 		inlineImages := inlineImagesFromAttachments(m.email.Attachments)
 		body, placements, err := view.ProcessBodyWithInline(m.email.Body, inlineImages, H1Style, H2Style, BodyStyle, !m.showImages)
 		if err != nil {
@@ -229,10 +229,12 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *EmailView) View() tea.View {
-	// Clear all graphics before rendering to prevent image stacking on scroll.
-	// This must be done synchronously via stdout because bubbletea v2's
-	// ultraviolet renderer cannot pass through graphics protocol sequences.
-	clearKittyGraphics()
+	// Clear image placements (but keep uploaded image data in terminal memory)
+	// before re-rendering to prevent stacking on scroll. Uses d=a (delete all
+	// placements) instead of d=A (delete all including data) so that images
+	// can be re-displayed by ID without re-uploading.
+	os.Stdout.WriteString("\x1b_Ga=d,d=a\x1b\\")
+	os.Stdout.Sync()
 
 	smimeStatus := ""
 	if m.isEncrypted {
@@ -284,8 +286,12 @@ func (m *EmailView) View() tea.View {
 		yOffset := m.viewport.YOffset()
 		vpHeight := m.viewport.Height()
 
-		for _, p := range m.imagePlacements {
-			// Check if this image is visible in the current viewport window
+		for i := range m.imagePlacements {
+			p := &m.imagePlacements[i]
+			// Only render if the image's top line is within the viewport.
+			// We can't partially clip images scrolled off the top (Kitty
+			// always renders from the top-left), so we hide them once
+			// their start line scrolls above the viewport.
 			if p.Line >= yOffset && p.Line < yOffset+vpHeight {
 				screenRow := headerLines + (p.Line - yOffset)
 				view.RenderImageToStdout(p, screenRow)

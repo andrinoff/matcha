@@ -141,6 +141,8 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tui.BackToMailboxMsg:
+		// Ensure kitty graphics are cleared when leaving email view
+		tui.ClearKittyGraphics()
 		switch msg.Mailbox {
 		case tui.MailboxSent:
 			if m.sentInbox != nil {
@@ -822,6 +824,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.current.Init()
 
 	case tui.DeleteEmailMsg:
+		tui.ClearKittyGraphics()
 		m.previousModel = m.current
 		m.current = tui.NewStatus("Deleting email...")
 
@@ -838,6 +841,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(m.current.Init(), deleteEmailCmd(account, msg.UID, msg.AccountID, msg.Mailbox))
 
 	case tui.ArchiveEmailMsg:
+		tui.ClearKittyGraphics()
 		m.previousModel = m.current
 		m.current = tui.NewStatus("Archiving email...")
 
