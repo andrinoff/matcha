@@ -455,6 +455,47 @@ func renderInlineImage(payload string) string {
 	return ""
 }
 
+// imageRows calculates the number of terminal rows an image occupies.
+func imageRows(payload string) int {
+	rows := 1
+	if data, err := base64.StdEncoding.DecodeString(payload); err == nil {
+		if img, _, err := image.Decode(bytes.NewReader(data)); err == nil {
+			cellHeight := getTerminalCellSize()
+			h := img.Bounds().Dy()
+			rows = (h + cellHeight - 1) / cellHeight
+			if rows < 1 {
+				rows = 1
+			}
+			debugImageProtocol("image height: %d pixels, cell height: %d pixels, rows needed: %d", h, cellHeight, rows)
+		}
+	}
+	return rows
+}
+
+// RenderImageToStdout writes an image directly to stdout at the given screen
+// row using cursor positioning. This bypasses bubbletea's cell-based renderer
+// which cannot handle graphics protocol escape sequences.
+func RenderImageToStdout(placement ImagePlacement, screenRow int) {
+	if placement.Base64 == "" {
+		return
+	}
+
+	var seq string
+	if kittySupported() || ghosttySupported() || weztermSupported() || waystSupported() || konsoleSupported() {
+		seq = kittyInlineImage(placement.Base64)
+	} else if iterm2Supported() || warpSupported() {
+		seq = iterm2InlineImage(placement.Base64)
+	}
+	if seq == "" {
+		return
+	}
+
+	// Save cursor, move to target row, write image, restore cursor.
+	// screenRow is 1-based for ANSI escape sequences.
+	fmt.Fprintf(os.Stdout, "\x1b[s\x1b[%d;1H%s\x1b[u", screenRow+1, seq)
+	os.Stdout.Sync()
+}
+
 // expandImageRowPlaceholders replaces image row placeholders with actual newlines.
 func expandImageRowPlaceholders(text string) string {
 	re := regexp.MustCompile(regexp.QuoteMeta(imageRowPlaceholderPrefix) + `(\d+)` + regexp.QuoteMeta(imageRowPlaceholderSuffix))
@@ -476,8 +517,18 @@ type InlineImage struct {
 	Base64 string
 }
 
+// ImagePlacement holds the data needed to render an image at a specific
+// line in the email body. Images are rendered directly to stdout (bypassing
+// bubbletea's cell-based renderer which cannot handle graphics protocols).
+type ImagePlacement struct {
+	Line   int    // Line number in the processed body text where the image starts
+	Base64 string // Base64-encoded image data (PNG)
+	Rows   int    // Number of terminal rows the image occupies
+}
+
 // ProcessBodyWithInline renders the body and resolves CID inline images when provided.
-func ProcessBodyWithInline(rawBody string, inline []InlineImage, h1Style, h2Style, bodyStyle lipgloss.Style, disableImages bool) (string, error) {
+// Returns the rendered body text, image placements for out-of-band rendering, and any error.
+func ProcessBodyWithInline(rawBody string, inline []InlineImage, h1Style, h2Style, bodyStyle lipgloss.Style, disableImages bool) (string, []ImagePlacement, error) {
 	inlineMap := make(map[string]string, len(inline))
 	for _, img := range inline {
 		cid := strings.TrimSpace(img.CID)
@@ -494,11 +545,11 @@ func ProcessBodyWithInline(rawBody string, inline []InlineImage, h1Style, h2Styl
 
 // ProcessBody takes a raw email body, decodes it, and formats it as plain
 // text with terminal hyperlinks.
-func ProcessBody(rawBody string, h1Style, h2Style, bodyStyle lipgloss.Style, disableImages bool) (string, error) {
+func ProcessBody(rawBody string, h1Style, h2Style, bodyStyle lipgloss.Style, disableImages bool) (string, []ImagePlacement, error) {
 	return processBody(rawBody, nil, h1Style, h2Style, bodyStyle, disableImages)
 }
 
-func processBody(rawBody string, inline map[string]string, h1Style, h2Style, bodyStyle lipgloss.Style, disableImages bool) (string, error) {
+func processBody(rawBody string, inline map[string]string, h1Style, h2Style, bodyStyle lipgloss.Style, disableImages bool) (string, []ImagePlacement, error) {
 	decodedBody, err := decodeQuotedPrintable(rawBody)
 	if err != nil {
 		decodedBody = rawBody
@@ -508,7 +559,7 @@ func processBody(rawBody string, inline map[string]string, h1Style, h2Style, bod
 
 	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(htmlBody))
 	if err != nil {
-		return "", fmt.Errorf("could not parse email body: %w", err)
+		return "", nil, fmt.Errorf("could not parse email body: %w", err)
 	}
 
 	doc.Find("style, script").Remove()
@@ -571,7 +622,16 @@ func processBody(rawBody string, inline map[string]string, h1Style, h2Style, bod
 		s.ReplaceWithHtml(placeholder)
 	})
 
-	// Format links and images
+	// Format links and images.
+	// Collect image placements for out-of-band rendering (bubbletea v2's
+	// ultraviolet renderer cannot pass through graphics protocol sequences).
+	var imgIndex int
+	var pendingImages []struct {
+		index   int
+		payload string
+		rows    int
+	}
+
 	doc.Find("a").Each(func(i int, s *goquery.Selection) {
 		href, exists := s.Attr("href")
 		if !exists {
@@ -608,15 +668,24 @@ func processBody(rawBody string, inline map[string]string, h1Style, h2Style, bod
 			}
 
 			if payload != "" {
-				if rendered := renderInlineImage(payload); rendered != "" {
-					debugImageProtocol("rendered inline image src=%s len=%d dataURI=%t cid=%t (kitty=%t ghostty=%t iterm2=%t wezterm=%t wayst=%t warp=%t konsole=%t)", src, len(payload), strings.HasPrefix(src, "data:"), strings.HasPrefix(src, "cid:"), kittySupported(), ghosttySupported(), iterm2Supported(), weztermSupported(), waystSupported(), warpSupported(), konsoleSupported())
-					s.ReplaceWithHtml("\n" + rendered + "\n")
-					return
-				}
-				debugImageProtocol("payload present but renderer returned empty src=%s len=%d", src, len(payload))
-			} else {
-				debugImageProtocol("no payload for src=%s dataURI=%t cid=%t", src, strings.HasPrefix(src, "data:"), strings.HasPrefix(src, "cid:"))
+				rows := imageRows(payload)
+				debugImageProtocol("collected image placement src=%s rows=%d (kitty=%t ghostty=%t iterm2=%t wezterm=%t wayst=%t warp=%t konsole=%t)", src, rows, kittySupported(), ghosttySupported(), iterm2Supported(), weztermSupported(), waystSupported(), warpSupported(), konsoleSupported())
+
+				idx := imgIndex
+				imgIndex++
+				pendingImages = append(pendingImages, struct {
+					index   int
+					payload string
+					rows    int
+				}{idx, payload, rows})
+
+				// Insert a placeholder with blank lines for spacing.
+				// The image placement marker lets us find the line number later.
+				placeholder := fmt.Sprintf("\n%s%d%s\n", imageRowPlaceholderPrefix, rows, imageRowPlaceholderSuffix)
+				s.ReplaceWithHtml(fmt.Sprintf("\n[[MATCHA_IMG:%d]]%s", idx, placeholder))
+				return
 			}
+			debugImageProtocol("no payload for src=%s dataURI=%t cid=%t", src, strings.HasPrefix(src, "data:"), strings.HasPrefix(src, "cid:"))
 		} else {
 			debugImageProtocol("image protocol not supported for src=%s (kitty=%t ghostty=%t iterm2=%t wezterm=%t wayst=%t warp=%t konsole=%t)", src, kittySupported(), ghosttySupported(), iterm2Supported(), weztermSupported(), waystSupported(), warpSupported(), konsoleSupported())
 		}
@@ -636,6 +705,32 @@ func processBody(rawBody string, inline map[string]string, h1Style, h2Style, bod
 	// Now expand the image row placeholders to actual newlines
 	text = expandImageRowPlaceholders(text)
 
+	// Build image placements by finding the line numbers of image markers.
+	var placements []ImagePlacement
+	if len(pendingImages) > 0 {
+		lines := strings.Split(text, "\n")
+		imgMarkerRegex := regexp.MustCompile(`\[\[MATCHA_IMG:(\d+)\]\]`)
+		for lineNum, line := range lines {
+			if matches := imgMarkerRegex.FindStringSubmatch(line); matches != nil {
+				var idx int
+				fmt.Sscanf(matches[1], "%d", &idx)
+				for _, pi := range pendingImages {
+					if pi.index == idx {
+						placements = append(placements, ImagePlacement{
+							Line:   lineNum,
+							Base64: pi.payload,
+							Rows:   pi.rows,
+						})
+						break
+					}
+				}
+			}
+		}
+
+		// Remove the image markers from the text (leave the spacing)
+		text = imgMarkerRegex.ReplaceAllString(text, "")
+	}
+
 	// Replace quote placeholders with styled quote boxes
 	quoteRegex := regexp.MustCompile(`\[\[MATCHA_QUOTE:(\d+)\]\]`)
 	text = quoteRegex.ReplaceAllStringFunc(text, func(match string) string {
@@ -652,7 +747,7 @@ func processBody(rawBody string, inline map[string]string, h1Style, h2Style, bod
 	// Style quoted reply sections (for plain text > quotes)
 	text = styleQuotedReplies(text)
 
-	return bodyStyle.Render(text), nil
+	return bodyStyle.Render(text), placements, nil
 }
 
 // quoteBoxStyle is the style for the quoted reply box border

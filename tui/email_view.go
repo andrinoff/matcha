@@ -38,6 +38,7 @@ type EmailView struct {
 	isSMIME            bool
 	smimeTrusted       bool
 	isEncrypted        bool
+	imagePlacements    []view.ImagePlacement
 }
 
 func NewEmailView(email fetcher.Email, emailIndex, width, height int, mailbox MailboxKind, disableImages bool) *EmailView {
@@ -65,7 +66,7 @@ func NewEmailView(email fetcher.Email, emailIndex, width, height int, mailbox Ma
 	// Initial state for showImages matches config unless overridden later
 	showImages := !disableImages
 
-	body, err := view.ProcessBodyWithInline(email.Body, inlineImages, H1Style, H2Style, BodyStyle, !showImages)
+	body, placements, err := view.ProcessBodyWithInline(email.Body, inlineImages, H1Style, H2Style, BodyStyle, !showImages)
 	if err != nil {
 		body = fmt.Sprintf("Error rendering body: %v", err)
 	}
@@ -84,19 +85,20 @@ func NewEmailView(email fetcher.Email, emailIndex, width, height int, mailbox Ma
 	vp.SetWidth(width)
 	vp.SetHeight(height - headerHeight - attachmentHeight)
 	wrapped := wrapBodyToWidth(body, vp.Width())
-	vp.SetContent("\x1b_Ga=d\x1b\\\n" + wrapped + "\n")
+	vp.SetContent(wrapped + "\n")
 
 	return &EmailView{
-		viewport:      vp,
-		email:         email,
-		emailIndex:    emailIndex,
-		accountID:     email.AccountID,
-		mailbox:       mailbox,
-		disableImages: disableImages,
-		showImages:    showImages,
-		isSMIME:       isSMIME,
-		smimeTrusted:  smimeTrusted,
-		isEncrypted:   isEncrypted,
+		viewport:        vp,
+		email:           email,
+		emailIndex:      emailIndex,
+		accountID:       email.AccountID,
+		mailbox:         mailbox,
+		disableImages:   disableImages,
+		showImages:      showImages,
+		isSMIME:         isSMIME,
+		smimeTrusted:    smimeTrusted,
+		isEncrypted:     isEncrypted,
+		imagePlacements: placements,
 	}
 }
 
@@ -158,12 +160,13 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					clearKittyGraphics()
 
 					inlineImages := inlineImagesFromAttachments(m.email.Attachments)
-					body, err := view.ProcessBodyWithInline(m.email.Body, inlineImages, H1Style, H2Style, BodyStyle, !m.showImages)
+					body, placements, err := view.ProcessBodyWithInline(m.email.Body, inlineImages, H1Style, H2Style, BodyStyle, !m.showImages)
 					if err != nil {
 						body = fmt.Sprintf("Error rendering body: %v", err)
 					}
+					m.imagePlacements = placements
 					wrapped := wrapBodyToWidth(body, m.viewport.Width())
-					m.viewport.SetContent("\x1b_Ga=d\x1b\\\n" + wrapped + "\n")
+					m.viewport.SetContent(wrapped + "\n")
 					return m, nil
 				}
 			case "r":
@@ -208,13 +211,15 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport.SetHeight(msg.Height - headerHeight - attachmentHeight)
 
 		// When the window size changes, wrap and clear kitty images to keep placement stable
+		clearKittyGraphics()
 		inlineImages := inlineImagesFromAttachments(m.email.Attachments)
-		body, err := view.ProcessBodyWithInline(m.email.Body, inlineImages, H1Style, H2Style, BodyStyle, !m.showImages)
+		body, placements, err := view.ProcessBodyWithInline(m.email.Body, inlineImages, H1Style, H2Style, BodyStyle, !m.showImages)
 		if err != nil {
 			body = fmt.Sprintf("Error rendering body: %v", err)
 		}
+		m.imagePlacements = placements
 		wrapped := wrapBodyToWidth(body, m.viewport.Width())
-		m.viewport.SetContent("\x1b_Ga=d\x1b\\\n" + wrapped + "\n")
+		m.viewport.SetContent(wrapped + "\n")
 	}
 
 	m.viewport, cmd = m.viewport.Update(msg)
@@ -224,9 +229,9 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *EmailView) View() tea.View {
-	// Clear all Kitty graphics before rendering to prevent image stacking on scroll.
-	// This must be done synchronously via stdout before the frame is drawn,
-	// as escape sequences in the return string execute too late.
+	// Clear all graphics before rendering to prevent image stacking on scroll.
+	// This must be done synchronously via stdout because bubbletea v2's
+	// ultraviolet renderer cannot pass through graphics protocol sequences.
 	clearKittyGraphics()
 
 	smimeStatus := ""
@@ -269,6 +274,23 @@ func (m *EmailView) View() tea.View {
 			b.WriteString("\n")
 		}
 		attachmentView = attachmentBoxStyle.Render(b.String())
+	}
+
+	// Render visible images directly to stdout. Bubbletea v2's ultraviolet
+	// renderer uses a cell-based model that cannot pass through graphics
+	// protocol escape sequences, so we write them out-of-band.
+	if m.showImages && len(m.imagePlacements) > 0 {
+		headerLines := lipgloss.Height(styledHeader) + 1 // +1 for the newline after header
+		yOffset := m.viewport.YOffset()
+		vpHeight := m.viewport.Height()
+
+		for _, p := range m.imagePlacements {
+			// Check if this image is visible in the current viewport window
+			if p.Line >= yOffset && p.Line < yOffset+vpHeight {
+				screenRow := headerLines + (p.Line - yOffset)
+				view.RenderImageToStdout(p, screenRow)
+			}
+		}
 	}
 
 	// m.viewport.View() returns a string in Bubbles v2 viewport

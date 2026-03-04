@@ -517,7 +517,7 @@ func TestProcessBodyWithHyperlinkSupport(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.setupHyperlinks()
 
-			processed, err := ProcessBody(tc.input, h1Style, h2Style, bodyStyle, false)
+			processed, _, err := ProcessBody(tc.input, h1Style, h2Style, bodyStyle, false)
 			if err != nil {
 				t.Fatalf("ProcessBody() failed: %v", err)
 			}
@@ -568,9 +568,10 @@ func TestProcessBodyWithImageProtocol(t *testing.T) {
 		input               string
 		expectedContains    string
 		expectedNotContains string
+		expectPlacements    bool
 	}{
 		{
-			name: "Data URI image with Kitty support",
+			name: "Data URI image with Kitty support returns placement",
 			setupImageProtocol: func() {
 				os.Setenv("TERM", "xterm-kitty")
 			},
@@ -581,11 +582,11 @@ func TestProcessBodyWithImageProtocol(t *testing.T) {
 				os.Unsetenv("WEZTERM_EXECUTABLE")
 			},
 			input:               `<img src="data:image/png;base64,` + testBase64PNG + `" alt="test image">`,
-			expectedContains:    "\x1b_Gf=100,a=T,q=2,C=1,m=0;",
 			expectedNotContains: "[Image: test image,",
+			expectPlacements:    true,
 		},
 		{
-			name: "Data URI image with iTerm2 support",
+			name: "Data URI image with iTerm2 support returns placement",
 			setupImageProtocol: func() {
 				os.Setenv("TERM", "xterm")
 				os.Setenv("TERM_PROGRAM", "iterm.app")
@@ -597,8 +598,8 @@ func TestProcessBodyWithImageProtocol(t *testing.T) {
 				os.Unsetenv("WEZTERM_EXECUTABLE")
 			},
 			input:               `<img src="data:image/png;base64,` + testBase64PNG + `" alt="test image">`,
-			expectedContains:    "\x1b]1337;File=inline=1:",
 			expectedNotContains: "[Image: test image,",
+			expectPlacements:    true,
 		},
 		{
 			name: "Data URI image without protocol support",
@@ -643,14 +644,27 @@ func TestProcessBodyWithImageProtocol(t *testing.T) {
 			tc.clearAllImageEnv()
 			tc.setupImageProtocol()
 
-			processed, err := ProcessBody(tc.input, h1Style, h2Style, bodyStyle, false)
+			processed, placements, err := ProcessBody(tc.input, h1Style, h2Style, bodyStyle, false)
 			if err != nil {
 				t.Fatalf("ProcessBody() failed: %v", err)
 			}
 
+			if tc.expectPlacements {
+				if len(placements) == 0 {
+					t.Errorf("Expected image placements but got none")
+				} else {
+					if placements[0].Base64 == "" {
+						t.Errorf("Expected non-empty Base64 in placement")
+					}
+					if placements[0].Rows < 1 {
+						t.Errorf("Expected Rows >= 1, got %d", placements[0].Rows)
+					}
+				}
+			}
+
 			cleanProcessed := ansiEscapeRegex.ReplaceAllString(processed, "")
 
-			if !strings.Contains(cleanProcessed, tc.expectedContains) {
+			if tc.expectedContains != "" && !strings.Contains(cleanProcessed, tc.expectedContains) {
 				t.Errorf("Processed body does not contain expected text.\nGot: %q\nWant to contain: %q", cleanProcessed, tc.expectedContains)
 			}
 
@@ -697,7 +711,7 @@ func TestProcessBody(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			processed, err := ProcessBody(tc.input, h1Style, h2Style, bodyStyle, false)
+			processed, _, err := ProcessBody(tc.input, h1Style, h2Style, bodyStyle, false)
 			if err != nil {
 				t.Fatalf("ProcessBody() failed: %v", err)
 			}
