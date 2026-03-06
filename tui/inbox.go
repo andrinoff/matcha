@@ -95,9 +95,10 @@ type Inbox struct {
 	height           int
 	currentAccountID string // Empty means "ALL"
 	emailCountByAcct  map[string]int
-	mailbox           MailboxKind
-	folderName        string // Custom folder name override for title
-	noMoreByAccount   map[string]bool // Per-account: true when pagination returns 0 results
+	mailbox             MailboxKind
+	folderName          string // Custom folder name override for title
+	noMoreByAccount     map[string]bool // Per-account: true when pagination returns 0 results
+	extraShortHelpKeys  []key.Binding
 }
 
 func NewInbox(emails []fetcher.Email, accounts []config.Account) *Inbox {
@@ -227,6 +228,7 @@ func (m *Inbox) updateList() {
 				key.NewBinding(key.WithKeys("right", "l"), key.WithHelp("→/l", "next tab")),
 			)
 		}
+		bindings = append(bindings, m.extraShortHelpKeys...)
 		return bindings
 	}
 

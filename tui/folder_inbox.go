@@ -105,6 +105,11 @@ func NewFolderInbox(folders []string, accounts []config.Account) *FolderInbox {
 
 	inbox := NewInbox(nil, accounts)
 	inbox.SetFolderName(currentFolder)
+	inbox.extraShortHelpKeys = []key.Binding{
+		key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "next folder")),
+		key.NewBinding(key.WithKeys("shift+tab"), key.WithHelp("shift+tab", "prev folder")),
+		key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "move")),
+	}
 
 	return &FolderInbox{
 		folders:         folders,
