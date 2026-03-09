@@ -1,58 +1,111 @@
 # Contributing to Matcha
 
-First off, thank you for considering contributing to Matcha! It's people like you that make this project great.
+Thank you for your interest in contributing to Matcha! This guide will help you get started.
 
-## How Can I Contribute?
+## Getting Started
 
-### Reporting Bugs
+### Prerequisites
 
-If you find a bug, please open an issue on our [GitHub issues page](https://github.com/floatpane/matcha/issues). Please include as much detail as possible, including:
+- [Go 1.26+](https://go.dev/dl/)
+- A terminal emulator with modern capabilities (kitty, ghostty, alacritty, etc.)
+- An IMAP email account for testing
 
-- A clear and descriptive title.
-- Steps to reproduce the bug.
-- What you expected to happen.
-- What actually happened.
-- Your operating system and terminal.
+### Setup
 
-### Suggesting Enhancements
+```bash
+git clone https://github.com/floatpane/matcha.git
+cd matcha
+go mod tidy
+```
 
-If you have an idea for a new feature or an improvement to an existing one, please open an issue on our [GitHub issues page](https://github.com/floatpane/matcha/issues). Please provide a clear description of the enhancement and why you think it would be a good addition.
+### Build & Run
 
-### Pull Requests
+```bash
+make build     # builds to bin/matcha
+make run       # builds and runs in one step
+```
 
-We love pull requests! If you're ready to contribute code, here's how to get started:
+### Testing
 
-1.  Fork the repository.
-2.  Create a new branch for your feature or bug fix: `git checkout -b feature/your-feature-name` or `git checkout -b fix/your-bug-fix`.
-3.  Make your changes.
-4.  Ensure your code is formatted with `go fmt ./...`.
-5.  Run tests with `go test ./...`.
-6.  Commit your changes with a descriptive commit message.
-7.  Push your branch to your fork.
-8.  Open a pull request to the `master` branch of the main repository.
+```bash
+make test              # run all tests
+make test-verbose      # run tests with verbose output
+make test-coverage     # run tests and generate a coverage report
+```
 
-## Development Setup
+### Linting
 
-To get started with development, you'll need to have Go installed.
+```bash
+make lint       # runs go fmt and go vet
+```
 
-1.  Clone the repository:
-    ```bash
-    git clone https://github.com/floatpane/matcha.git
-    cd matcha
-    ```
-2.  Install dependencies:
-    ```bash
-    go mod tidy
-    ```
-3.  Build the project:
-    ```bash
-    go build -trimpath -ldflags="-s -w" -o matcha
-    ```
-4.  Run the application:
-    ```bash
-    ./matcha
-    ```
+## Making Changes
+
+### Branch Naming
+
+Create a branch from `master` using one of these prefixes:
+
+- `feature/` — new functionality
+- `fix/` — bug fixes
+- `docs/` — documentation changes
+- `refactor/` — code restructuring without behavior changes
+
+### Commit Messages
+
+We use [Conventional Commits](https://www.conventionalcommits.org/). Format your commit messages as:
+
+```
+type(scope): short description
+```
+
+Common types: `feat`, `fix`, `docs`, `test`, `ci`, `chore`.
+
+Examples:
+```
+feat(compose): add CC/BCC field support
+fix(imap): handle connection timeout gracefully
+docs: update installation instructions
+```
+
+### Before Submitting a PR
+
+1. Run `make lint` and fix any issues.
+2. Run `make test` and make sure all tests pass.
+3. Keep your PR focused — one logical change per PR.
+4. Write a clear PR description explaining **what** changed and **why**.
+
+## Reporting Bugs
+
+Open an issue using the [bug report template](https://github.com/floatpane/matcha/issues/new?template=bug_report.md). Include:
+
+- Steps to reproduce the issue
+- Expected vs. actual behavior
+- Your OS, terminal emulator, and Matcha version (`matcha --version`)
+
+## Requesting Features
+
+Open an issue using the [feature request template](https://github.com/floatpane/matcha/issues/new?template=feature_request.md) with a clear description of the problem you're trying to solve and your proposed solution.
+
+## AI Policy
+
+We welcome contributions that use AI-assisted tools (Copilot, Claude, ChatGPT, etc.) as part of the development process. That said, contributors are fully responsible for any code they submit, regardless of how it was written.
+
+**What we expect:**
+
+- **Understand what you submit.** You should be able to explain every line of your PR. If you can't explain it, don't submit it.
+- **Review AI output carefully.** AI tools can produce plausible-looking code that is subtly wrong, insecure, or doesn't match the project's patterns. Treat AI suggestions the same way you'd treat a Stack Overflow snippet — verify before committing.
+- **Don't submit AI-generated issues, reviews, or comments.** Discussions should be genuine human communication. Using AI to help draft something is fine, but don't paste raw AI output into issues or review comments.
+- **No AI-generated tests that don't actually test anything.** Tests must be meaningful and actually validate behavior, not just exist for coverage numbers.
+- **Attribute when appropriate.** If a significant portion of your contribution was AI-assisted, a brief mention in your PR description is appreciated but not required.
+
+**What we won't accept:**
+
+- Bulk PRs of AI-generated refactors, documentation, or "improvements" that weren't requested.
+- Code that introduces hallucinated dependencies, APIs, or patterns that don't exist in the project.
+- Contributions where the author clearly doesn't understand the changes they're proposing.
+
+The goal is simple: AI is a tool. Use it well, take ownership of the output, and make sure your contribution actually improves the project.
 
 ## Code of Conduct
 
-Please note that this project is released with a Contributor Code of Conduct. By participating in this project you agree to abide by its terms. Please read the [Code of Conduct](CODE_OF_CONDUCT.md).
+This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). By participating, you agree to uphold a welcoming and respectful environment for everyone.
