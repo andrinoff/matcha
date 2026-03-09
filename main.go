@@ -1952,6 +1952,19 @@ func filterUnique(existing, incoming []fetcher.Email) []fetcher.Email {
 }
 
 func main() {
+	// If invoked with version flag, print version and exit
+	if len(os.Args) > 1 && (os.Args[1] == "-v" || os.Args[1] == "--version" || os.Args[1] == "version") {
+		fmt.Printf("matcha version %s", version)
+		if commit != "" {
+			fmt.Printf(" (%s)", commit)
+		}
+		if date != "" {
+			fmt.Printf(" built on %s", date)
+		}
+		fmt.Println()
+		os.Exit(0)
+	}
+
 	// If invoked as CLI update command, run updater and exit.
 	if len(os.Args) > 1 && os.Args[1] == "update" {
 		if err := runUpdateCLI(); err != nil {
