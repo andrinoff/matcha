@@ -63,7 +63,12 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 
 	// Truncate the left part to fit within the available width
 	listWidth := m.Width()
-	maxLeft := listWidth - dateWidth - 2 // 2 for spacing
+	isSelected := index == m.Index()
+	cursorWidth := 0
+	if isSelected {
+		cursorWidth = 2 // "> " prefix
+	}
+	maxLeft := listWidth - dateWidth - 2 - cursorWidth // 2 for spacing
 	if maxLeft < 10 {
 		maxLeft = 10
 	}
@@ -76,7 +81,7 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 	}
 
 	// Pad to push date to the right
-	padding := listWidth - lipgloss.Width(str) - dateWidth
+	padding := listWidth - lipgloss.Width(str) - dateWidth - cursorWidth
 	if padding < 1 {
 		padding = 1
 	}
