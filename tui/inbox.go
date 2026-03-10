@@ -23,7 +23,8 @@ var (
 	tabBarStyle     = lipgloss.NewStyle().BorderStyle(lipgloss.NormalBorder()).BorderBottom(true).PaddingBottom(1).MarginBottom(1)
 )
 
-var dateStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("243"))
+var dateStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("243"))
+var senderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("250")).Bold(true)
 
 type item struct {
 	title, desc   string
@@ -49,11 +50,14 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 		return
 	}
 
-	str := fmt.Sprintf("%d. %s", index+1, i.title)
+	prefix := fmt.Sprintf("%d. ", index+1)
+	sender := parseSenderName(i.desc)
+	styledSender := senderStyle.Render(sender)
+	separator := " · "
 
-	// For "ALL" view, show account indicator
+	// For "ALL" view, show account indicator instead of number
 	if i.accountEmail != "" {
-		str = fmt.Sprintf("%d. [%s] %s", index+1, truncateEmail(i.accountEmail), i.title)
+		prefix = fmt.Sprintf("%d. [%s] ", index+1, truncateEmail(i.accountEmail))
 	}
 
 	// Format and right-align date
@@ -61,24 +65,36 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 	styledDate := dateStyle.Render(dateStr)
 	dateWidth := lipgloss.Width(styledDate)
 
-	// Truncate the left part to fit within the available width
 	listWidth := m.Width()
 	isSelected := index == m.Index()
 	cursorWidth := 0
 	if isSelected {
 		cursorWidth = 2 // "> " prefix
 	}
+
+	// Available width for the whole left side (prefix + sender + separator + subject)
 	maxLeft := listWidth - dateWidth - 2 - cursorWidth // 2 for spacing
 	if maxLeft < 10 {
 		maxLeft = 10
 	}
-	if lipgloss.Width(str) > maxLeft {
-		// Truncate with ellipsis
-		for lipgloss.Width(str) > maxLeft-1 && len(str) > 0 {
-			str = str[:len(str)-1]
-		}
-		str += "…"
+
+	prefixWidth := lipgloss.Width(prefix)
+	senderWidth := lipgloss.Width(styledSender)
+	sepWidth := len(separator)
+	subjectBudget := maxLeft - prefixWidth - senderWidth - sepWidth
+
+	subject := i.title
+	if subjectBudget < 4 {
+		subjectBudget = 4
 	}
+	if lipgloss.Width(subject) > subjectBudget {
+		for lipgloss.Width(subject) > subjectBudget-1 && len(subject) > 0 {
+			subject = subject[:len(subject)-1]
+		}
+		subject += "…"
+	}
+
+	str := prefix + styledSender + separator + subject
 
 	// Pad to push date to the right
 	padding := listWidth - lipgloss.Width(str) - dateWidth - cursorWidth
@@ -132,6 +148,19 @@ func formatRelativeDate(t time.Time) string {
 		}
 		return t.Format("Jan 02, 2006")
 	}
+}
+
+// parseSenderName extracts the display name from a "Name <email>" string,
+// falling back to the local part of the email address.
+func parseSenderName(from string) string {
+	if idx := strings.Index(from, " <"); idx > 0 {
+		return strings.TrimSpace(from[:idx])
+	}
+	// No display name — use local part of email
+	if idx := strings.Index(from, "@"); idx > 0 {
+		return from[:idx]
+	}
+	return from
 }
 
 // truncateEmail shortens an email for display

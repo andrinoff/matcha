@@ -59,6 +59,16 @@ type Folder struct {
 	Attributes []string
 }
 
+// formatAddress returns "Name <email>" when a PersonalName is present,
+// otherwise just "email".
+func formatAddress(addr *imap.Address) string {
+	email := addr.Address()
+	if addr.PersonalName != "" {
+		return addr.PersonalName + " <" + email + ">"
+	}
+	return email
+}
+
 func decodePart(reader io.Reader, header mail.PartHeader) (string, error) {
 	mediaType, params, err := mime.ParseMediaType(header.Get("Content-Type"))
 	if err != nil {
@@ -275,7 +285,7 @@ func FetchMailboxEmails(account *config.Account, mailbox string, limit, offset u
 
 			var fromAddr string
 			if len(msg.Envelope.From) > 0 {
-				fromAddr = msg.Envelope.From[0].Address()
+				fromAddr = formatAddress(msg.Envelope.From[0])
 			}
 
 			var toAddrList []string
@@ -1079,7 +1089,7 @@ func FetchArchiveEmails(account *config.Account, limit, offset uint32) ([]Email,
 
 		var fromAddr string
 		if len(msg.Envelope.From) > 0 {
-			fromAddr = msg.Envelope.From[0].Address()
+			fromAddr = formatAddress(msg.Envelope.From[0])
 		}
 
 		var toAddrList []string
