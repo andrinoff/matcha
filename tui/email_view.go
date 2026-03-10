@@ -205,7 +205,7 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case tea.WindowSizeMsg:
-		header := fmt.Sprintf("From: %s\nSubject: %s", m.email.From, m.email.Subject)
+		header := fmt.Sprintf("To: %s\nFrom: %s\nSubject: %s ", strings.Join(m.email.To, ", "), m.email.From, m.email.Subject)
 		headerHeight := lipgloss.Height(header) + 2
 		attachmentHeight := 0
 		if len(m.email.Attachments) > 0 {
@@ -252,7 +252,7 @@ func (m *EmailView) View() tea.View {
 		}
 	}
 
-	header := fmt.Sprintf("From: %s | Subject: %s%s", m.email.From, m.email.Subject, smimeStatus)
+	header := fmt.Sprintf("To: %s | From: %s | Subject: %s%s", strings.Join(m.email.To, ", "), m.email.From, m.email.Subject, smimeStatus)
 	styledHeader := emailHeaderStyle.Width(m.viewport.Width()).Render(header)
 
 	var help string
