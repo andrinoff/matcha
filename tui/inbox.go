@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/list"
@@ -22,12 +23,15 @@ var (
 	tabBarStyle     = lipgloss.NewStyle().BorderStyle(lipgloss.NormalBorder()).BorderBottom(true).PaddingBottom(1).MarginBottom(1)
 )
 
+var dateStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("243"))
+
 type item struct {
 	title, desc   string
 	originalIndex int
 	uid           uint32
 	accountID     string
 	accountEmail  string
+	date          time.Time
 }
 
 func (i item) Title() string       { return i.title }
@@ -52,6 +56,31 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 		str = fmt.Sprintf("%d. [%s] %s", index+1, truncateEmail(i.accountEmail), i.title)
 	}
 
+	// Format and right-align date
+	dateStr := formatRelativeDate(i.date)
+	styledDate := dateStyle.Render(dateStr)
+	dateWidth := lipgloss.Width(styledDate)
+
+	// Truncate the left part to fit within the available width
+	listWidth := m.Width()
+	maxLeft := listWidth - dateWidth - 2 // 2 for spacing
+	if maxLeft < 10 {
+		maxLeft = 10
+	}
+	if lipgloss.Width(str) > maxLeft {
+		// Truncate with ellipsis
+		for lipgloss.Width(str) > maxLeft-1 && len(str) > 0 {
+			str = str[:len(str)-1]
+		}
+		str += "…"
+	}
+
+	// Pad to push date to the right
+	padding := listWidth - lipgloss.Width(str) - dateWidth
+	if padding < 1 {
+		padding = 1
+	}
+
 	fn := itemStyle.Render
 	if index == m.Index() {
 		fn = func(s ...string) string {
@@ -59,7 +88,45 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 		}
 	}
 
-	fmt.Fprint(w, fn(str))
+	fmt.Fprint(w, fn(str+strings.Repeat(" ", padding)+styledDate))
+}
+
+// formatRelativeDate formats a time as relative if within the last week,
+// otherwise as an absolute date.
+func formatRelativeDate(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	now := time.Now()
+	d := now.Sub(t)
+
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		mins := int(d.Minutes())
+		if mins == 1 {
+			return "1 min ago"
+		}
+		return fmt.Sprintf("%d min ago", mins)
+	case d < 24*time.Hour:
+		hours := int(d.Hours())
+		if hours == 1 {
+			return "1 hour ago"
+		}
+		return fmt.Sprintf("%d hours ago", hours)
+	case d < 7*24*time.Hour:
+		days := int(d.Hours() / 24)
+		if days == 1 {
+			return "1 day ago"
+		}
+		return fmt.Sprintf("%d days ago", days)
+	default:
+		if t.Year() == now.Year() {
+			return t.Format("Jan 02")
+		}
+		return t.Format("Jan 02, 2006")
+	}
 }
 
 // truncateEmail shortens an email for display
@@ -205,6 +272,7 @@ func (m *Inbox) updateList() {
 			uid:           email.UID,
 			accountID:     email.AccountID,
 			accountEmail:  accountEmail,
+			date:          email.Date,
 		}
 	}
 
