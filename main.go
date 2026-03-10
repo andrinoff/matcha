@@ -408,7 +408,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.FolderName != "" && m.config != nil {
 			delete(m.folderEmails, msg.FolderName)
 			if m.folderInbox != nil {
-				m.folderInbox.SetLoadingEmails(true)
+				m.folderInbox.SetRefreshing(true)
 			}
 			return m, fetchFolderEmailsCmd(m.config, msg.FolderName)
 		}

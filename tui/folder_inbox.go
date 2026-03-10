@@ -178,6 +178,8 @@ func (m *FolderInbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.isLoadingEmails = false
+		m.inbox.isFetching = false
+		m.inbox.isRefreshing = false
 		m.inbox.SetEmails(msg.Emails, m.accounts)
 		m.inbox.SetFolderName(msg.FolderName)
 		return m, nil
@@ -501,8 +503,16 @@ func (m *FolderInbox) SetLoadingEmails(loading bool) {
 	m.isLoadingEmails = loading
 	if loading {
 		m.inbox.isFetching = true
-		m.inbox.list.Title = m.inbox.getTitle()
+	} else {
+		m.inbox.isFetching = false
 	}
+	m.inbox.list.Title = m.inbox.getTitle()
+}
+
+// SetRefreshing sets the refreshing state (used when user presses "r").
+func (m *FolderInbox) SetRefreshing(refreshing bool) {
+	m.inbox.isRefreshing = refreshing
+	m.inbox.list.Title = m.inbox.getTitle()
 }
 
 // GetFolders returns the current folder list.

@@ -449,6 +449,8 @@ func (m *Inbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "r":
+			m.isRefreshing = true
+			m.list.Title = m.getTitle()
 			// Copy counts to avoid race conditions if used elsewhere (though here it's just passing data)
 			counts := make(map[string]int)
 			for k, v := range m.emailCountByAcct {
@@ -539,7 +541,7 @@ func (m *Inbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Inbox) shouldFetchMore() bool {
-	if m.isFetching {
+	if m.isFetching || m.isRefreshing {
 		return false
 	}
 	if m.allAccountsExhausted() {
