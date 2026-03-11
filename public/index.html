@@ -3,10 +3,10 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Matcha Client</title>
-        <link
-            rel="stylesheet"
-            href="https://www.nerdfonts.com/assets/css/webfont.css"
+        <title>Matcha - Terminal Email Client</title>
+        <meta
+            name="description"
+            content="A beautiful, keyboard-driven terminal email client written in Go. Manage your inbox without ever leaving the command line."
         />
         <link rel="stylesheet" href="style.css" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -19,7 +19,9 @@
         <link rel="me" href="https://fosstodon.org/@floatpane" />
     </head>
     <body>
-        <div class="gradient-bg"></div>
+        <div class="noise"></div>
+        <div class="gradient-orb orb-1"></div>
+        <div class="gradient-orb orb-2"></div>
 
         <header>
             <nav>
@@ -28,23 +30,25 @@
                         src="assets/logo-transparent.png"
                         alt="Matcha"
                         class="logo-icon"
-                        width="24"
-                        height="24"
+                        width="28"
+                        height="28"
                     />
                     <span class="logo-text">Matcha</span>
                 </a>
                 <div class="nav-links">
                     <a href="#features">Features</a>
                     <a href="#installation">Install</a>
-                    <a href="#usage">Usage</a>
+                    <a href="https://docs.matcha.floatpane.com" target="_blank"
+                        >Docs</a
+                    >
                     <a
                         href="https://github.com/floatpane/matcha"
                         target="_blank"
-                        class="github-link"
+                        class="nav-btn"
                     >
                         <svg
-                            height="20"
-                            width="20"
+                            height="18"
+                            width="18"
                             viewBox="0 0 16 16"
                             fill="currentColor"
                         >
@@ -52,224 +56,426 @@
                                 d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"
                             />
                         </svg>
-                        GitHub
+                        Star on GitHub
                     </a>
                 </div>
             </nav>
         </header>
 
         <main>
-            <!-- Hero Section -->
             <section class="hero">
-                <div class="hero-badges">
-                    <span class="badge">MIT License</span>
-                    <span class="badge">macOS & Linux</span>
-                    <span class="badge">Written in Go</span>
+                <div class="hero-badge">
+                    <span class="hero-badge-dot"></span>
+                    Open Source &middot; MIT Licensed
                 </div>
 
                 <h1 class="hero-title">
-                    The Ultimate<br />
-                    <span class="gradient-text">Terminal Email Client.</span>
+                    Email belongs in<br />
+                    <span class="gradient-text">your terminal.</span>
                 </h1>
 
                 <p class="hero-subtitle">
-                    Never leave your command line to check your inbox or send an
-                    email again. A beautiful TUI for power users who live in the
-                    terminal.
+                    Matcha is a fast, keyboard-driven email client that lives in
+                    your terminal. Built with Go and designed for developers who
+                    never want to leave the command line.
                 </p>
 
-                <div class="hero-cta">
+                <div class="hero-actions">
                     <a href="#installation" class="btn btn-primary">
-                        <span class="btn-icon">⬇</span>
-                        Download Now
+                        Get Started
+                        <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2.5"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <path d="M5 12h14" />
+                            <path d="m12 5 7 7-7 7" />
+                        </svg>
                     </a>
                     <a
                         href="https://github.com/floatpane/matcha"
                         target="_blank"
-                        class="btn btn-secondary"
+                        class="btn btn-ghost"
                     >
-                        View on GitHub
+                        <svg
+                            height="18"
+                            width="18"
+                            viewBox="0 0 16 16"
+                            fill="currentColor"
+                        >
+                            <path
+                                d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.751.751 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25z"
+                            />
+                        </svg>
+                        Star on GitHub
+                    </a>
+                    <a
+                        href="https://docs.matcha.floatpane.com"
+                        target="_blank"
+                        class="btn btn-ghost"
+                    >
+                        <svg
+                            width="18"
+                            height="18"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <path
+                                d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"
+                            />
+                            <path
+                                d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"
+                            />
+                        </svg>
+                        Documentation
                     </a>
                 </div>
-            </section>
 
-            <!-- Terminal Preview Section -->
-            <section class="preview" id="preview">
-                <h2 class="section-title">Live Preview</h2>
-
-                <div class="terminal-window">
-                    <div class="terminal-header">
-                        <div class="terminal-buttons">
-                            <span class="terminal-btn red"></span>
-                            <span class="terminal-btn yellow"></span>
-                            <span class="terminal-btn green"></span>
+                <div class="hero-terminal">
+                    <div class="terminal-chrome">
+                        <div class="terminal-dots">
+                            <span></span><span></span><span></span>
                         </div>
-                        <span class="terminal-title">matcha — zsh</span>
+                        <span class="terminal-title">matcha</span>
+                        <div class="terminal-dots" style="visibility: hidden">
+                            <span></span><span></span><span></span>
+                        </div>
                     </div>
                     <div class="terminal-body">
-                        <pre class="tui-ascii-logo">
-              __      __
-  __ _  ___ _/ /_____/ /  ___ _
- /  ' \/ _ `/ __/ __/ _ \/ _ `/
-/_/_/_/\_,_/\__/\__/_//_/\_,_/</pre
-                        >
-                        <div class="tui-prompt">What would you like to do?</div>
-                        <div class="tui-menu">
-                            <div class="tui-menu-item active">
-                                <span class="tui-cursor">&gt;</span>
-                                <span class="tui-option selected"
-                                    ><i class="nf nf-cod-mail"></i> Inbox</span
-                                >
-                            </div>
-                            <div class="tui-menu-item">
-                                <span class="tui-cursor-space"></span>
-                                <span class="tui-option"
-                                    ><i class="nf nf-cod-mail_read"></i> Compose
-                                    Email</span
-                                >
-                            </div>
-                            <div class="tui-menu-item">
-                                <span class="tui-cursor-space"></span>
-                                <span class="tui-option"
-                                    ><i class="nf nf-fa-send"></i> Sent</span
-                                >
-                            </div>
-                            <div class="tui-menu-item">
-                                <span class="tui-cursor-space"></span>
-                                <span class="tui-option"
-                                    ><i class="nf nf-cod-comment_draft"></i>
-                                    Drafts</span
-                                >
-                            </div>
-                            <div class="tui-menu-item">
-                                <span class="tui-cursor-space"></span>
-                                <span class="tui-option"
-                                    ><i class="nf nf-fa-gear"></i>
-                                    Settings</span
-                                >
-                            </div>
-                            <div class="tui-menu-item">
-                                <span class="tui-cursor-space"></span>
-                                <span class="tui-option"
-                                    ><i class="nf nf-cod-trash"></i> Trash &
-                                    Archive</span
-                                >
-                            </div>
+                        <div class="terminal-line">
+                            <span class="t-prompt">~</span>
+                            <span class="t-cmd">$</span>
+                            <span class="t-text typing-anim">matcha</span>
+                            <span class="cursor">|</span>
                         </div>
-                        <div class="tui-hint">
-                            Use <span class="tui-key">↑/↓</span> to navigate,
-                            enter to select, and
-                            <span class="tui-key">ctrl+c</span> to quit.
-                        </div>
+                        <div
+                            class="terminal-content"
+                            id="terminal-content"
+                        ></div>
                     </div>
                 </div>
             </section>
 
-            <!-- Features Section -->
+            <section class="logos-strip">
+                <div class="strip-items">
+                    <div class="strip-item">
+                        <svg
+                            width="18"
+                            height="18"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                        >
+                            <path
+                                d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"
+                            />
+                            <polyline points="22,6 12,13 2,6" />
+                        </svg>
+                        Gmail
+                    </div>
+                    <div class="strip-divider"></div>
+                    <div class="strip-item">
+                        <svg
+                            width="18"
+                            height="18"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                        >
+                            <path
+                                d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"
+                            />
+                        </svg>
+                        iCloud
+                    </div>
+                    <div class="strip-divider"></div>
+                    <div class="strip-item">
+                        <svg
+                            width="18"
+                            height="18"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                        >
+                            <circle cx="12" cy="12" r="3" />
+                            <path
+                                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
+                            />
+                        </svg>
+                        Custom IMAP
+                    </div>
+                    <div class="strip-divider"></div>
+                    <div class="strip-item">
+                        <span class="strip-tag">Go</span>
+                        Written in Go
+                    </div>
+                    <div class="strip-divider"></div>
+                    <div class="strip-item">
+                        <span class="strip-tag">MIT</span>
+                        Open Source
+                    </div>
+                </div>
+            </section>
+
             <section class="features" id="features">
-                <h2 class="section-title">Features</h2>
+                <div class="section-header">
+                    <span class="section-label">Features</span>
+                    <h2 class="section-title">
+                        Everything you need.<br /><span class="text-muted"
+                            >Nothing you don't.</span
+                        >
+                    </h2>
+                </div>
 
                 <div class="features-grid">
-                    <div class="feature-card">
-                        <div class="feature-icon">📬</div>
-                        <h3>View Your Inbox</h3>
+                    <div class="feature-card feature-highlight">
+                        <div class="feature-icon-wrap">
+                            <svg
+                                width="24"
+                                height="24"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <rect
+                                    x="2"
+                                    y="4"
+                                    width="20"
+                                    height="16"
+                                    rx="2"
+                                />
+                                <path
+                                    d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"
+                                />
+                            </svg>
+                        </div>
+                        <h3>Full Inbox Management</h3>
                         <p>
-                            Fetches and displays a list of your most recent
-                            emails with beautiful formatting and quick
-                            navigation.
+                            Read, compose, reply, and manage your emails
+                            entirely from the terminal. Beautiful formatting,
+                            attachment support, and lightning-fast navigation.
                         </p>
                     </div>
 
                     <div class="feature-card">
-                        <div class="feature-icon">📖</div>
-                        <h3>Read Emails</h3>
-                        <p>
-                            Select an email from your inbox to view its full
-                            content with proper text rendering and attachments.
-                        </p>
-                    </div>
-
-                    <div class="feature-card">
-                        <div class="feature-icon">✍️</div>
+                        <div class="feature-icon-wrap">
+                            <svg
+                                width="24"
+                                height="24"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <path d="M12 20h9" />
+                                <path
+                                    d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z"
+                                />
+                            </svg>
+                        </div>
                         <h3>Compose & Send</h3>
                         <p>
-                            A simple and intuitive interface for writing and
-                            sending new emails without leaving your terminal.
+                            Intuitive compose interface with tab-based field
+                            navigation. Write and send emails without touching a
+                            browser.
                         </p>
                     </div>
 
                     <div class="feature-card">
-                        <div class="feature-icon">🎨</div>
-                        <h3>Beautiful TUI</h3>
-                        <p>
-                            A clean and modern terminal user interface built
-                            with Bubble Tea that's a pleasure to use.
-                        </p>
-                    </div>
-
-                    <div class="feature-card">
-                        <div class="feature-icon">🔐</div>
-                        <h3>Secure</h3>
-                        <p>
-                            Uses a local configuration file to store your
-                            credentials securely. Your data never leaves your
-                            machine.
-                        </p>
-                    </div>
-
-                    <div class="feature-card">
-                        <div class="feature-icon">⌨️</div>
-                        <h3>Keyboard Driven</h3>
-                        <p>
-                            Navigate, select, and manage your emails entirely
-                            with keyboard shortcuts. No mouse required.
-                        </p>
-                    </div>
-
-                    <div class="feature-card">
-                        <div class="feature-icon">👥</div>
+                        <div class="feature-icon-wrap">
+                            <svg
+                                width="24"
+                                height="24"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <path
+                                    d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"
+                                />
+                                <circle cx="9" cy="7" r="4" />
+                                <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                            </svg>
+                        </div>
                         <h3>Multiple Accounts</h3>
                         <p>
-                            Manage multiple email accounts in one place. Switch
-                            between accounts seamlessly without leaving your
-                            terminal.
+                            Manage all your email accounts in one place. Switch
+                            between them seamlessly.
                         </p>
                     </div>
 
                     <div class="feature-card">
-                        <div class="feature-icon">📇</div>
+                        <div class="feature-icon-wrap">
+                            <svg
+                                width="24"
+                                height="24"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <path d="m18 16 4-4-4-4" />
+                                <path d="m6 8-4 4 4 4" />
+                                <path d="m14.5 4-5 16" />
+                            </svg>
+                        </div>
+                        <h3>Keyboard-First</h3>
+                        <p>
+                            Vim-inspired keybindings. Navigate, select, and
+                            manage everything without ever touching the mouse.
+                        </p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon-wrap">
+                            <svg
+                                width="24"
+                                height="24"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" />
+                            </svg>
+                        </div>
+                        <h3>Blazing Fast</h3>
+                        <p>
+                            Local email caching means instant load times. No
+                            Electron, no bloat -- just pure terminal speed.
+                        </p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon-wrap">
+                            <svg
+                                width="24"
+                                height="24"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <rect
+                                    width="18"
+                                    height="11"
+                                    x="3"
+                                    y="11"
+                                    rx="2"
+                                    ry="2"
+                                />
+                                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                            </svg>
+                        </div>
+                        <h3>Private & Secure</h3>
+                        <p>
+                            Your credentials stay on your machine. No telemetry,
+                            no tracking, no cloud middleman.
+                        </p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon-wrap">
+                            <svg
+                                width="24"
+                                height="24"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <path
+                                    d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"
+                                />
+                                <circle cx="9" cy="7" r="4" />
+                                <line x1="19" x2="19" y1="8" y2="14" />
+                                <line x1="22" x2="16" y1="11" y2="11" />
+                            </svg>
+                        </div>
                         <h3>Contacts</h3>
                         <p>
-                            Save and manage your contacts locally. Quickly
-                            compose emails to your saved contacts with
-                            auto-complete support.
+                            Save and manage contacts locally with auto-complete
+                            support when composing.
                         </p>
                     </div>
 
                     <div class="feature-card">
-                        <div class="feature-icon">⚡</div>
-                        <h3>Email Caching</h3>
+                        <div class="feature-icon-wrap">
+                            <svg
+                                width="24"
+                                height="24"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <rect
+                                    width="18"
+                                    height="18"
+                                    x="3"
+                                    y="3"
+                                    rx="2"
+                                />
+                                <path d="M3 9h18" />
+                                <path d="M9 21V9" />
+                            </svg>
+                        </div>
+                        <h3>Beautiful TUI</h3>
                         <p>
-                            Emails are cached locally for faster access. Enjoy
-                            instant load times.
+                            Built with Bubble Tea. A clean, modern interface
+                            that makes terminal email a pleasure.
                         </p>
                     </div>
                 </div>
             </section>
 
-            <!-- Installation Section -->
             <section class="installation" id="installation">
-                <h2 class="section-title">Installation</h2>
+                <div class="section-header">
+                    <span class="section-label">Get Started</span>
+                    <h2 class="section-title">
+                        Up and running<br /><span class="text-muted"
+                            >in seconds.</span
+                        >
+                    </h2>
+                </div>
 
-                <div class="install-methods">
-                    <div class="install-method">
-                        <div class="install-header">
-                            <h3>Install with Homebrew</h3>
-                            <span class="install-badge recommended"
-                                >Recommended</span
-                            >
+                <div class="install-grid">
+                    <div class="install-card primary-install">
+                        <div class="install-card-header">
+                            <h3>Homebrew</h3>
+                            <span class="recommended-badge">Recommended</span>
                         </div>
-
                         <div class="code-block">
                             <div class="code-header">
                                 <span>Terminal</span>
@@ -277,298 +483,187 @@
                                     class="copy-btn"
                                     onclick="copyCode(this)"
                                 >
-                                    Copy All
+                                    <svg
+                                        width="14"
+                                        height="14"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                    >
+                                        <rect
+                                            width="14"
+                                            height="14"
+                                            x="8"
+                                            y="8"
+                                            rx="2"
+                                            ry="2"
+                                        />
+                                        <path
+                                            d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"
+                                        />
+                                    </svg>
+                                    Copy
                                 </button>
                             </div>
                             <div class="code-body">
                                 <div class="code-line">
-                                    <span class="prompt">~</span>
-                                    <span class="command">$</span>
-                                    <span class="code-text"
-                                        >brew tap floatpane/matcha</span
-                                    >
-                                </div>
-                                <div class="code-line">
-                                    <span class="prompt">~</span>
-                                    <span class="command">$</span>
-                                    <span class="code-text"
+                                    <span class="line-prompt">$</span
+                                    ><span class="code-text"
                                         >brew install
                                         floatpane/matcha/matcha</span
                                     >
                                 </div>
                                 <div class="code-line">
-                                    <span class="prompt">~</span>
-                                    <span class="command">$</span>
-                                    <span class="code-text">matcha</span>
+                                    <span class="line-prompt">$</span
+                                    ><span class="code-text">matcha</span>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <div class="install-method">
-                        <h3>Or, Build from Source</h3>
-
-                        <div class="install-steps">
-                            <div class="install-step">
-                                <div class="step-number">1</div>
-                                <div class="step-content">
-                                    <h4>Clone the Repository</h4>
-                                    <p>
-                                        Grab the source code from GitHub. Make
-                                        sure you have Go installed.
-                                    </p>
-                                    <div class="code-block small">
-                                        <div class="code-body">
-                                            <div class="code-line">
-                                                <span class="code-text"
-                                                    >git clone
-                                                    https://github.com/floatpane/matcha.git</span
-                                                >
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
+                    <div class="install-card">
+                        <h3>Build from Source</h3>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span>Terminal</span>
+                                <button
+                                    class="copy-btn"
+                                    onclick="copyCode(this)"
+                                >
+                                    <svg
+                                        width="14"
+                                        height="14"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                    >
+                                        <rect
+                                            width="14"
+                                            height="14"
+                                            x="8"
+                                            y="8"
+                                            rx="2"
+                                            ry="2"
+                                        />
+                                        <path
+                                            d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"
+                                        />
+                                    </svg>
+                                    Copy
+                                </button>
                             </div>
-
-                            <div class="install-step">
-                                <div class="step-number">2</div>
-                                <div class="step-content">
-                                    <h4>Build the Binary</h4>
-                                    <p>
-                                        Navigate to the project folder and
-                                        compile.
-                                    </p>
-                                    <div class="code-block small">
-                                        <div class="code-body">
-                                            <div class="code-line">
-                                                <span class="code-text"
-                                                    >cd matcha && go build -o
-                                                    matcha</span
-                                                >
-                                            </div>
-                                        </div>
-                                    </div>
+                            <div class="code-body">
+                                <div class="code-line">
+                                    <span class="line-prompt">$</span
+                                    ><span class="code-text"
+                                        >git clone
+                                        https://github.com/floatpane/matcha.git</span
+                                    >
                                 </div>
-                            </div>
-
-                            <div class="install-step">
-                                <div class="step-number">3</div>
-                                <div class="step-content">
-                                    <h4>Run It</h4>
-                                    <p>
-                                        Execute the binary or move it to your
-                                        PATH for global access.
-                                    </p>
-                                    <div class="code-block small">
-                                        <div class="code-body">
-                                            <div class="code-line">
-                                                <span class="code-text"
-                                                    >./matcha</span
-                                                >
-                                            </div>
-                                        </div>
-                                    </div>
+                                <div class="code-line">
+                                    <span class="line-prompt">$</span
+                                    ><span class="code-text"
+                                        >cd matcha && make build</span
+                                    >
+                                </div>
+                                <div class="code-line">
+                                    <span class="line-prompt">$</span
+                                    ><span class="code-text">matcha</span>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
+
+                <p class="install-docs-hint">
+                    Need help setting up? Check the
+                    <a href="https://docs.matcha.floatpane.com" target="_blank"
+                        >documentation</a
+                    >
+                    for detailed guides.
+                </p>
             </section>
 
-            <!-- Usage Section -->
-            <section class="usage" id="usage">
-                <h2 class="section-title">Usage</h2>
-
-                <div class="usage-grid">
-                    <div class="usage-card">
-                        <div class="usage-keys">
-                            <kbd>↑</kbd><kbd>↓</kbd>
-                            <span class="or">or</span>
-                            <kbd>k</kbd><kbd>j</kbd>
-                        </div>
-                        <h4>Navigate</h4>
-                        <p>Move through menus and email lists</p>
-                    </div>
-
-                    <div class="usage-card">
-                        <div class="usage-keys">
-                            <kbd>Enter</kbd>
-                        </div>
-                        <h4>Select</h4>
-                        <p>Open emails or confirm actions</p>
-                    </div>
-
-                    <div class="usage-card">
-                        <div class="usage-keys">
-                            <kbd>c</kbd>
-                        </div>
-                        <h4>Compose</h4>
-                        <p>Start writing a new email</p>
-                    </div>
-
-                    <div class="usage-card">
-                        <div class="usage-keys">
-                            <kbd>Tab</kbd>
-                        </div>
-                        <h4>Switch Fields</h4>
-                        <p>Move between To, Subject, and Body</p>
-                    </div>
-
-                    <div class="usage-card">
-                        <div class="usage-keys">
-                            <kbd>Esc</kbd>
-                        </div>
-                        <h4>Go Back</h4>
-                        <p>Return to the previous view</p>
-                    </div>
-
-                    <div class="usage-card">
-                        <div class="usage-keys">
-                            <kbd>Ctrl</kbd><span class="plus">+</span
-                            ><kbd>C</kbd>
-                        </div>
-                        <h4>Quit</h4>
-                        <p>Exit the application</p>
-                    </div>
-                </div>
-
-                <div class="providers">
-                    <h3>Supported Providers</h3>
-                    <div class="provider-list">
-                        <div class="provider">
-                            <span class="provider-icon">
-                                <svg
-                                    width="20"
-                                    height="20"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                >
-                                    <path
-                                        d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"
-                                    ></path>
-                                    <polyline
-                                        points="22,6 12,13 2,6"
-                                    ></polyline>
-                                </svg>
-                            </span>
-                            <span>Gmail</span>
-                        </div>
-                        <div class="provider">
-                            <span class="provider-icon">
-                                <svg
-                                    width="20"
-                                    height="20"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                >
-                                    <path
-                                        d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"
-                                    ></path>
-                                </svg>
-                            </span>
-                            <span>iCloud</span>
-                        </div>
-                        <div class="provider">
-                            <span class="provider-icon">
-                                <svg
-                                    width="20"
-                                    height="20"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                >
-                                    <circle cx="12" cy="12" r="3"></circle>
-                                    <path
-                                        d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
-                                    ></path>
-                                </svg>
-                            </span>
-                            <span>Custom</span>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Contact Section -->
-            <section class="contact" id="contact">
-                <div class="contact-content">
-                    <h2>Get in Touch</h2>
+            <section class="cta-section">
+                <div class="cta-card">
+                    <h2>Ready to ditch the browser<br />for your email?</h2>
                     <p>
-                        Made with ❤️ by
-                        <a href="https://floatpane.com" target="_blank"
-                            >floatpane</a
-                        >
+                        Join developers who manage their inbox from the
+                        terminal. Star the project to show your support and stay
+                        updated.
                     </p>
-                    <p>
-                        For support, please open an issue on the
+                    <div class="cta-actions">
                         <a
-                            href="https://github.com/floatpane/matcha/issues"
+                            href="https://github.com/floatpane/matcha"
                             target="_blank"
-                            >GitHub repository</a
-                        >.
-                    </p>
-
-                    <div class="support-links">
-                        <a
-                            href="https://patreon.com/andrinoff"
-                            target="_blank"
-                            class="support-link"
+                            class="btn btn-primary btn-lg"
                         >
-                            <span>❤️</span> Support on Patreon
+                            <svg
+                                height="20"
+                                width="20"
+                                viewBox="0 0 16 16"
+                                fill="currentColor"
+                            >
+                                <path
+                                    d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.751.751 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25z"
+                                />
+                            </svg>
+                            Star on GitHub
                         </a>
                         <a
-                            href="https://ko-fi.com/andrinoff"
+                            href="https://docs.matcha.floatpane.com"
                             target="_blank"
-                            class="support-link"
+                            class="btn btn-ghost btn-lg"
                         >
-                            <span>☕</span> Buy us a coffee
+                            Read the Docs
                         </a>
                     </div>
+                    <div class="cta-links">
+                        <a href="https://andrinoff.com/sponsor" target="_blank"
+                            >Support the developer</a
+                        >
                 </div>
             </section>
         </main>
 
         <footer>
             <div class="footer-content">
-                <div class="footer-brand">
-                    <img
-                        src="assets/logo-transparent.png"
-                        alt="Matcha"
-                        class="logo-icon"
-                        width="24"
-                        height="24"
-                    />
-                    <span>Matcha</span>
+                <div class="footer-left">
+                    <div class="footer-brand">
+                        <img
+                            src="assets/logo-transparent.png"
+                            alt="Matcha"
+                            class="logo-icon"
+                            width="20"
+                            height="20"
+                        />
+                        <span>Matcha</span>
+                    </div>
+                    <p class="footer-copyright">
+                        &copy; 2026 floatpane. MIT Licensed.
+                    </p>
                 </div>
-                <div class="footer-links">
-                    <a
-                        href="https://github.com/floatpane/matcha/blob/master/LICENSE"
-                        target="_blank"
-                        >MIT License</a
-                    >
-                    <a
-                        href="https://github.com/floatpane/matcha/blob/master/CODE_OF_CONDUCT.md"
-                        target="_blank"
-                        >Code of Conduct</a
+                <div class="footer-right">
+                    <a href="https://docs.matcha.floatpane.com" target="_blank"
+                        >Docs</a
                     >
                     <a
                         href="https://github.com/floatpane/matcha"
                         target="_blank"
                         >GitHub</a
                     >
+                    <a
+                        href="https://github.com/floatpane/matcha/blob/master/LICENSE"
+                        target="_blank"
+                        >License</a
+                    >
                 </div>
-                <p class="copyright">© 2026 floatpane. MIT Licensed.</p>
             </div>
         </footer>
 
@@ -581,17 +676,17 @@
                     .join("\n");
 
                 navigator.clipboard.writeText(text).then(() => {
-                    const originalText = btn.textContent;
-                    btn.textContent = "Copied!";
+                    const originalHTML = btn.innerHTML;
+                    btn.innerHTML =
+                        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Copied!';
                     btn.classList.add("copied");
                     setTimeout(() => {
-                        btn.textContent = originalText;
+                        btn.innerHTML = originalHTML;
                         btn.classList.remove("copied");
                     }, 2000);
                 });
             }
 
-            // Smooth scroll for anchor links
             document.querySelectorAll('a[href^="#"]').forEach((anchor) => {
                 anchor.addEventListener("click", function (e) {
                     e.preventDefault();
@@ -606,6 +701,24 @@
                     }
                 });
             });
+
+            // Fade in elements on scroll
+            const observer = new IntersectionObserver(
+                (entries) => {
+                    entries.forEach((entry) => {
+                        if (entry.isIntersecting) {
+                            entry.target.classList.add("visible");
+                        }
+                    });
+                },
+                { threshold: 0.1 },
+            );
+
+            document
+                .querySelectorAll(".feature-card, .install-card, .cta-card")
+                .forEach((el) => {
+                    observer.observe(el);
+                });
         </script>
     </body>
 </html>
