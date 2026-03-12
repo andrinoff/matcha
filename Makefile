@@ -1,4 +1,4 @@
-.PHONY: build test run clean lint fmt vet build-full
+.PHONY: build test run clean lint fmt vet build-full generate_screenshots
 
 BINARY_NAME=matcha
 BUILD_DIR=bin
@@ -7,6 +7,18 @@ generate_gif:
 	alias matcha="go run ."
 	vhs demo.tape
 	mv demo.gif public/assets/demo.gif
+
+generate_screenshots:
+	@mkdir -p public/assets/screenshots
+	@for tape in screenshots/*.tape; do \
+		[ "$$(basename $$tape)" = "common.tape" ] && continue; \
+		name=$$(basename "$$tape" .tape); \
+		echo "==> Generating screenshot: $$name"; \
+		vhs "$$tape" || echo "Warning: $$name failed"; \
+	done
+	@mv screenshots/*.png public/assets/screenshots/ 2>/dev/null || true
+	@rm -f screenshots/*.gif 2>/dev/null || true
+	@echo "Screenshots saved to public/assets/screenshots/"
 
 build:
 	go build -o $(BUILD_DIR)/$(BINARY_NAME) .
