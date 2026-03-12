@@ -298,7 +298,11 @@ func FetchMailboxEmails(account *config.Account, mailbox string, limit, offset u
 
 			matched := false
 			if isSentMailbox {
-				if strings.EqualFold(strings.TrimSpace(fromAddr), fetchEmail) {
+				var senderEmail string
+				if len(msg.Envelope.From) > 0 {
+					senderEmail = msg.Envelope.From[0].Address()
+				}
+				if strings.EqualFold(strings.TrimSpace(senderEmail), fetchEmail) {
 					matched = true
 				}
 			} else {
