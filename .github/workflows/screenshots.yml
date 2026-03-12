@@ -115,7 +115,7 @@ jobs:
           # Move generated screenshots to public assets, clean up intermediate gifs
           mv screenshots/*.png docs/docs/assets/ 2>/dev/null || true
           rm -f screenshots/*.gif 2>/dev/null || true
-          ls -la public/assets/screenshots/
+          ls -la docs/docs/assets/
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v8
@@ -138,4 +138,4 @@ jobs:
             - `drafts.png` - Draft management view
           branch: "update-screenshots"
           base: "master"
-          add-paths: public/assets/screenshots/
+          add-paths: docs/docs/assets/
