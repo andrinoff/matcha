@@ -78,12 +78,14 @@ jobs:
           COMMIT=$(git rev-parse --short HEAD)
           DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
           go build -ldflags="-s -w -X main.version=$LATEST_TAG -X main.commit=$COMMIT -X main.date=$DATE" -o matcha .
+          go build -o email_view ./screenshots/cmd/email_view
 
       - name: Prepare Tapes
         run: |
           for tape in screenshots/*.tape; do
             [ "$tape" = "screenshots/common.tape" ] && continue
-            sed -i 's/go run ./.\/matcha/' "$tape"
+            sed -i 's|go run \./screenshots/cmd/email_view|./email_view|' "$tape"
+            sed -i 's|go run \.|./matcha|' "$tape"
           done
 
       - name: Install Dependencies
@@ -127,6 +129,7 @@ jobs:
             - `main_menu.png` - Main menu / choice screen
             - `compose_email.png` - Email composition with Markdown
             - `compose_empty.png` - Clean compose interface
+            - `email_view.png` - HTML email with inline images and attachments
             - `settings.png` - Settings / account management
             - `drafts.png` - Draft management view
           branch: "update-screenshots"
