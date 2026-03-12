@@ -1,0 +1,138 @@
+name: Generate Screenshots
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  generate-screenshots:
+    name: Generate Feature Screenshots
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          ref: master
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "stable"
+
+      - name: Create Dummy Config
+        run: |
+          mkdir -p ~/.config/matcha
+          cat <<EOF > ~/.config/matcha/config.json
+          {
+            "accounts": [
+              {
+                "id": "demo-user",
+                "name": "Matcha Client",
+                "email": "matcha@floatpane.com",
+                "password": "dummy-password",
+                "service_provider": "custom",
+                "fetch_email": "matcha@floatpane.com"
+              }
+            ]
+          }
+          EOF
+
+      - name: Create Dummy Drafts
+        run: |
+          cat <<EOF > ~/.config/matcha/drafts.json
+          {
+            "drafts": [
+              {
+                "id": "draft-001",
+                "to": "team@example.com",
+                "subject": "Q1 Planning Document",
+                "body": "# Q1 Planning\n\nHere are the key objectives for Q1...",
+                "account_id": "demo-user"
+              },
+              {
+                "id": "draft-002",
+                "to": "alice@example.com",
+                "subject": "Re: Design Review Feedback",
+                "body": "Thanks for the review! I'll address the comments...",
+                "account_id": "demo-user"
+              }
+            ],
+            "updated_at": "2026-01-15T10:00:00Z"
+          }
+          EOF
+
+      - name: Build Matcha
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LATEST_TAG=$(gh release view --json tagName -q ".tagName" 2>/dev/null || echo "dev")
+          echo "Using version: $LATEST_TAG"
+
+          git fetch --tags 2>/dev/null || true
+
+          COMMIT=$(git rev-parse --short HEAD)
+          DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+          go build -ldflags="-s -w -X main.version=$LATEST_TAG -X main.commit=$COMMIT -X main.date=$DATE" -o matcha .
+          go build -o email_view ./screenshots/cmd/email_view
+
+      - name: Prepare Tapes
+        run: |
+          for tape in screenshots/*.tape; do
+            [ "$tape" = "screenshots/common.tape" ] && continue
+            sed -i 's|go run \./screenshots/cmd/email_view|./email_view|' "$tape"
+            sed -i 's|go run \.|./matcha|' "$tape"
+          done
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg ttyd
+          mkdir -p ~/.local/share/fonts
+          wget -q https://github.com/ryanoasis/nerd-fonts/releases/download/v3.1.1/JetBrainsMono.zip
+          unzip -o JetBrainsMono.zip -d ~/.local/share/fonts
+          fc-cache -fv
+          go install github.com/charmbracelet/vhs@latest
+
+      - name: Generate Screenshots
+        env:
+          CLICOLOR_FORCE: "1"
+        run: |
+          mkdir -p public/assets/screenshots
+          for tape in screenshots/*.tape; do
+            [ "$tape" = "screenshots/common.tape" ] && continue
+            name=$(basename "$tape" .tape)
+            echo "==> Generating screenshot: $name"
+            TERM=xterm-256color vhs "$tape" || echo "Warning: $name failed"
+          done
+          # Move generated screenshots to public assets, clean up intermediate gifs
+          mv screenshots/*.png public/assets/screenshots/ 2>/dev/null || true
+          rm -f screenshots/*.gif 2>/dev/null || true
+          ls -la public/assets/screenshots/
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v8
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "docs: update feature screenshots [skip ci]"
+          title: "docs: update feature screenshots"
+          body: |
+            This PR updates the feature screenshots based on the latest release version.
+
+            Generated automatically by the Generate Screenshots workflow.
+
+            ### Screenshots included:
+            - `main_menu.png` - Main menu / choice screen
+            - `compose_email.png` - Email composition with Markdown
+            - `compose_empty.png` - Clean compose interface
+            - `email_view.png` - HTML email with inline images and attachments
+            - `settings.png` - Settings / account management
+            - `drafts.png` - Draft management view
+          branch: "update-screenshots"
+          base: "master"
+          add-paths: public/assets/screenshots/
