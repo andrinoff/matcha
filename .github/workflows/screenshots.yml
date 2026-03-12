@@ -105,7 +105,7 @@ jobs:
         env:
           CLICOLOR_FORCE: "1"
         run: |
-          mkdir -p public/assets/screenshots
+          mkdir -p docs/docs/assets/
           for tape in screenshots/*.tape; do
             [ "$tape" = "screenshots/common.tape" ] && continue
             name=$(basename "$tape" .tape)
@@ -113,7 +113,7 @@ jobs:
             TERM=xterm-256color vhs "$tape" || echo "Warning: $name failed"
           done
           # Move generated screenshots to public assets, clean up intermediate gifs
-          mv screenshots/*.png public/assets/screenshots/ 2>/dev/null || true
+          mv screenshots/*.png docs/docs/assets/ 2>/dev/null || true
           rm -f screenshots/*.gif 2>/dev/null || true
           ls -la public/assets/screenshots/
 

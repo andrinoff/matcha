@@ -14,25 +14,25 @@ import (
 	"github.com/floatpane/matcha/tui"
 )
 
-// wrapper forwards all messages to the Inbox and ensures it renders correctly.
+// wrapper forwards all messages to the FolderInbox and ensures it renders correctly.
 type wrapper struct {
-	inbox *tui.Inbox
+	folderInbox *tui.FolderInbox
 }
 
 func (w wrapper) Init() tea.Cmd {
-	return w.inbox.Init()
+	return w.folderInbox.Init()
 }
 
 func (w wrapper) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	m, cmd := w.inbox.Update(msg)
-	if inbox, ok := m.(*tui.Inbox); ok {
-		w.inbox = inbox
+	m, cmd := w.folderInbox.Update(msg)
+	if fi, ok := m.(*tui.FolderInbox); ok {
+		w.folderInbox = fi
 	}
 	return w, cmd
 }
 
 func (w wrapper) View() tea.View {
-	v := w.inbox.View()
+	v := w.folderInbox.View()
 	v.AltScreen = true
 	return v
 }
@@ -166,9 +166,20 @@ func main() {
 		},
 	}
 
-	inbox := tui.NewInbox(emails, accounts)
+	folders := []string{
+		"INBOX",
+		"Drafts",
+		"Sent",
+		"Archive",
+		"Receipts",
+		"GitHub",
+		"Trash",
+	}
 
-	p := tea.NewProgram(wrapper{inbox: inbox})
+	folderInbox := tui.NewFolderInbox(folders, accounts)
+	folderInbox.SetEmails(emails, accounts)
+
+	p := tea.NewProgram(wrapper{folderInbox: folderInbox})
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)

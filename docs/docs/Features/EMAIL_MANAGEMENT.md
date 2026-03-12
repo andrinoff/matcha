@@ -1,5 +1,7 @@
 # Email Management
 
+![settings](../assets/settings.png)
+
 Matcha provides comprehensive tools for managing your emails directly from the terminal.
 
 ## Key Features

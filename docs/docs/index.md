@@ -15,7 +15,7 @@ hide_table_of_contents: true
 
 Ready to dive in? Here are a few places to start:
 
-- 🚀 [Installation Guide](./Getting Started/installation.md) - Get Matcha running on your machine
+- 🚀 [Installation Guide](.//installation.md) - Get Matcha running on your machine
 - 📖 [Usage & Shortcuts](./usage.md) - Learn how to navigate the interface
 - ⚙️ [Configuration](./Configuration.md) - Set up your accounts and preferences
 
