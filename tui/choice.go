@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/floatpane/matcha/config"
+	"github.com/floatpane/matcha/theme"
 )
 
 // Styles defined locally to avoid import issues.
@@ -127,7 +128,7 @@ func (m Choice) View() tea.View {
 
 	// If we detected an update, show a short message under the header.
 	if m.UpdateAvailable {
-		updateStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("208")).Padding(0, 1)
+		updateStyle := lipgloss.NewStyle().Foreground(theme.ActiveTheme.Warning).Padding(0, 1)
 		cur := m.CurrentVersion
 		if cur == "" {
 			cur = "unknown"

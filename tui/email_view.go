@@ -10,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/floatpane/matcha/fetcher"
+	"github.com/floatpane/matcha/theme"
 	"github.com/floatpane/matcha/view"
 )
 
@@ -243,12 +244,12 @@ func (m *EmailView) View() tea.View {
 
 	smimeStatus := ""
 	if m.isEncrypted {
-		smimeStatus = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Render(" [S/MIME: 🔒 Encrypted]")
+		smimeStatus = lipgloss.NewStyle().Foreground(theme.ActiveTheme.Accent).Render(" [S/MIME: 🔒 Encrypted]")
 	} else if m.isSMIME {
 		if m.smimeTrusted {
-			smimeStatus = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Render(" [S/MIME: ✅ Trusted]")
+			smimeStatus = lipgloss.NewStyle().Foreground(theme.ActiveTheme.Accent).Render(" [S/MIME: ✅ Trusted]")
 		} else {
-			smimeStatus = lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(" [S/MIME: ❌ Untrusted]")
+			smimeStatus = lipgloss.NewStyle().Foreground(theme.ActiveTheme.Danger).Render(" [S/MIME: ❌ Untrusted]")
 		}
 	}
 

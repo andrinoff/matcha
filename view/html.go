@@ -20,12 +20,15 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/PuerkitoBio/goquery"
+	"github.com/floatpane/matcha/theme"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/renderer/html"
 	"golang.org/x/sys/unix"
 )
 
-var linkStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#9BC4FF")) // Cyan
+func linkStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(theme.ActiveTheme.Link)
+}
 
 // getTerminalCellSize returns the height of a terminal cell in pixels.
 // It queries the terminal using TIOCGWINSZ to get both character and pixel dimensions.
@@ -143,14 +146,14 @@ func hyperlink(url, text string) string {
 
 	if supported {
 		// Use OSC 8 hyperlink sequence for supported terminals
-		return fmt.Sprintf("\x1b]8;;%s\x07%s\x1b]8;;\x07", url, linkStyle.Render(text))
+		return fmt.Sprintf("\x1b]8;;%s\x07%s\x1b]8;;\x07", url, linkStyle().Render(text))
 	} else {
 		// Fallback to plain text format for unsupported terminals
 		// Use HTML-encoded angle brackets to prevent HTML parser from treating them as tags
 		if text == url {
-			return fmt.Sprintf("&lt;%s&gt;", linkStyle.Render(url))
+			return fmt.Sprintf("&lt;%s&gt;", linkStyle().Render(url))
 		}
-		return fmt.Sprintf("%s &lt;%s&gt;", linkStyle.Render(text), linkStyle.Render(url))
+		return fmt.Sprintf("%s &lt;%s&gt;", linkStyle().Render(text), linkStyle().Render(url))
 	}
 }
 
@@ -771,7 +774,7 @@ func processBody(rawBody string, inline map[string]string, h1Style, h2Style, bod
 		if hyperlinkSupported() {
 			s.ReplaceWithHtml(hyperlink(src, fmt.Sprintf("\n [Click here to view image: %s] \n", alt)))
 		} else {
-			s.ReplaceWithHtml(fmt.Sprintf("\n %s \n", linkStyle.Render(fmt.Sprintf("[Image: %s, %s]", alt, src))))
+			s.ReplaceWithHtml(fmt.Sprintf("\n %s \n", linkStyle().Render(fmt.Sprintf("[Image: %s, %s]", alt, src))))
 		}
 	})
 
@@ -829,16 +832,18 @@ func processBody(rawBody string, inline map[string]string, h1Style, h2Style, bod
 	return bodyStyle.Render(text), placements, nil
 }
 
-// quoteBoxStyle is the style for the quoted reply box border
-var quoteBoxStyle = lipgloss.NewStyle().
-	Border(lipgloss.RoundedBorder()).
-	BorderForeground(lipgloss.Color("240")).
-	Padding(0, 1).
-	Foreground(lipgloss.Color("240"))
+func quoteBoxStyle() lipgloss.Style {
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(theme.ActiveTheme.Secondary).
+		Padding(0, 1).
+		Foreground(theme.ActiveTheme.Secondary)
+}
 
-// quoteHeaderStyle is the style for the header line in the quote box
-var quoteHeaderStyle = lipgloss.NewStyle().
-	Foreground(lipgloss.Color("240"))
+func quoteHeaderStyle() lipgloss.Style {
+	return lipgloss.NewStyle().
+		Foreground(theme.ActiveTheme.Secondary)
+}
 
 // styleQuotedReplies detects quoted reply sections and styles them in a box
 func styleQuotedReplies(text string) string {
@@ -950,11 +955,11 @@ func renderQuoteBox(from, date string, lines []string) string {
 	var header string
 	if from != "" || date != "" {
 		if from != "" && date != "" {
-			header = quoteHeaderStyle.Render(from + "  " + date)
+			header = quoteHeaderStyle().Render(from + "  " + date)
 		} else if from != "" {
-			header = quoteHeaderStyle.Render(from)
+			header = quoteHeaderStyle().Render(from)
 		} else {
-			header = quoteHeaderStyle.Render(date)
+			header = quoteHeaderStyle().Render(date)
 		}
 	}
 
@@ -969,5 +974,5 @@ func renderQuoteBox(from, date string, lines []string) string {
 		boxContent = content
 	}
 
-	return quoteBoxStyle.Render(boxContent)
+	return quoteBoxStyle().Render(boxContent)
 }

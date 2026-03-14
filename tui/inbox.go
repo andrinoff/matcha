@@ -12,6 +12,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/floatpane/matcha/config"
 	"github.com/floatpane/matcha/fetcher"
+	"github.com/floatpane/matcha/theme"
 )
 
 var (
@@ -314,7 +315,7 @@ func (m *Inbox) updateList() {
 	l.Title = m.getTitle()
 	l.SetShowStatusBar(true)
 	l.SetFilteringEnabled(true)
-	l.Styles.Title = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true)
+	l.Styles.Title = lipgloss.NewStyle().Foreground(theme.ActiveTheme.Accent).Bold(true)
 	l.Styles.PaginationStyle = paginationStyle
 	l.Styles.HelpStyle = inboxHelpStyle
 	l.SetStatusBarItemName("email", "emails")

@@ -10,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/floatpane/matcha/config"
+	"github.com/floatpane/matcha/theme"
 )
 
 // draftItem represents a draft in the list
@@ -85,7 +86,7 @@ func NewDrafts(drafts []config.Draft) *Drafts {
 
 	l := list.New(items, list.NewDefaultDelegate(), 0, 0)
 	l.Title = "Drafts"
-	l.Styles.Title = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true)
+	l.Styles.Title = lipgloss.NewStyle().Foreground(theme.ActiveTheme.Accent).Bold(true)
 	l.SetShowStatusBar(true)
 	l.SetFilteringEnabled(true)
 	l.SetStatusBarItemName("draft", "drafts")
@@ -198,7 +199,7 @@ func (m *Drafts) View() tea.View {
 
 	if len(m.drafts) == 0 {
 		emptyMsg := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("240")).
+			Foreground(theme.ActiveTheme.Secondary).
 			Render("No drafts saved.\n\nPress esc to go back.")
 		return tea.NewView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, emptyMsg))
 	}

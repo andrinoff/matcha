@@ -23,6 +23,7 @@ import (
 	"github.com/floatpane/matcha/config"
 	"github.com/floatpane/matcha/fetcher"
 	"github.com/floatpane/matcha/sender"
+	"github.com/floatpane/matcha/theme"
 	"github.com/floatpane/matcha/tui"
 	"github.com/google/uuid"
 	"github.com/yuin/goldmark"
@@ -1975,6 +1976,11 @@ func main() {
 	}
 
 	cfg, err := config.LoadConfig()
+	if err == nil && cfg.Theme != "" {
+		theme.SetTheme(cfg.Theme)
+	}
+	tui.RebuildStyles()
+
 	var initialModel *mainModel
 	if err != nil {
 		initialModel = newInitialModel(nil)

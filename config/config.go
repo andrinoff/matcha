@@ -46,6 +46,7 @@ type Config struct {
 	Accounts      []Account     `json:"accounts"`
 	DisableImages bool          `json:"disable_images,omitempty"`
 	HideTips      bool          `json:"hide_tips,omitempty"`
+	Theme         string        `json:"theme,omitempty"`
 	MailingLists  []MailingList `json:"mailing_lists,omitempty"`
 }
 
@@ -190,6 +191,7 @@ func LoadConfig() (*Config, error) {
 		Accounts      []rawAccount  `json:"accounts"`
 		DisableImages bool          `json:"disable_images,omitempty"`
 		HideTips      bool          `json:"hide_tips,omitempty"`
+		Theme         string        `json:"theme,omitempty"`
 		MailingLists  []MailingList `json:"mailing_lists,omitempty"`
 	}
 
@@ -220,6 +222,7 @@ func LoadConfig() (*Config, error) {
 
 	config.DisableImages = raw.DisableImages
 	config.HideTips = raw.HideTips
+	config.Theme = raw.Theme
 	config.MailingLists = raw.MailingLists
 	for _, rawAcc := range raw.Accounts {
 		acc := Account{

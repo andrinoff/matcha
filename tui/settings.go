@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/floatpane/matcha/config"
+	"github.com/floatpane/matcha/theme"
 )
 
 var (
@@ -27,6 +28,7 @@ const (
 	SettingsAccounts
 	SettingsMailingLists
 	SettingsSMIMEConfig
+	SettingsTheme
 )
 
 // Settings displays the settings screen.
@@ -91,6 +93,8 @@ func (m *Settings) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		if m.state == SettingsMain {
 			return m.updateMain(msg)
+		} else if m.state == SettingsTheme {
+			return m.updateTheme(msg)
 		} else if m.state == SettingsMailingLists {
 			return m.updateMailingLists(msg)
 		} else if m.state == SettingsSMIMEConfig {
@@ -120,8 +124,8 @@ func (m *Settings) updateMain(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.cursor--
 		}
 	case "down", "j":
-		// Options: 0: Email Accounts, 1: Image Display, 2: Edit Signature, 3: Contextual Tips, 4: Mailing Lists
-		if m.cursor < 4 {
+		// Options: 0: Email Accounts, 1: Theme, 2: Image Display, 3: Edit Signature, 4: Contextual Tips, 5: Mailing Lists
+		if m.cursor < 5 {
 			m.cursor++
 		}
 	case "enter":
@@ -130,19 +134,29 @@ func (m *Settings) updateMain(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.state = SettingsAccounts
 			m.cursor = 0
 			return m, nil
-		case 1: // Image Display
+		case 1: // Theme
+			m.state = SettingsTheme
+			// Position cursor on the currently active theme
+			themes := theme.AllThemes()
+			m.cursor = 0
+			for i, t := range themes {
+				if t.Name == theme.ActiveTheme.Name {
+					m.cursor = i
+					break
+				}
+			}
+			return m, nil
+		case 2: // Image Display
 			m.cfg.DisableImages = !m.cfg.DisableImages
-			// Save config immediately
 			_ = config.SaveConfig(m.cfg)
 			return m, nil
-		case 2: // Edit Signature
+		case 3: // Edit Signature
 			return m, func() tea.Msg { return GoToSignatureEditorMsg{} }
-		case 3: // Contextual Tips
+		case 4: // Contextual Tips
 			m.cfg.HideTips = !m.cfg.HideTips
-			// Save config immediately
 			_ = config.SaveConfig(m.cfg)
 			return m, nil
-		case 4: // Mailing Lists
+		case 5: // Mailing Lists
 			m.state = SettingsMailingLists
 			m.cursor = 0
 			return m, nil
@@ -324,6 +338,8 @@ func (m *Settings) updateMailingLists(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 func (m *Settings) View() tea.View {
 	if m.state == SettingsMain {
 		return tea.NewView(m.viewMain())
+	} else if m.state == SettingsTheme {
+		return tea.NewView(m.viewTheme())
 	} else if m.state == SettingsMailingLists {
 		return tea.NewView(m.viewMailingLists())
 	} else if m.state == SettingsSMIMEConfig {
@@ -345,47 +361,56 @@ func (m *Settings) viewMain() string {
 	}
 	b.WriteString("\n")
 
-	// Option 1: Image Display
+	// Option 1: Theme
+	themeText := fmt.Sprintf("Theme: %s", theme.ActiveTheme.Name)
+	if m.cursor == 1 {
+		b.WriteString(selectedAccountItemStyle.Render("> " + themeText))
+	} else {
+		b.WriteString(accountItemStyle.Render("  " + themeText))
+	}
+	b.WriteString("\n")
+
+	// Option 2: Image Display
 	status := "ON"
 	if m.cfg.DisableImages {
 		status = "OFF"
 	}
 	text := fmt.Sprintf("Image Display: %s", status)
-	if m.cursor == 1 {
+	if m.cursor == 2 {
 		b.WriteString(selectedAccountItemStyle.Render("> " + text))
 	} else {
 		b.WriteString(accountItemStyle.Render("  " + text))
 	}
 	b.WriteString("\n")
 
-	// Option 2: Edit Signature
+	// Option 3: Edit Signature
 	sigText := "Edit Signature"
 	if config.HasSignature() {
 		sigText = "Edit Signature (configured)"
 	}
-	if m.cursor == 2 {
+	if m.cursor == 3 {
 		b.WriteString(selectedAccountItemStyle.Render("> " + sigText))
 	} else {
 		b.WriteString(accountItemStyle.Render("  " + sigText))
 	}
 	b.WriteString("\n")
 
-	// Option 3: Contextual Tips
+	// Option 4: Contextual Tips
 	tipsStatus := "ON"
 	if m.cfg.HideTips {
 		tipsStatus = "OFF"
 	}
 	tipsText := fmt.Sprintf("Contextual Tips: %s", tipsStatus)
-	if m.cursor == 3 {
+	if m.cursor == 4 {
 		b.WriteString(selectedAccountItemStyle.Render("> " + tipsText))
 	} else {
 		b.WriteString(accountItemStyle.Render("  " + tipsText))
 	}
 	b.WriteString("\n")
 
-	// Option 4: Mailing Lists
+	// Option 5: Mailing Lists
 	mailingListsText := "Mailing Lists"
-	if m.cursor == 4 {
+	if m.cursor == 5 {
 		b.WriteString(selectedAccountItemStyle.Render("> " + mailingListsText))
 	} else {
 		b.WriteString(accountItemStyle.Render("  " + mailingListsText))
@@ -398,12 +423,14 @@ func (m *Settings) viewMain() string {
 		case 0:
 			tip = "Manage your connected email accounts."
 		case 1:
-			tip = "Toggle displaying images in emails."
+			tip = "Choose a color theme for the application."
 		case 2:
-			tip = "Configure the signature appended to your outgoing emails."
+			tip = "Toggle displaying images in emails."
 		case 3:
-			tip = "Toggle displaying helpful contextual tips like this one."
+			tip = "Configure the signature appended to your outgoing emails."
 		case 4:
+			tip = "Toggle displaying helpful contextual tips like this one."
+		case 5:
 			tip = "Manage groups of email addresses to quickly send to multiple people."
 		}
 		if tip != "" {
@@ -628,6 +655,150 @@ func (m *Settings) viewMailingLists() string {
 	}
 
 	return docStyle.Render(mainContent + helpView)
+}
+
+func (m *Settings) updateTheme(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	themes := theme.AllThemes()
+
+	switch msg.String() {
+	case "up", "k":
+		if m.cursor > 0 {
+			m.cursor--
+		}
+	case "down", "j":
+		if m.cursor < len(themes)-1 {
+			m.cursor++
+		}
+	case "enter":
+		if m.cursor < len(themes) {
+			selected := themes[m.cursor]
+			theme.SetTheme(selected.Name)
+			RebuildStyles()
+			m.cfg.Theme = selected.Name
+			_ = config.SaveConfig(m.cfg)
+		}
+		m.state = SettingsMain
+		m.cursor = 1 // Return to Theme option
+		return m, nil
+	case "esc":
+		m.state = SettingsMain
+		m.cursor = 1 // Return to Theme option
+		return m, nil
+	}
+	return m, nil
+}
+
+func (m *Settings) viewTheme() string {
+	themes := theme.AllThemes()
+
+	// Build left panel: theme list
+	var left strings.Builder
+	left.WriteString(titleStyle.Render("Theme") + "\n\n")
+
+	for i, t := range themes {
+		isActive := t.Name == theme.ActiveTheme.Name
+
+		label := t.Name
+		if isActive {
+			label += " (active)"
+		}
+
+		if m.cursor == i {
+			left.WriteString(selectedAccountItemStyle.Render(fmt.Sprintf("> %s", label)))
+		} else {
+			left.WriteString(accountItemStyle.Render(fmt.Sprintf("  %s", label)))
+		}
+		left.WriteString("\n")
+	}
+
+	left.WriteString("\n")
+	if !m.cfg.HideTips {
+		left.WriteString(TipStyle.Render("Tip: Custom themes can be added as\nJSON files in ~/.config/matcha/themes/") + "\n")
+	}
+
+	// Build right panel: theme preview
+	var previewTheme theme.Theme
+	if m.cursor < len(themes) {
+		previewTheme = themes[m.cursor]
+	} else {
+		previewTheme = theme.ActiveTheme
+	}
+	preview := renderThemePreview(previewTheme, m.width)
+
+	// Join panels side by side
+	leftPanel := lipgloss.NewStyle().Width(30).Render(left.String())
+	content := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, "  ", preview)
+
+	helpView := helpStyle.Render("↑/↓: navigate • enter: select • esc: back")
+
+	if m.height > 0 {
+		currentHeight := lipgloss.Height(docStyle.Render(content + "\n" + helpView))
+		gap := m.height - currentHeight
+		if gap > 0 {
+			content += strings.Repeat("\n", gap)
+		}
+	} else {
+		content += "\n\n"
+	}
+
+	return docStyle.Render(content + "\n" + helpView)
+}
+
+// renderThemePreview renders a small mockup showing how a theme looks.
+func renderThemePreview(t theme.Theme, maxWidth int) string {
+	previewWidth := maxWidth - 38 // 30 for left panel + padding/margins
+	if previewWidth < 30 {
+		previewWidth = 30
+	}
+	if previewWidth > 60 {
+		previewWidth = 60
+	}
+
+	accent := lipgloss.NewStyle().Foreground(t.Accent)
+	accentBold := lipgloss.NewStyle().Foreground(t.Accent).Bold(true)
+	secondary := lipgloss.NewStyle().Foreground(t.Secondary)
+	muted := lipgloss.NewStyle().Foreground(t.MutedText)
+	dim := lipgloss.NewStyle().Foreground(t.DimText)
+	danger := lipgloss.NewStyle().Foreground(t.Danger)
+	warn := lipgloss.NewStyle().Foreground(t.Warning)
+	tip := lipgloss.NewStyle().Foreground(t.Tip).Italic(true)
+	link := lipgloss.NewStyle().Foreground(t.Link)
+	title := lipgloss.NewStyle().Foreground(t.AccentText).Background(t.AccentDark).Padding(0, 1)
+	activeTab := lipgloss.NewStyle().Foreground(t.Accent).Bold(true).Underline(true)
+	activeFolder := lipgloss.NewStyle().Background(t.Accent).Foreground(t.Contrast).Bold(true).Padding(0, 1)
+
+	var b strings.Builder
+
+	b.WriteString(title.Render("Preview: "+t.Name) + "\n\n")
+
+	// Fake inbox tabs
+	b.WriteString(activeTab.Render("Inbox") + "  " + secondary.Render("Sent") + "  " + secondary.Render("Drafts") + "\n")
+	b.WriteString(secondary.Render(strings.Repeat("─", previewWidth)) + "\n")
+
+	// Fake email list
+	b.WriteString(accentBold.Render("> ") + dim.Render("Alice  ") + accent.Render("Meeting tomorrow") + "  " + muted.Render("2m ago") + "\n")
+	b.WriteString("  " + dim.Render("Bob    ") + secondary.Render("Re: Project update") + "  " + muted.Render("1h ago") + "\n")
+	b.WriteString("  " + dim.Render("Carol  ") + secondary.Render("Quick question") + "    " + muted.Render("3h ago") + "\n\n")
+
+	// Folder sidebar sample
+	b.WriteString(accentBold.Render("Folders") + "\n")
+	b.WriteString(activeFolder.Render(" INBOX ") + "  " + secondary.Render("Sent") + "  " + secondary.Render("Trash") + "\n\n")
+
+	// Status indicators
+	b.WriteString(accentBold.Render("Success: ") + accent.Render("Email sent!") + "\n")
+	b.WriteString(danger.Render("Error: ") + danger.Render("Connection failed") + "\n")
+	b.WriteString(warn.Render("Update available: v2.0") + "\n")
+	b.WriteString(tip.Render("Tip: Press ? for help") + "\n")
+	b.WriteString(link.Render("https://example.com") + "\n")
+
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(t.AccentDark).
+		Padding(1, 2).
+		Width(previewWidth).
+		Render(b.String())
+
+	return box
 }
 
 // UpdateConfig updates the configuration (used when accounts are deleted).

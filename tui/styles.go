@@ -6,6 +6,7 @@ import (
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/floatpane/matcha/theme"
 )
 
 // ASCII logo for Matcha displayed during loading screens
@@ -57,7 +58,7 @@ type Status struct {
 func NewStatus(msg string) Status {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+	s.Style = lipgloss.NewStyle().Foreground(theme.ActiveTheme.Accent)
 	return Status{spinner: s, message: msg}
 }
 
@@ -70,7 +71,7 @@ func (m Status) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Status) View() tea.View {
-	logoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+	logoStyle := lipgloss.NewStyle().Foreground(theme.ActiveTheme.Accent)
 	styledLogo := logoStyle.Render(asciiLogo)
 
 	spinnerLine := fmt.Sprintf("   %s %s", m.spinner.View(), m.message)
