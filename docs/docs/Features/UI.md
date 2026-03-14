@@ -4,7 +4,7 @@ Matcha features a modern terminal interface built for efficiency and aesthetics.
 
 ## Key Features
 
-- **🎨 Beautiful TUI**: Clean, modern terminal interface built with Bubble Tea.
+- **🎨 Beautiful TUI**: Clean, modern, customizable terminal interface built with Bubble Tea.
 - **⌨️ Vim-like Keybindings**: Efficient keyboard navigation (`j/k`, `h/l`, etc.).
 - **📱 Responsive Design**: Adapts to your terminal window size.
 - **🎯 Focus Management**: Clear visual indication of focused elements.

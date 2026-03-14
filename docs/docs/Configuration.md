@@ -36,6 +36,7 @@ Configuration is stored in `~/.config/matcha/config.json`.
       "addresses": ["alice@example.com", "bob@example.com"]
     }
   ],
+  "theme": "Matcha",
   "disable_images": true,
   "hide_tips": true
 }
@@ -46,3 +47,4 @@ Configuration is stored in `~/.config/matcha/config.json`.
 - **Drafts**: `~/.config/matcha/drafts/`
 - **Email Cache**: `~/.config/matcha/cache.json`
 - **Contacts**: `~/.config/matcha/contacts.json`
+- **Custom Themes**: `~/.config/matcha/themes/*.json`
