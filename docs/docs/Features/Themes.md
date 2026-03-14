@@ -8,6 +8,8 @@ Go to **Settings > Theme** to browse available themes. A live preview panel on t
 
 Your selection is saved to `config.json` and persists across sessions.
 
+![Theme Settings](../assets/theme_settings.png)
+
 ## Built-in Themes
 
 | Theme | Description |
