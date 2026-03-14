@@ -14,23 +14,23 @@ import (
 )
 
 var (
-	suggestionStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	suggestionStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	selectedSuggestionStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true)
-	suggestionBoxStyle      = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("240")).Padding(0, 1)
+	suggestionBoxStyle      = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("245")).Padding(0, 1)
 )
 
 // Styles for the UI
 var (
 	focusedStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
-	blurredStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	blurredStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	noStyle             = lipgloss.NewStyle()
-	helpStyle           = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	helpStyle           = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	focusedButton       = focusedStyle.Copy().Render("[ Send ]")
 	blurredButton       = blurredStyle.Copy().Render("[ Send ]")
 	emailRecipientStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true)
-	attachmentStyle     = lipgloss.NewStyle().PaddingLeft(4).Foreground(lipgloss.Color("240"))
+	attachmentStyle     = lipgloss.NewStyle().PaddingLeft(4).Foreground(lipgloss.Color("245"))
 	fromSelectorStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
-	smimeToggleStyle    = lipgloss.NewStyle().PaddingLeft(4).Foreground(lipgloss.Color("240"))
+	smimeToggleStyle    = lipgloss.NewStyle().PaddingLeft(4).Foreground(lipgloss.Color("245"))
 )
 
 const (
