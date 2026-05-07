@@ -353,6 +353,7 @@ func (m *FolderInbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Update email with body
 		email.Body = msg.Body
+		email.BodyMIMEType = msg.BodyMIMEType
 		email.Attachments = msg.Attachments
 		// Create preview pane with column offset for image rendering
 		previewWidth := m.calculatePreviewWidth()
