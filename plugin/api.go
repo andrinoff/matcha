@@ -20,6 +20,10 @@ func (m *Manager) registerAPI() {
 		"bind_key":          m.luaBindKey,
 		"http":              m.luaHTTP,
 		"prompt":            m.luaPrompt,
+		"store_set":         m.luaStoreSet,
+		"store_get":         m.luaStoreGet,
+		"store_delete":      m.luaStoreDelete,
+		"store_keys":        m.luaStoreKeys,
 		"style":             m.luaStyle,
 		"settings":          m.luaSettings,
 		"get_setting":       m.luaGetSetting,
@@ -75,6 +79,7 @@ func (m *Manager) luaBindKey(L *lua.LState) int {
 			Area:        area,
 			Description: description,
 			Fn:          fn,
+			Plugin:      m.currentPlugin,
 		})
 	default:
 		L.ArgError(2, "invalid area: must be \"inbox\", \"email_view\", or \"composer\"")

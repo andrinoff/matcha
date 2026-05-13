@@ -15,13 +15,24 @@ type KeyBinding struct {
 	Area        string // "inbox", "email_view", or "composer"
 	Description string
 	Fn          *lua.LFunction
+	Plugin      string
 }
 
 // Manager manages the Lua VM and loaded plugins.
+//
+// Manager is not safe for concurrent use. The Lua VM itself is single-
+// threaded, and all hook callbacks, key-binding invocations, and API calls
+// must be dispatched from the same goroutine that owns the Manager (the
+// orchestrator). Mutable Manager state (hooks, stores, bindings,
+// currentPlugin, pending* fields) is therefore unprotected by design; callers
+// that need to drive plugin events from multiple goroutines must serialize
+// access externally.
 type Manager struct {
-	state   *lua.LState
-	hooks   map[string][]*lua.LFunction
-	plugins []string
+	state         *lua.LState
+	hooks         map[string][]registeredHook
+	plugins       []string
+	currentPlugin string
+	stores        map[string]*pluginStore
 	// statuses holds persistent status strings per view area, shown in the UI.
 	statuses map[string]string
 	// pendingNotification is set by matcha.notify() and consumed by the orchestrator.
@@ -38,15 +49,12 @@ type Manager struct {
 	pluginSchemas map[string][]SettingDef
 	// pluginValues holds current setting values per plugin.
 	pluginValues map[string]map[string]interface{}
-	// currentPlugin names the plugin file currently being loaded; used to
-	// attribute matcha.settings() declarations.
-	currentPlugin string
 }
 
 // NewManager creates a new plugin manager with a Lua VM.
 func NewManager() *Manager {
 	m := &Manager{
-		hooks:         make(map[string][]*lua.LFunction),
+		hooks:         make(map[string][]registeredHook),
 		statuses:      make(map[string]string),
 		pendingFields: make(map[string]string),
 		pluginSchemas: make(map[string][]SettingDef),
@@ -110,9 +118,11 @@ func (m *Manager) LoadPlugins() {
 }
 
 func (m *Manager) loadPlugin(name, path string) {
-	prev := m.currentPlugin
+	previousPlugin := m.currentPlugin
 	m.currentPlugin = name
-	defer func() { m.currentPlugin = prev }()
+	defer func() {
+		m.currentPlugin = previousPlugin
+	}()
 
 	if err := m.state.DoFile(path); err != nil {
 		log.Printf("plugin %q: load error: %v", name, err)
