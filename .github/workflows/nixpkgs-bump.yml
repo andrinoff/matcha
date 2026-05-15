@@ -58,7 +58,7 @@ jobs:
           path: nixpkgs
           fetch-depth: 0
 
-      - name: Sync fork with upstream master and fetch staging
+      - name: Sync fork with upstream master
         if: steps.ver.outputs.skip != 'true'
         working-directory: nixpkgs
         run: |
@@ -79,17 +79,32 @@ jobs:
           OLD=$(grep -E '^\s*version\s*=\s*"' "$PKG" | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
           echo "old=$OLD" >> $GITHUB_OUTPUT
 
-      - name: Checkout staging for build verification
+      - name: Write go overlay from staging
         if: steps.ver.outputs.skip != 'true'
         working-directory: nixpkgs
         run: |
-          # Build against staging (has newer go) — final PR branch is rebased onto master later.
-          git checkout -B build-staging upstream/staging
+          # master nixpkgs heavily cached. Staging has go_1_26 = 1.26.3.
+          # Overlay swaps only go_1_26 → minimal rebuild.
+          STAGING_REV=$(git rev-parse upstream/staging)
+          echo "STAGING_REV=$STAGING_REV" >> $GITHUB_ENV
+          cat > /tmp/go-overlay.nix <<EOF
+          let
+            staging = import (builtins.fetchTarball
+              "https://github.com/NixOS/nixpkgs/archive/$STAGING_REV.tar.gz") {};
+          in final: prev: {
+            go_1_26 = staging.go_1_26;
+            go = staging.go_1_26;
+            buildGoModule = prev.buildGoModule.override { go = staging.go_1_26; };
+          }
+          EOF
+          cat /tmp/go-overlay.nix
 
-      - name: Set bump branch name
+      - name: Create bump branch
         if: steps.ver.outputs.skip != 'true'
+        working-directory: nixpkgs
         run: |
           BRANCH="matcha-${{ steps.ver.outputs.version }}"
+          git checkout -b "$BRANCH"
           echo "BRANCH=$BRANCH" >> $GITHUB_ENV
 
       - name: Bump version and reset hashes
@@ -104,19 +119,26 @@ jobs:
           sed -i -E 's|hash = "sha256-[A-Za-z0-9+/=]+"|hash = lib.fakeHash|' "$PKG"
           sed -i -E 's|vendorHash = "sha256-[A-Za-z0-9+/=]+"|vendorHash = lib.fakeHash|' "$PKG"
 
-      - name: Build to extract src hash
+      - name: Prefetch src hash (no build)
         if: steps.ver.outputs.skip != 'true'
         id: src_hash
         working-directory: nixpkgs
         run: |
-          set +e
-          OUT=$(nix-build -A matcha --no-out-link 2>&1)
-          RC=$?
-          echo "$OUT"
-          HASH=$(echo "$OUT" | grep -oE 'got:[[:space:]]+sha256-[A-Za-z0-9+/=]+' | head -1 | awk '{print $2}')
-          if [ -z "$HASH" ]; then
-            echo "Failed to extract src hash"; exit 1
+          NEW="${{ steps.ver.outputs.version }}"
+          nix-shell -p nix-prefetch-github --run \
+            "nix-prefetch-github floatpane matcha --rev v$NEW --json" \
+            > /tmp/prefetch.json
+          cat /tmp/prefetch.json
+          # nix-prefetch-github returns base32 sha256; convert to SRI sha256-...
+          RAW=$(jq -r .hash /tmp/prefetch.json)
+          if [ -z "$RAW" ] || [ "$RAW" = "null" ]; then
+            # Older nix-prefetch-github uses .sha256
+            RAW=$(jq -r .sha256 /tmp/prefetch.json)
+            HASH=$(nix hash to-sri --type sha256 "$RAW")
+          else
+            HASH="$RAW"
           fi
+          echo "Resolved SRI hash: $HASH"
           echo "hash=$HASH" >> $GITHUB_OUTPUT
           sed -i -E "s|hash = lib.fakeHash|hash = \"$HASH\"|" pkgs/by-name/ma/matcha/package.nix
 
@@ -125,10 +147,10 @@ jobs:
         working-directory: nixpkgs
         run: |
           set +e
-          OUT=$(nix-build -A matcha --no-out-link 2>&1)
-          RC=$?
-          echo "$OUT"
-          HASH=$(echo "$OUT" | grep -oE 'got:[[:space:]]+sha256-[A-Za-z0-9+/=]+' | head -1 | awk '{print $2}')
+          nix-build ./. -A matcha --no-out-link \
+            --arg overlays "[ (import /tmp/go-overlay.nix) ]" \
+            2>&1 | tee /tmp/build-vendor.log
+          HASH=$(grep -oE 'got:[[:space:]]+sha256-[A-Za-z0-9+/=]+' /tmp/build-vendor.log | head -1 | awk '{print $2}')
           if [ -z "$HASH" ]; then
             echo "Failed to extract vendorHash"; exit 1
           fi
@@ -137,18 +159,9 @@ jobs:
       - name: Final build (sanity check)
         if: steps.ver.outputs.skip != 'true'
         working-directory: nixpkgs
-        run: nix-build -A matcha --no-out-link
-
-      - name: Move final package.nix onto master-based bump branch
-        if: steps.ver.outputs.skip != 'true'
-        working-directory: nixpkgs
         run: |
-          PKG=pkgs/by-name/ma/matcha/package.nix
-          cp "$PKG" /tmp/package.nix.new
-          git checkout -- "$PKG"
-          git checkout master
-          git checkout -B "$BRANCH"
-          cp /tmp/package.nix.new "$PKG"
+          nix-build ./. -A matcha --no-out-link \
+            --arg overlays "[ (import /tmp/go-overlay.nix) ]"
 
       - name: Commit and push
         if: steps.ver.outputs.skip != 'true'
@@ -179,7 +192,7 @@ jobs:
           - Hashes regenerated from upstream tarball
           - No package metadata changes beyond version + hashes
 
-          cc maintainer for review.
+          cc @andrinoff
           EOF
           )
           gh pr create \
