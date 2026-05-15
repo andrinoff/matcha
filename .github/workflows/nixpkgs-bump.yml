@@ -125,19 +125,10 @@ jobs:
         working-directory: nixpkgs
         run: |
           NEW="${{ steps.ver.outputs.version }}"
-          nix-shell -p nix-prefetch-github --run \
-            "nix-prefetch-github floatpane matcha --rev v$NEW --json" \
-            > /tmp/prefetch.json
-          cat /tmp/prefetch.json
-          # nix-prefetch-github returns base32 sha256; convert to SRI sha256-...
-          RAW=$(jq -r .hash /tmp/prefetch.json)
-          if [ -z "$RAW" ] || [ "$RAW" = "null" ]; then
-            # Older nix-prefetch-github uses .sha256
-            RAW=$(jq -r .sha256 /tmp/prefetch.json)
-            HASH=$(nix hash to-sri --type sha256 "$RAW")
-          else
-            HASH="$RAW"
-          fi
+          URL="https://github.com/floatpane/matcha/archive/refs/tags/v$NEW.tar.gz"
+          # --unpack matches fetchFromGitHub (NAR hash of unpacked tarball)
+          BASE32=$(nix-prefetch-url --unpack "$URL")
+          HASH=$(nix hash to-sri --type sha256 "$BASE32")
           echo "Resolved SRI hash: $HASH"
           echo "hash=$HASH" >> $GITHUB_OUTPUT
           sed -i -E "s|hash = lib.fakeHash|hash = \"$HASH\"|" pkgs/by-name/ma/matcha/package.nix
@@ -192,7 +183,7 @@ jobs:
           - Hashes regenerated from upstream tarball
           - No package metadata changes beyond version + hashes
 
-          cc @andrinoff
+          cc maintainer for review.
           EOF
           )
           gh pr create \
