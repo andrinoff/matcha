@@ -124,10 +124,16 @@ type ContactUsage struct {
 }
 
 // Contact stores a contact's name, email address, and per-account usage.
+//
+// For regular contacts, Email holds a single address and Addresses is empty.
+// For mailing-list virtual contacts emitted by SearchContacts, Email is empty
+// and Addresses holds the expanded list of recipients. Callers that need to
+// distinguish the two cases should check len(Addresses) > 0.
 type Contact struct {
-	Name  string                  `json:"name"`
-	Email string                  `json:"email"`
-	Usage map[string]ContactUsage `json:"usage_by_account"`
+	Name      string                  `json:"name"`
+	Email     string                  `json:"email"`
+	Addresses []string                `json:"addresses,omitempty"`
+	Usage     map[string]ContactUsage `json:"usage_by_account"`
 }
 
 // UnmarshalJSON accepts both the current usage_by_account format and the
@@ -322,10 +328,14 @@ func SearchContactsForAccount(query, accountID string) []Contact {
 	if err == nil {
 		for _, list := range cfg.MailingLists {
 			if strings.Contains(strings.ToLower(list.Name), query) {
-				// Convert mailing list to a virtual contact
+				// Convert mailing list to a virtual contact. Addresses are
+				// stored in a dedicated slice so the Email field keeps its
+				// single-address invariant -- avoids corruption by
+				// normalizeContactEmail and exact-match lookups in callers.
+				addresses := append([]string(nil), list.Addresses...)
 				matches = append(matches, Contact{
-					Name:  list.Name,
-					Email: strings.Join(list.Addresses, ", "),
+					Name:      list.Name,
+					Addresses: addresses,
 					Usage: map[string]ContactUsage{
 						accountID: {
 							UseCount: 9999, // Ensure lists appear at the top
