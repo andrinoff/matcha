@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"runtime/debug"
 	"sort"
 	"sync"
 	"time"
@@ -185,19 +186,30 @@ func (d *Daemon) initProviders() {
 
 func (d *Daemon) acceptLoop() {
 	for {
-		conn, err := d.listener.Accept()
-		if err != nil {
-			select {
-			case <-d.shutdown:
-				return
-			default:
-				log.Printf("daemon: accept error: %v", err)
-				continue
+		done := func() bool {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("daemon: acceptLoop panic recovered: %v\n%s", r, debug.Stack())
+				}
+			}()
+			conn, err := d.listener.Accept()
+			if err != nil {
+				select {
+				case <-d.shutdown:
+					return true
+				default:
+					log.Printf("daemon: accept error: %v", err)
+					return false
+				}
 			}
+			rpcConn := daemonrpc.NewConn(conn)
+			d.addClient(rpcConn)
+			go d.handleClient(rpcConn)
+			return false
+		}()
+		if done {
+			return
 		}
-		rpcConn := daemonrpc.NewConn(conn)
-		d.addClient(rpcConn)
-		go d.handleClient(rpcConn)
 	}
 }
 
