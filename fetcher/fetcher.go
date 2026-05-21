@@ -29,6 +29,7 @@ import (
 	"github.com/emersion/go-message/mail"
 	"github.com/emersion/go-pgpmail"
 	"github.com/floatpane/matcha/config"
+	"github.com/floatpane/matcha/internal/loglevel"
 	"go.mozilla.org/pkcs7"
 	"golang.org/x/text/encoding"
 	"golang.org/x/text/encoding/ianaindex"
@@ -376,6 +377,11 @@ func connectWithOptions(account *config.Account, extraOpts *imapclient.Options) 
 			ServerName:         imapServer,
 			InsecureSkipVerify: account.Insecure,
 			MinVersion:         tls.VersionTLS12,
+			ClientSessionCache: account.GetClientSessionCache(),
+			VerifyConnection: func(cs tls.ConnectionState) error {
+				loglevel.Debugf("IMAP TLS connection resumed: %t", cs.DidResume)
+				return nil
+			},
 		},
 	}
 	if extraOpts != nil {

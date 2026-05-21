@@ -385,6 +385,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				POP3Server:      msg.POP3Server,
 				POP3Port:        msg.POP3Port,
 				MaildirPath:     msg.MaildirPath,
+				SC:              &config.SessionCache{},
 			}
 
 			if msg.Provider == "custom" || msg.Protocol == "pop3" {
@@ -430,6 +431,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					POP3Server:      msg.POP3Server,
 					POP3Port:        msg.POP3Port,
 					MaildirPath:     msg.MaildirPath,
+					SC:              &config.SessionCache{},
 				}
 
 				if msg.Provider == "custom" || msg.Protocol == "pop3" {

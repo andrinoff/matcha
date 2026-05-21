@@ -25,6 +25,7 @@ import (
 	"github.com/emersion/go-pgpmail"
 	"github.com/floatpane/matcha/clib"
 	"github.com/floatpane/matcha/config"
+	"github.com/floatpane/matcha/internal/loglevel"
 	"github.com/floatpane/matcha/pgp"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
@@ -671,6 +672,11 @@ func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody
 		ServerName:         smtpServer,
 		InsecureSkipVerify: account.Insecure,
 		MinVersion:         tls.VersionTLS12,
+		ClientSessionCache: account.GetClientSessionCache(),
+		VerifyConnection: func(cs tls.ConnectionState) error {
+			loglevel.Debugf("SMTP TLS connection resumed: %t", cs.DidResume)
+			return nil
+		},
 	}
 
 	var c *smtp.Client
@@ -881,10 +887,16 @@ func SendCalendarReply(account *config.Account, to []string, subject, plainBody 
 
 	// Send via SMTP
 	addr := fmt.Sprintf("%s:%d", smtpServer, smtpPort)
+
 	tlsConfig := &tls.Config{
 		ServerName:         smtpServer,
 		InsecureSkipVerify: account.Insecure,
 		MinVersion:         tls.VersionTLS12,
+		ClientSessionCache: account.GetClientSessionCache(),
+		VerifyConnection: func(cs tls.ConnectionState) error {
+			loglevel.Debugf("SMTP TLS connection resumed: %t", cs.DidResume)
+			return nil
+		},
 	}
 
 	var c *smtp.Client

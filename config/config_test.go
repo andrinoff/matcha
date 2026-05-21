@@ -32,6 +32,7 @@ func TestSaveAndLoadConfig(t *testing.T) {
 				Password:        "supersecret",
 				ServiceProvider: "gmail",
 				SendAsEmail:     "alias@example.com",
+				SC:              &SessionCache{},
 			},
 			{
 				ID:              "test-id-2",
@@ -44,6 +45,7 @@ func TestSaveAndLoadConfig(t *testing.T) {
 				SMTPServer:      "smtp.custom.com",
 				SMTPPort:        587,
 				CatchAll:        true,
+				SC:              &SessionCache{},
 			},
 		},
 	}

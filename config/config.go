@@ -1,12 +1,14 @@
 package config
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/google/uuid"
 	"github.com/zalando/go-keyring"
@@ -29,6 +31,11 @@ const (
 	DateFormatEU  = "DD/MM/YYYY HH:MM"
 )
 
+type SessionCache struct {
+	once  sync.Once
+	cache tls.ClientSessionCache
+}
+
 // Account stores the configuration for a single email account.
 type Account struct {
 	ID              string `json:"id"`
@@ -45,6 +52,8 @@ type Account struct {
 	// CatchAll skips per-address filtering so all inbox messages are shown,
 	// regardless of which address they were delivered to.
 	CatchAll bool `json:"catch_all,omitempty"`
+
+	SC *SessionCache `json:"-"` // "-" prevents the SessionCache from being saved to config.json
 
 	// Custom server settings (used when ServiceProvider is "custom")
 	IMAPServer string `json:"imap_server,omitempty"`
@@ -227,6 +236,14 @@ func (a *Account) GetSMTPServer() string {
 	default:
 		return ""
 	}
+}
+
+func (a *Account) GetClientSessionCache() tls.ClientSessionCache {
+	a.SC.once.Do(func() {
+		a.SC.cache = tls.NewLRUClientSessionCache(64)
+	})
+
+	return a.SC.cache
 }
 
 // GetSMTPPort returns the SMTP port for the account.
@@ -580,6 +597,7 @@ func LoadConfig() (*Config, error) {
 						Password:        legacyConfig.Password,
 						ServiceProvider: legacyConfig.ServiceProvider,
 						FetchEmail:      legacyConfig.Email,
+						SC:              &SessionCache{},
 					},
 				},
 			}
@@ -631,6 +649,7 @@ func LoadConfig() (*Config, error) {
 			POP3Server:         rawAcc.POP3Server,
 			POP3Port:           rawAcc.POP3Port,
 			CatchAll:           rawAcc.CatchAll,
+			SC:                 &SessionCache{},
 		}
 
 		// Validate PGPKeySource
