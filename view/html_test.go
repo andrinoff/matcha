@@ -1,7 +1,9 @@
 package view
 
 import (
+	"bytes"
 	"fmt"
+	"log"
 	"os"
 	"regexp"
 	"strings"
@@ -65,6 +67,30 @@ func TestDecodeQuotedPrintable(t *testing.T) {
 				t.Errorf("Expected %q, got %q", tc.expected, decoded)
 			}
 		})
+	}
+}
+
+func TestDebugImageProtocolUsesLogger(t *testing.T) {
+	t.Setenv("DEBUG_IMAGE_PROTOCOL", "1")
+	t.Setenv("DEBUG_IMAGE_PROTOCOL_LOG", "")
+	t.Setenv("DEBUG_KITTY_IMAGES", "")
+	t.Setenv("DEBUG_KITTY_LOG", "")
+
+	var logBuf bytes.Buffer
+	originalLogOutput := log.Writer()
+	originalLogFlags := log.Flags()
+	log.SetOutput(&logBuf)
+	log.SetFlags(0)
+	t.Cleanup(func() {
+		log.SetOutput(originalLogOutput)
+		log.SetFlags(originalLogFlags)
+	})
+
+	debugImageProtocol("hello %s", "world")
+
+	want := "[img-protocol] hello world\n"
+	if got := logBuf.String(); got != want {
+		t.Fatalf("debugImageProtocol log output = %q, want %q", got, want)
 	}
 }
 
