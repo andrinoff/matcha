@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"fmt"
+	"maps"
 	"sort"
 	"strings"
 
@@ -80,6 +82,7 @@ const (
 // FolderInbox combines a folder sidebar with an email list.
 type FolderInbox struct {
 	folders         []string
+	unread          map[string]int
 	activeFolderIdx int
 	currentFolder   string
 	inbox           *Inbox
@@ -108,6 +111,15 @@ type FolderInbox struct {
 	// findEmailByUID falls back to it when allEmails has no match.
 	previewSearchEmail *fetcher.Email
 	focusedPane        PaneType
+}
+
+func (m *FolderInbox) GetUnreadCountsCopy() map[string]int {
+	if m.unread == nil {
+		return make(map[string]int)
+	}
+	result := make(map[string]int)
+	maps.Copy(result, m.unread)
+	return result
 }
 
 // sortFolders sorts folder names with INBOX always first, then alphabetically.
@@ -550,10 +562,19 @@ func (m *FolderInbox) renderSidebar() string {
 
 	for i, folder := range m.folders {
 		displayName := m.formatFolderName(folder)
-		if i == m.activeFolderIdx {
-			b.WriteString(activeFolderStyle.Width(sidebarWidth - 4).Render(displayName))
+		unread := m.unread[folder]
+
+		var tab string
+		if unread > 0 {
+			tab = fmt.Sprintf("%s (%d)", displayName, unread)
 		} else {
-			b.WriteString(folderStyle.Render(displayName))
+			tab = displayName
+		}
+
+		if i == m.activeFolderIdx {
+			b.WriteString(activeFolderStyle.Width(sidebarWidth - 4).Render(tab))
+		} else {
+			b.WriteString(folderStyle.Render(tab))
 		}
 		if i < len(m.folders)-1 {
 			b.WriteString("\n")
@@ -668,6 +689,19 @@ func (m *FolderInbox) SetFolders(folders []string) {
 	if !found && len(m.folders) > 0 {
 		m.activeFolderIdx = 0
 		m.currentFolder = m.folders[0]
+	}
+}
+
+func (m *FolderInbox) SetUnreadCounts(counts map[string]int) {
+	m.unread = counts
+}
+
+func (m *FolderInbox) DecrementUnreadCount(folder string) {
+	if m.unread == nil {
+		return
+	}
+	if m.unread[folder] > 0 {
+		m.unread[folder]--
 	}
 }
 
