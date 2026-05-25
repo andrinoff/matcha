@@ -3330,14 +3330,14 @@ func runOAuthCLI(args []string) {
 		fmt.Fprintln(os.Stderr, "Credentials are stored per provider in:")
 		fmt.Fprintln(os.Stderr, "  Gmail:   ~/.config/matcha/oauth_client.json")
 		fmt.Fprintln(os.Stderr, "  Outlook: ~/.config/matcha/oauth_client_outlook.json")
-		os.Exit(1)
+		exit(1)
 	}
 
 	// Find the Python script and pass through to it
 	script, err := config.OAuthScriptPath()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		exit(1)
 	}
 
 	cmdArgs := append([]string{script}, args...)
@@ -3349,10 +3349,10 @@ func runOAuthCLI(args []string) {
 	if err := cmd.Run(); err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
-			os.Exit(exitErr.ExitCode())
+			exit(exitErr.ExitCode())
 		}
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		exit(1)
 	}
 }
 
@@ -3399,13 +3399,13 @@ func runSendCLI(args []string) {
 	}
 
 	if err := fs.Parse(args); err != nil {
-		os.Exit(1)
+		exit(1)
 	}
 
 	if *to == "" || *subject == "" {
 		fmt.Fprintln(os.Stderr, "Error: --to and --subject are required")
 		fs.Usage()
-		os.Exit(1)
+		exit(1)
 	}
 
 	// Read body from stdin if "-"
@@ -3414,7 +3414,7 @@ func runSendCLI(args []string) {
 		data, err := io.ReadAll(os.Stdin)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error reading stdin: %v\n", err)
-			os.Exit(1)
+			exit(1)
 		}
 		emailBody = string(data)
 	}
@@ -3423,11 +3423,11 @@ func runSendCLI(args []string) {
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
-		os.Exit(1)
+		exit(1)
 	}
 	if !cfg.HasAccounts() {
 		fmt.Fprintln(os.Stderr, "Error: no accounts configured. Run matcha to set up an account first.")
-		os.Exit(1)
+		exit(1)
 	}
 
 	// Resolve account
@@ -3445,7 +3445,7 @@ func runSendCLI(args []string) {
 		}
 		if account == nil {
 			fmt.Fprintf(os.Stderr, "Error: no account found matching %q\n", *from)
-			os.Exit(1)
+			exit(1)
 		}
 	} else {
 		account = cfg.GetFirstAccount()
@@ -3490,7 +3490,7 @@ func runSendCLI(args []string) {
 		fileData, err := os.ReadFile(attachPath)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error reading attachment %s: %v\n", attachPath, err)
-			os.Exit(1)
+			exit(1)
 		}
 		attachMap[filepath.Base(attachPath)] = fileData
 	}
@@ -3503,7 +3503,7 @@ func runSendCLI(args []string) {
 	rawMsg, sendErr := sender.SendEmail(account, recipients, ccList, bccList, *subject, emailBody, string(htmlBody), images, attachMap, "", nil, *signSMIME, *encryptSMIME, *signPGP, false)
 	if sendErr != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", sendErr)
-		os.Exit(1)
+		exit(1)
 	}
 
 	// Append to Sent folder via IMAP (Gmail auto-saves, so skip it)
@@ -3876,6 +3876,11 @@ func parseGlobalFlags(args []string) ([]string, loglevel.Level, bool) {
 	return filtered, level, showLogPanel
 }
 
+func exit(code int) {
+	fetcher.CloseDebugFiles()
+	os.Exit(code)
+}
+
 func main() { //nolint:gocyclo
 	args, level, showLogPanel := parseGlobalFlags(os.Args)
 	os.Args = args
@@ -3891,53 +3896,53 @@ func main() { //nolint:gocyclo
 			fmt.Printf(" built on %s", date)
 		}
 		fmt.Println()
-		os.Exit(0)
+		exit(0)
 	}
 
 	// If invoked as CLI update command, run updater and exit.
 	if len(os.Args) > 1 && os.Args[1] == "update" {
 		if err := runUpdateCLI(); err != nil {
 			fmt.Fprintf(os.Stderr, "update failed: %v\n", err)
-			os.Exit(1)
+			exit(1)
 		}
-		os.Exit(0)
+		exit(0)
 	}
 
 	// Daemon CLI subcommand: matcha daemon <start|stop|status|run>
 	if len(os.Args) > 1 && os.Args[1] == "daemon" {
 		runDaemonCLI(os.Args[2:])
-		os.Exit(0)
+		exit(0)
 	}
 
 	// OAuth2 CLI subcommand: matcha oauth <auth|token|revoke> <email> [flags]
 	// "gmail" is kept as an alias for backwards compatibility.
 	if len(os.Args) > 1 && (os.Args[1] == "oauth" || os.Args[1] == "gmail") {
 		runOAuthCLI(os.Args[2:])
-		os.Exit(0)
+		exit(0)
 	}
 
 	// Send email CLI subcommand: matcha send --to <email> --subject <subject> [flags]
 	if len(os.Args) > 1 && os.Args[1] == "send" {
 		runSendCLI(os.Args[2:])
-		os.Exit(0)
+		exit(0)
 	}
 
 	// Install plugin CLI subcommand: matcha install <url_or_file>
 	if len(os.Args) > 1 && os.Args[1] == "install" {
 		if err := matchaCli.RunInstall(os.Args[2:]); err != nil {
 			fmt.Fprintf(os.Stderr, "install failed: %v\n", err)
-			os.Exit(1)
+			exit(1)
 		}
-		os.Exit(0)
+		exit(0)
 	}
 
 	// Config CLI subcommand: matcha config [plugin_name]
 	if len(os.Args) > 1 && os.Args[1] == "config" {
 		if err := matchaCli.RunConfig(os.Args[2:]); err != nil {
 			fmt.Fprintf(os.Stderr, "config failed: %v\n", err)
-			os.Exit(1)
+			exit(1)
 		}
-		os.Exit(0)
+		exit(0)
 	}
 
 	// Contacts CLI subcommand: matcha contacts <export|sync> [flags]
@@ -3946,15 +3951,15 @@ func main() { //nolint:gocyclo
 		case "export":
 			if err := matchaCli.RunContactsExport(os.Args[3:]); err != nil {
 				fmt.Fprintf(os.Stderr, "contacts export failed: %v\n", err)
-				os.Exit(1)
+				exit(1)
 			}
-			os.Exit(0)
+			exit(0)
 		case "sync":
 			if err := matchaCli.RunContactsSync(os.Args[3:]); err != nil {
 				fmt.Fprintf(os.Stderr, "contacts sync failed: %v\n", err)
-				os.Exit(1)
+				exit(1)
 			}
-			os.Exit(0)
+			exit(0)
 		}
 	}
 
@@ -3962,9 +3967,9 @@ func main() { //nolint:gocyclo
 	if len(os.Args) > 1 && os.Args[1] == "setup-mailto" {
 		if err := matchaCli.SetupMailto(); err != nil {
 			fmt.Fprintf(os.Stderr, "setup-mailto failed: %v\n", err)
-			os.Exit(1)
+			exit(1)
 		}
-		os.Exit(0)
+		exit(0)
 	}
 
 	// Marketplace TUI subcommand: matcha marketplace
@@ -3973,9 +3978,9 @@ func main() { //nolint:gocyclo
 		p := tea.NewProgram(mp)
 		if _, err := p.Run(); err != nil {
 			fmt.Fprintf(os.Stderr, "marketplace failed: %v\n", err)
-			os.Exit(1)
+			exit(1)
 		}
-		os.Exit(0)
+		exit(0)
 	}
 
 	// Migrate cache files from ~/.config/matcha/ to ~/.cache/matcha/ if needed
@@ -4079,11 +4084,12 @@ func main() { //nolint:gocyclo
 	if _, err := p.Run(); err != nil {
 		plugins.Close()
 		fmt.Printf("Alas, there's been an error: %v", err)
-		os.Exit(1)
+		exit(1)
 	}
 
 	plugins.CallHook(plugin.HookShutdown)
 	plugins.Close()
+	fetcher.CloseDebugFiles()
 }
 
 func runDaemonCLI(args []string) {
@@ -4095,7 +4101,7 @@ func runDaemonCLI(args []string) {
 		fmt.Println("  stop    Stop the running daemon")
 		fmt.Println("  status  Show daemon status")
 		fmt.Println("  run     Run the daemon in the foreground")
-		os.Exit(1)
+		exit(1)
 	}
 
 	switch args[0] {
@@ -4109,7 +4115,7 @@ func runDaemonCLI(args []string) {
 		runDaemonRun()
 	default:
 		fmt.Fprintf(os.Stderr, "unknown daemon command: %s\n", args[0])
-		os.Exit(1)
+		exit(1)
 	}
 }
 
@@ -4124,7 +4130,7 @@ func runDaemonStart() {
 	exe, err := os.Executable()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "cannot find executable: %v\n", err)
-		os.Exit(1)
+		exit(1)
 	}
 
 	cmd := exec.Command(exe, "daemon", "run") //nolint:noctx
@@ -4137,7 +4143,7 @@ func runDaemonStart() {
 
 	if err := cmd.Start(); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to start daemon: %v\n", err)
-		os.Exit(1)
+		exit(1)
 	}
 
 	fmt.Printf("Daemon started (PID %d)\n", cmd.Process.Pid)
@@ -4154,12 +4160,12 @@ func runDaemonStop() {
 	process, err := os.FindProcess(pid)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "cannot find process %d: %v\n", pid, err)
-		os.Exit(1)
+		exit(1)
 	}
 
 	if err := process.Signal(os.Interrupt); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to stop daemon: %v\n", err)
-		os.Exit(1)
+		exit(1)
 	}
 
 	fmt.Printf("Daemon stopped (PID %d)\n", pid)
@@ -4181,7 +4187,7 @@ func runDaemonStatus() {
 	client.Close() //nolint:errcheck,gosec
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to get status: %v\n", err)
-		os.Exit(1)
+		exit(1)
 	}
 
 	fmt.Printf("Daemon running (PID %d)\n", status.PID)
@@ -4196,13 +4202,13 @@ func runDaemonRun() {
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to load config: %v\n", err)
-		os.Exit(1)
+		exit(1)
 	}
 
 	d := matchaDaemon.New(cfg)
 	if err := d.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "daemon error: %v\n", err)
-		os.Exit(1)
+		exit(1)
 	}
 }
 
