@@ -132,7 +132,9 @@ func (d *Daemon) Run() error {
 	// Cleanup.
 	log.Println("daemon: shutting down")
 	d.listener.Close() //nolint:errcheck,gosec
-	d.idleWatcher.StopAll()
+	if err := d.idleWatcher.StopAllAndWaitTimeout(5 * time.Second); err != nil {
+		log.Printf("daemon: %v", err)
+	}
 	cancel()
 	d.closeAllClients()
 	d.closeProviders()
