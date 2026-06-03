@@ -16,11 +16,20 @@
         let
           pkgs = nixpkgs.legacyPackages.${system};
           gomod2nixPkgs = gomod2nix.legacyPackages.${system};
+
+          # Pin Go to a version not yet packaged in nixpkgs by overriding src.
+          go = pkgs.go.overrideAttrs (old: {
+            version = "1.26.4";
+            src = pkgs.fetchurl {
+              url = "https://go.dev/dl/go1.26.4.src.tar.gz";
+              hash = "sha256-T2aKMvv8ETLmqIH7lowvHa2mMUkqM5IRc1+7JVpCYC0=";
+            };
+          });
         in
         {
           packages = rec {
             matcha = gomod2nixPkgs.buildGoApplication {
-              go = pkgs.go_1_26;
+              inherit go;
               pname = "matcha";
               version = self.shortRev or "dev";
 
@@ -59,7 +68,7 @@
 
           devShells.default = pkgs.mkShell {
             buildInputs = with pkgs; [
-              go_1_26
+              go
               gopls
               gotools
               gomod2nix.packages.${system}.default
