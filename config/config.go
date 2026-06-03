@@ -38,6 +38,12 @@ const (
 	DateFormatEU  = "DD/MM/YYYY HH:MM"
 )
 
+// Split pane orientation values for Config.SplitPaneOrientation.
+const (
+	SplitPaneHorizontal = "horizontal"
+	SplitPaneVertical   = "vertical"
+)
+
 var cacheFiles = []string{
 	"email_cache.json",
 	"contacts.json",
@@ -120,6 +126,7 @@ type Config struct {
 	HideTips                bool          `json:"hide_tips,omitempty"`
 	DisableNotifications    bool          `json:"disable_notifications,omitempty"`
 	EnableSplitPane         bool          `json:"enable_split_pane,omitempty"`
+	SplitPaneOrientation    string        `json:"split_pane_orientation,omitempty"`
 	EnableThreaded          bool          `json:"enable_threaded,omitempty"`
 	EnableDetailedDates     bool          `json:"enable_detailed_dates,omitempty"`
 	DisableSpellcheck       bool          `json:"disable_spellcheck,omitempty"`
@@ -133,6 +140,15 @@ type Config struct {
 	// keyed by plugin name then setting key. Values are JSON-native types
 	// (bool, float64, string) matching the plugin's declared schema.
 	PluginSettings map[string]map[string]interface{} `json:"plugin_settings,omitempty"`
+}
+
+// GetSplitPaneOrientation returns the configured split pane orientation,
+// defaulting to horizontal when unset or invalid.
+func (c *Config) GetSplitPaneOrientation() string {
+	if c.SplitPaneOrientation == SplitPaneVertical {
+		return SplitPaneVertical
+	}
+	return SplitPaneHorizontal
 }
 
 // GetBodyCacheThreshold returns the email body cache threshold in bytes.
@@ -445,6 +461,7 @@ type secureDiskConfig struct {
 	HideTips                bool                              `json:"hide_tips,omitempty"`
 	DisableNotifications    bool                              `json:"disable_notifications,omitempty"`
 	EnableSplitPane         bool                              `json:"enable_split_pane,omitempty"`
+	SplitPaneOrientation    string                            `json:"split_pane_orientation,omitempty"`
 	EnableThreaded          bool                              `json:"enable_threaded,omitempty"`
 	EnableDetailedDates     bool                              `json:"enable_detailed_dates,omitempty"`
 	DisableSpellcheck       bool                              `json:"disable_spellcheck,omitempty"`
@@ -495,6 +512,7 @@ func SaveConfig(config *Config) error {
 			HideTips:                config.HideTips,
 			DisableNotifications:    config.DisableNotifications,
 			EnableSplitPane:         config.EnableSplitPane,
+			SplitPaneOrientation:    config.SplitPaneOrientation,
 			EnableThreaded:          config.EnableThreaded,
 			EnableDetailedDates:     config.EnableDetailedDates,
 			DisableSpellcheck:       config.DisableSpellcheck,
@@ -603,6 +621,7 @@ func LoadConfig() (*Config, error) {
 		HideTips                bool                              `json:"hide_tips,omitempty"`
 		DisableNotifications    bool                              `json:"disable_notifications,omitempty"`
 		EnableSplitPane         bool                              `json:"enable_split_pane,omitempty"`
+		SplitPaneOrientation    string                            `json:"split_pane_orientation,omitempty"`
 		EnableThreaded          bool                              `json:"enable_threaded,omitempty"`
 		EnableDetailedDates     bool                              `json:"enable_detailed_dates,omitempty"`
 		DisableSpellcheck       bool                              `json:"disable_spellcheck,omitempty"`
@@ -645,6 +664,7 @@ func LoadConfig() (*Config, error) {
 	config.HideTips = raw.HideTips
 	config.DisableNotifications = raw.DisableNotifications
 	config.EnableSplitPane = raw.EnableSplitPane
+	config.SplitPaneOrientation = raw.SplitPaneOrientation
 	config.EnableThreaded = raw.EnableThreaded
 	config.EnableDetailedDates = raw.EnableDetailedDates
 	config.DisableSpellcheck = raw.DisableSpellcheck
