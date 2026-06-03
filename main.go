@@ -4026,6 +4026,15 @@ func main() { //nolint:gocyclo
 		exit(0)
 	}
 
+	// Apply patch CLI subcommand: matcha apply [patch-file] --repo <dir>
+	if len(os.Args) > 1 && os.Args[1] == "apply" {
+		if err := matchaCli.RunApply(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "apply failed: %v\n", err)
+			exit(1)
+		}
+		exit(0)
+	}
+
 	// Install plugin CLI subcommand: matcha install <url_or_file>
 	if len(os.Args) > 1 && os.Args[1] == "install" {
 		if err := matchaCli.RunInstall(os.Args[2:]); err != nil {
