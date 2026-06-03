@@ -56,6 +56,7 @@ type EmailKeys struct {
 	RsvpDecline      string `json:"rsvp_decline"`
 	RsvpTentative    string `json:"rsvp_tentative"`
 	FocusAttachments string `json:"focus_attachments"`
+	ApplyPatch       string `json:"apply_patch"`
 }
 
 type ComposerKeys struct {
@@ -134,6 +135,7 @@ func ValidateKeybinds(kb KeybindsConfig) []string {
 			"rsvp_decline":      kb.Email.RsvpDecline,
 			"rsvp_tentative":    kb.Email.RsvpTentative,
 			"focus_attachments": kb.Email.FocusAttachments,
+			"apply_patch":       kb.Email.ApplyPatch,
 		},
 		"composer": {
 			"external_editor": kb.Composer.ExternalEditor,

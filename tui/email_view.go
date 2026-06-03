@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	calendar "github.com/floatpane/go-icalendar"
+	mailpatch "github.com/floatpane/go-mailpatch"
 	"github.com/floatpane/matcha/config"
 	"github.com/floatpane/matcha/fetcher"
 	"github.com/floatpane/matcha/theme"
@@ -75,6 +76,10 @@ type EmailView struct {
 	originalICSData    []byte
 	isPreviewMode      bool
 	columnOffset       int // horizontal offset for image rendering in split pane
+	isPatch            bool
+	patch              *mailpatch.Patch
+	patchRaw           []byte
+	patchStatus        string
 }
 
 func NewEmailView(email fetcher.Email, emailIndex, width, height int, mailbox MailboxKind, disableImages bool) *EmailView {
@@ -157,8 +162,15 @@ func NewEmailView(email fetcher.Email, emailIndex, width, height int, mailbox Ma
 	vp := viewport.New()
 	vp.SetWidth(width)
 	vp.SetHeight(height - headerHeight - attachmentHeight - calendarHeight)
-	wrapped := wrapBodyToWidth(body, vp.Width())
-	vp.SetContent(wrapped + "\n")
+
+	// If this email is a git format-patch, render the diff in place of the
+	// plain body so the reviewer sees a colored diff.
+	patch, patchRaw, isPatch := detectPatch(email)
+	if isPatch {
+		vp.SetContent(renderPatch(patch) + "\n")
+	} else {
+		vp.SetContent(wrapBodyToWidth(body, vp.Width()) + "\n")
+	}
 
 	return &EmailView{
 		viewport:          vp,
@@ -179,6 +191,9 @@ func NewEmailView(email fetcher.Email, emailIndex, width, height int, mailbox Ma
 		calendarEvent:     calendarEvent,
 		originalICSData:   originalICSData,
 		isPreviewMode:     false,
+		isPatch:           isPatch,
+		patch:             patch,
+		patchRaw:          patchRaw,
 	}
 }
 
@@ -312,6 +327,11 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if len(m.email.Attachments) > 0 {
 					m.focusOnAttachments = true
 				}
+			case kb.Email.ApplyPatch:
+				if m.isPatch {
+					m.patchStatus = applyOpenPatch(m.patchRaw)
+					return m, nil
+				}
 			}
 		}
 	case tea.WindowSizeMsg:
@@ -334,8 +354,12 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		body = applyBodyTransform(body, m.email)
 		m.imagePlacements = placements
-		wrapped := wrapBodyToWidth(body, m.viewport.Width())
-		m.viewport.SetContent(wrapped + "\n")
+		if m.isPatch {
+			m.viewport.SetContent(renderPatch(m.patch) + "\n")
+		} else {
+			wrapped := wrapBodyToWidth(body, m.viewport.Width())
+			m.viewport.SetContent(wrapped + "\n")
+		}
 	}
 
 	m.viewport, cmd = m.viewport.Update(msg)
@@ -389,6 +413,9 @@ func (m *EmailView) View() tea.View {
 		if view.ImageProtocolSupported() {
 			shortcuts.WriteString("• \uf03e i: toggle images")
 		}
+		if m.isPatch {
+			shortcuts.WriteString(" • p: apply patch")
+		}
 		for _, pk := range m.pluginKeyBindings {
 			shortcuts.WriteString(" • ")
 			shortcuts.WriteString(pk.Key)
@@ -398,6 +425,10 @@ func (m *EmailView) View() tea.View {
 		if m.pluginStatus != "" {
 			shortcuts.WriteString(" • ")
 			shortcuts.WriteString(m.pluginStatus)
+		}
+		if m.patchStatus != "" {
+			shortcuts.WriteString(" • ")
+			shortcuts.WriteString(m.patchStatus)
 		}
 		help = helpStyle.Render(shortcuts.String())
 	}
