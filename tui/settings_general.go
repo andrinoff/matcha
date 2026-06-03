@@ -21,6 +21,7 @@ func (m *Settings) buildGeneralOptions() []generalOption {
 		{"settings_general.hide_tips", onOff(m.cfg.HideTips), "Hide helpful hints displayed at the bottom of the screen."},
 		{"settings_general.disable_notifications", onOff(m.cfg.DisableNotifications), "Turn off desktop notifications for new mail."},
 		{"settings_general.enable_split_pane", onOff(m.cfg.EnableSplitPane), "View inbox and email side-by-side."},
+		{"settings_general.split_pane_orientation", getSplitPaneOrientationLabel(m.cfg.GetSplitPaneOrientation()), "Lay the split pane out side-by-side or stacked."},
 		{"settings_general.enable_threaded", onOff(m.cfg.EnableThreaded), "Group emails into conversations by reply chain. Per-folder overrides are kept."},
 		{"settings_general.enable_detailed_dates", onOff(m.cfg.EnableDetailedDates), "Show detailed inbox dates."},
 		{"settings_general.spellcheck", onOff(!m.cfg.DisableSpellcheck), "Underline misspelled words while composing."},
@@ -61,23 +62,31 @@ func (m *Settings) updateGeneral(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				m.cfg.EnableSplitPane = !m.cfg.EnableSplitPane
 				_ = config.SaveConfig(m.cfg)
 				saved = true
-			case 4: // Threaded Conversation View
+			case 4: // Split Pane Orientation
+				if m.cfg.GetSplitPaneOrientation() == config.SplitPaneVertical {
+					m.cfg.SplitPaneOrientation = config.SplitPaneHorizontal
+				} else {
+					m.cfg.SplitPaneOrientation = config.SplitPaneVertical
+				}
+				_ = config.SaveConfig(m.cfg)
+				saved = true
+			case 5: // Threaded Conversation View
 				m.cfg.EnableThreaded = !m.cfg.EnableThreaded
 				_ = config.SaveConfig(m.cfg)
 				saved = true
-			case 5: // Detailed Dates
+			case 6: // Detailed Dates
 				m.cfg.EnableDetailedDates = !m.cfg.EnableDetailedDates
 				_ = config.SaveConfig(m.cfg)
 				saved = true
-			case 6: // Spellcheck
+			case 7: // Spellcheck
 				m.cfg.DisableSpellcheck = !m.cfg.DisableSpellcheck
 				_ = config.SaveConfig(m.cfg)
 				saved = true
-			case 7: // Spell Suggestions
+			case 8: // Spell Suggestions
 				m.cfg.DisableSpellSuggestions = !m.cfg.DisableSpellSuggestions
 				_ = config.SaveConfig(m.cfg)
 				saved = true
-			case 8: // Date Format
+			case 9: // Date Format
 				switch m.cfg.DateFormat {
 				case config.DateFormatEU:
 					m.cfg.DateFormat = config.DateFormatUS
@@ -88,7 +97,7 @@ func (m *Settings) updateGeneral(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				}
 				_ = config.SaveConfig(m.cfg)
 				saved = true
-			case 9: // Language
+			case 10: // Language
 				// Cycle through available languages
 				langs := i18n.LanguageCodes()
 				currentLang := m.cfg.GetLanguage()
@@ -109,7 +118,7 @@ func (m *Settings) updateGeneral(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 					func() tea.Msg { return ConfigSavedMsg{} },
 					func() tea.Msg { return LanguageChangedMsg{} },
 				)
-			case 10: // Edit Signature
+			case 11: // Edit Signature
 				if msg.String() == keyEnter || msg.String() == keyRight || msg.String() == "l" {
 					return m, func() tea.Msg { return GoToSignatureEditorMsg{} }
 				}
@@ -157,6 +166,13 @@ func onOff(b bool) string {
 		return t("settings_general.on")
 	}
 	return t("settings_general.off")
+}
+
+func getSplitPaneOrientationLabel(orientation string) string {
+	if orientation == config.SplitPaneVertical {
+		return t("settings_general.split_pane_orientation_vertical")
+	}
+	return t("settings_general.split_pane_orientation_horizontal")
 }
 
 func getDateFormatLabel(f string) string {

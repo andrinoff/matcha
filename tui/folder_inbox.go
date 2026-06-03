@@ -68,6 +68,14 @@ var (
 				BorderLeft(true).
 				PaddingLeft(1)
 
+	inboxPaneVerticalStyle = lipgloss.NewStyle().
+				BorderStyle(lipgloss.NormalBorder()).
+				BorderBottom(true)
+
+	previewPaneVerticalStyle = lipgloss.NewStyle().
+					BorderStyle(lipgloss.NormalBorder()).
+					BorderTop(true)
+
 	focusedBorderColor   = lipgloss.Color("42")
 	unfocusedBorderColor = lipgloss.Color("240")
 )
@@ -111,6 +119,24 @@ type FolderInbox struct {
 	// findEmailByUID falls back to it when allEmails has no match.
 	previewSearchEmail *fetcher.Email
 	focusedPane        PaneType
+	// splitOrientation controls the split-pane layout direction.
+	// Either config.SplitPaneHorizontal (default) or config.SplitPaneVertical.
+	splitOrientation string
+}
+
+// SetSplitOrientation sets the split pane orientation. When the preview is
+// already open, the caller should issue a follow-up WindowSizeMsg so the panes
+// re-layout under the new orientation.
+func (m *FolderInbox) SetSplitOrientation(orientation string) {
+	if orientation == config.SplitPaneVertical {
+		m.splitOrientation = config.SplitPaneVertical
+	} else {
+		m.splitOrientation = config.SplitPaneHorizontal
+	}
+}
+
+func (m *FolderInbox) isVerticalSplit() bool {
+	return m.splitOrientation == config.SplitPaneVertical
 }
 
 func (m *FolderInbox) GetUnreadCountsCopy() map[string]int {
@@ -289,14 +315,23 @@ func (m *FolderInbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocycl
 		m.width = msg.Width
 		m.height = msg.Height
 		if m.previewPane != nil || m.previewedUID != 0 {
-			// Recalculate pane widths for split mode
-			inboxWidth := m.calculateInboxWidth()
-			previewWidth := m.calculatePreviewWidth()
-			m.inbox.SetSize(inboxWidth-2, msg.Height)
-			if m.previewPane != nil {
-				// Forward resize to EmailView with preview pane dimensions
-				previewMsg := tea.WindowSizeMsg{Width: previewWidth - 2, Height: msg.Height - 2}
-				m.previewPane.Update(previewMsg)
+			// Recalculate pane sizes for split mode
+			if m.isVerticalSplit() {
+				paneWidth := m.calculateInboxWidthVertical()
+				m.inbox.SetSize(paneWidth, m.calculateInboxHeight())
+				if m.previewPane != nil {
+					previewMsg := tea.WindowSizeMsg{Width: paneWidth, Height: m.calculatePreviewHeight() - 1}
+					m.previewPane.Update(previewMsg)
+				}
+			} else {
+				inboxWidth := m.calculateInboxWidth()
+				previewWidth := m.calculatePreviewWidth()
+				avail := msg.Height - 1
+				m.inbox.SetSize(inboxWidth-2, avail)
+				if m.previewPane != nil {
+					previewMsg := tea.WindowSizeMsg{Width: previewWidth - 2, Height: avail - 2}
+					m.previewPane.Update(previewMsg)
+				}
 			}
 		} else {
 			// Original two-pane resize
@@ -304,7 +339,7 @@ func (m *FolderInbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocycl
 			if inboxWidth < 20 {
 				inboxWidth = 20
 			}
-			m.inbox.SetSize(inboxWidth, msg.Height)
+			m.inbox.SetSize(inboxWidth, msg.Height-1)
 		}
 		return m, nil
 
@@ -382,10 +417,19 @@ func (m *FolderInbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocycl
 		email.BodyMIMEType = msg.BodyMIMEType
 		email.Attachments = msg.Attachments
 		// Create preview pane with column offset for image rendering
-		previewWidth := m.calculatePreviewWidth()
-		inboxWidth := m.calculateInboxWidth()
-		colOffset := sidebarWidth + 2 + inboxWidth + 2 // borders + padding
-		m.previewPane = NewEmailViewPreview(*email, previewWidth, m.height, colOffset, m.disableImages)
+		if m.isVerticalSplit() {
+			previewWidth := m.calculateInboxWidthVertical()
+			previewHeight := m.calculatePreviewHeight()
+			// In vertical mode, preview sits below inbox and starts at the same
+			// column offset as the inbox pane.
+			colOffset := sidebarWidth + 2
+			m.previewPane = NewEmailViewPreview(*email, previewWidth, previewHeight, colOffset, m.disableImages)
+		} else {
+			previewWidth := m.calculatePreviewWidth()
+			inboxWidth := m.calculateInboxWidth()
+			colOffset := sidebarWidth + 2 + inboxWidth + 2 // borders + padding
+			m.previewPane = NewEmailViewPreview(*email, previewWidth, m.height, colOffset, m.disableImages)
+		}
 		return m, nil
 	}
 
@@ -521,20 +565,37 @@ func (m *FolderInbox) View() tea.View {
 
 	switch {
 	case m.previewPane != nil:
-		// Three-pane layout: folders | inbox | email preview
 		inboxPane := m.renderInboxPane()
 		previewPane := m.renderPreviewPane()
-		content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, inboxPane, previewPane)
+		if m.isVerticalSplit() {
+			// Folders | (inbox stacked above preview)
+			stacked := lipgloss.JoinVertical(lipgloss.Left, inboxPane, previewPane)
+			content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, stacked)
+		} else {
+			// Folders | inbox | email preview
+			content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, inboxPane, previewPane)
+		}
 	case m.previewedUID != 0:
 		// Split pane loading state (body being fetched)
 		inboxPane := m.renderInboxPane()
 		emptyPreview := m.renderEmptyPreview()
-		content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, inboxPane, emptyPreview)
+		if m.isVerticalSplit() {
+			// Folders | (inbox stacked above loading preview)
+			stacked := lipgloss.JoinVertical(lipgloss.Left, inboxPane, emptyPreview)
+			content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, stacked)
+		} else {
+			// Folders | inbox | loading preview
+			content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, inboxPane, emptyPreview)
+		}
 	default:
 		// Two-pane layout (original): folders | inbox
 		inboxView := m.inbox.View().Content
 		content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, inboxView)
 	}
+
+	// Ensure help bar is always at the very bottom of the total view
+	help := helpStyle.Render(t("folder_inbox.help"))
+	content = lipgloss.JoinVertical(lipgloss.Left, content, help)
 
 	// If move overlay is active, render it on top
 	if m.movingEmail {
@@ -581,12 +642,7 @@ func (m *FolderInbox) renderSidebar() string {
 		}
 	}
 
-	sidebarHeight := m.height
-	if sidebarHeight < 1 {
-		sidebarHeight = 20
-	}
-
-	return sidebarStyle.Height(sidebarHeight - 2).Render(b.String())
+	return sidebarStyle.Height(m.availableHeight()).Render(b.String())
 }
 
 // formatFolderName makes IMAP folder names more readable.
@@ -776,19 +832,31 @@ func (m *FolderInbox) GetFolders() []string {
 
 // renderInboxPane renders inbox with border for split pane mode
 func (m *FolderInbox) renderInboxPane() string {
-	inboxWidth := m.calculateInboxWidth()
-
 	borderColor := unfocusedBorderColor
 	if m.focusedPane == FocusInbox {
 		borderColor = focusedBorderColor
 	}
 
+	if m.isVerticalSplit() {
+		inboxWidth := m.calculateInboxWidthVertical()
+		inboxHeight := m.calculateInboxHeight()
+		paneStyle := inboxPaneVerticalStyle.
+			BorderForeground(borderColor).
+			Width(inboxWidth).
+			Height(inboxHeight)
+		// Bottom border takes one row; the inbox content fills the rest.
+		m.inbox.SetSize(inboxWidth, inboxHeight)
+		return paneStyle.Render(m.inbox.View().Content)
+	}
+
+	inboxWidth := m.calculateInboxWidth()
+	avail := m.availableHeight()
 	paneStyle := inboxPaneStyle.
 		BorderForeground(borderColor).
 		Width(inboxWidth).
-		Height(m.height)
+		Height(avail)
 
-	m.inbox.SetSize(inboxWidth-2, m.height)
+	m.inbox.SetSize(inboxWidth-2, avail)
 	return paneStyle.Render(m.inbox.View().Content)
 }
 
@@ -798,28 +866,49 @@ func (m *FolderInbox) renderPreviewPane() string {
 		return m.renderEmptyPreview()
 	}
 
-	previewWidth := m.calculatePreviewWidth()
-
 	borderColor := unfocusedBorderColor
 	if m.focusedPane == FocusPreview {
 		borderColor = focusedBorderColor
 	}
 
+	if m.isVerticalSplit() {
+		previewWidth := m.calculateInboxWidthVertical()
+		previewHeight := m.calculatePreviewHeight()
+		paneStyle := previewPaneVerticalStyle.
+			BorderForeground(borderColor).
+			Width(previewWidth).
+			Height(previewHeight)
+		return paneStyle.Render(m.previewPane.View().Content)
+	}
+
+	previewWidth := m.calculatePreviewWidth()
 	paneStyle := previewPaneStyle.
 		BorderForeground(borderColor).
 		Width(previewWidth).
-		Height(m.height)
+		Height(m.availableHeight())
 
 	return paneStyle.Render(m.previewPane.View().Content)
 }
 
 // renderEmptyPreview renders placeholder when no email selected
 func (m *FolderInbox) renderEmptyPreview() string {
-	previewWidth := m.calculatePreviewWidth()
+	if m.isVerticalSplit() {
+		previewWidth := m.calculateInboxWidthVertical()
+		previewHeight := m.calculatePreviewHeight()
+		emptyStyle := lipgloss.NewStyle().
+			Width(previewWidth).
+			Height(previewHeight).
+			Align(lipgloss.Center, lipgloss.Center).
+			Foreground(lipgloss.Color("240"))
+		return previewPaneVerticalStyle.
+			BorderForeground(unfocusedBorderColor).
+			Render(emptyStyle.Render("Loading..."))
+	}
 
+	previewWidth := m.calculatePreviewWidth()
 	emptyStyle := lipgloss.NewStyle().
 		Width(previewWidth).
-		Height(m.height).
+		Height(m.availableHeight()).
 		Align(lipgloss.Center, lipgloss.Center).
 		Foreground(lipgloss.Color("240"))
 
@@ -836,9 +925,13 @@ func (m *FolderInbox) OpenSplitPreview(uid uint32, accountID string, email *fetc
 	m.previewedAccountID = accountID
 	m.previewSearchEmail = email
 	m.focusedPane = FocusPreview
-	// Recalculate inbox width for split mode
-	inboxWidth := m.calculateInboxWidth()
-	m.inbox.SetSize(inboxWidth-2, m.height)
+	// Recalculate inbox sizing for split mode
+	if m.isVerticalSplit() {
+		m.inbox.SetSize(m.calculateInboxWidthVertical(), m.calculateInboxHeight())
+	} else {
+		inboxWidth := m.calculateInboxWidth()
+		m.inbox.SetSize(inboxWidth-2, m.availableHeight())
+	}
 	m.updateHelpKeys()
 }
 
@@ -855,7 +948,7 @@ func (m *FolderInbox) closeSplitPreview() {
 	if inboxWidth < 20 {
 		inboxWidth = 20
 	}
-	m.inbox.SetSize(inboxWidth, m.height)
+	m.inbox.SetSize(inboxWidth, m.availableHeight())
 	m.updateHelpKeys()
 }
 
@@ -890,7 +983,7 @@ func (m *FolderInbox) calculatePreviewWidth() int {
 	return previewWidth
 }
 
-// calculateInboxWidth calculates width for inbox pane in split mode
+// calculateInboxWidth calculates width for inbox pane in horizontal split mode
 func (m *FolderInbox) calculateInboxWidth() int {
 	remainingWidth := m.width - sidebarWidth - 4
 	inboxWidth := int(float64(remainingWidth) * 0.4)
@@ -898,4 +991,47 @@ func (m *FolderInbox) calculateInboxWidth() int {
 		inboxWidth = 30
 	}
 	return inboxWidth
+}
+
+// calculateInboxWidthVertical returns the column width used by both the inbox
+// and preview panes when the split is stacked vertically. They share whatever
+// horizontal space is left after the sidebar.
+func (m *FolderInbox) calculateInboxWidthVertical() int {
+	w := m.width - sidebarWidth - 3
+	if w < 20 {
+		w = 20
+	}
+	return w
+}
+
+// calculateInboxHeight returns the inbox pane height in vertical split mode
+// (40% of available vertical space, mirroring the horizontal width ratio).
+func (m *FolderInbox) calculateInboxHeight() int {
+	h := int(float64(m.availableHeight()) * 0.4)
+	if h < 5 {
+		h = 5
+	}
+	if h > m.availableHeight()-3 {
+		h = m.availableHeight() - 3
+	}
+	return h
+}
+
+// calculatePreviewHeight returns the preview pane height in vertical split mode.
+func (m *FolderInbox) calculatePreviewHeight() int {
+	h := m.availableHeight() - m.calculateInboxHeight() - 1 // border row between them
+	if h < 5 {
+		h = 5
+	}
+	return h
+}
+
+// availableHeight returns the vertical space reserved for the main content
+// area (total screen height minus one row for the bottom help bar).
+func (m *FolderInbox) availableHeight() int {
+	h := m.height - 1
+	if h < 1 {
+		h = 1
+	}
+	return h
 }

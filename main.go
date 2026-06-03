@@ -570,6 +570,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 		m.folderInbox.SetDetailedDates(m.config.EnableDetailedDates)
 		m.folderInbox.SetDefaultThreaded(m.config.EnableThreaded)
 		m.folderInbox.SetDisableImages(m.config.DisableImages)
+		m.folderInbox.SetSplitOrientation(m.config.GetSplitPaneOrientation())
 		// Use cached INBOX emails for instant display (memory first, then disk)
 		if cached, ok := m.folderEmails[folderInbox]; ok && len(cached) > 0 {
 			m.folderInbox.SetEmails(cached, m.config.Accounts)
@@ -1193,6 +1194,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 			m.folderInbox.SetDetailedDates(m.config.EnableDetailedDates)
 			m.folderInbox.SetDefaultThreaded(m.config.EnableThreaded)
 			m.folderInbox.SetDisableImages(m.config.DisableImages)
+			m.folderInbox.SetSplitOrientation(m.config.GetSplitPaneOrientation())
 		}
 		return m, nil
 
