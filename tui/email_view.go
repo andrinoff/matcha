@@ -401,6 +401,9 @@ func (m *EmailView) View() tea.View {
 		}
 		help = helpStyle.Render(shortcuts.String())
 	}
+	if m.isPreviewMode {
+		help = lipgloss.NewStyle().PaddingLeft(4).Render(help)
+	}
 
 	var attachmentView string
 	if len(m.email.Attachments) > 0 {
