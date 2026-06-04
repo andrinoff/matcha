@@ -1919,11 +1919,18 @@ func FetchFolders(account *config.Account) ([]Folder, error) {
 	}
 	defer c.Close() //nolint:errcheck
 
-	listCmd := c.List("", "*", &imap.ListOptions{
-		ReturnStatus: &imap.StatusOptions{
-			NumUnseen: true,
-		},
-	})
+	// Only request the unseen count inline via LIST ... RETURN (STATUS (UNSEEN))
+	// when the server advertises LIST-STATUS (RFC 5819). Servers without it
+	// (e.g. Proton Mail Bridge, Exchange Online) either reject the RETURN
+	// argument outright or send a reply go-imap can't parse (#1408). For those
+	// we fall back to a per-mailbox STATUS below.
+	hasListStatus := c.Caps().Has(imap.CapListStatus)
+	listOpts := &imap.ListOptions{}
+	if hasListStatus {
+		listOpts.ReturnStatus = &imap.StatusOptions{NumUnseen: true}
+	}
+
+	listCmd := c.List("", "*", listOpts)
 	defer listCmd.Close() //nolint:errcheck
 
 	var folders []Folder
@@ -1938,7 +1945,7 @@ func FetchFolders(account *config.Account) ([]Folder, error) {
 		}
 
 		var unread uint32
-		if data.Status != nil {
+		if data.Status != nil && data.Status.NumUnseen != nil {
 			unread = *data.Status.NumUnseen
 		}
 
@@ -1956,6 +1963,27 @@ func FetchFolders(account *config.Account) ([]Folder, error) {
 
 	if err := listCmd.Close(); err != nil {
 		return nil, err
+	}
+
+	// Without LIST-STATUS the LIST reply carries no unseen counts, so issue a
+	// STATUS per mailbox to populate them. Skip \Noselect folders, which can't
+	// be queried with STATUS.
+	if !hasListStatus {
+		for i := range folders {
+			if slices.Contains(folders[i].Attributes, string(imap.MailboxAttrNoSelect)) {
+				continue
+			}
+			status, err := c.Status(folders[i].Name, &imap.StatusOptions{NumUnseen: true}).Wait()
+			if err != nil {
+				// A single failing mailbox shouldn't abort the whole listing;
+				// leave its unread count at zero.
+				loglevel.Debugf("STATUS UNSEEN failed for %q: %v", folders[i].Name, err)
+				continue
+			}
+			if status.NumUnseen != nil {
+				folders[i].Unread = *status.NumUnseen
+			}
+		}
 	}
 
 	return folders, nil
