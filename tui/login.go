@@ -2,11 +2,17 @@ package tui
 
 import (
 	"strconv"
+	"strings"
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/floatpane/matcha/theme"
 )
+
+// loginProtocols are the selectable protocols shown in the protocol combobox,
+// in cycle order.
+var loginProtocols = []string{"imap", "jmap", "pop3", "maildir"}
 
 // Login holds the state for the login/add account form.
 type Login struct {
@@ -59,8 +65,10 @@ func NewLogin(hideTips bool) *Login {
 
 		switch i {
 		case inputProtocol:
-			t.Placeholder = "Protocol (imap, jmap, pop3, or maildir)"
-			t.Focus()
+			// Rendered as a combobox (see viewProtocolCombobox); the textinput
+			// is only used to hold the selected value. Seed a default so a
+			// protocol is always selected.
+			t.SetValue(loginProtocols[0])
 			t.Prompt = "🌐 > "
 		case inputProvider:
 			t.Placeholder = "Provider (gmail, outlook, icloud, or custom)"
@@ -135,6 +143,21 @@ func (m *Login) protocol() string {
 	return p
 }
 
+// cycleProtocol moves the protocol selection by delta (+1 next, -1 previous),
+// wrapping around the loginProtocols list.
+func (m *Login) cycleProtocol(delta int) {
+	cur := m.protocol()
+	idx := 0
+	for i, p := range loginProtocols {
+		if p == cur {
+			idx = i
+			break
+		}
+	}
+	idx = (idx + delta + len(loginProtocols)) % len(loginProtocols)
+	m.inputs[inputProtocol].SetValue(loginProtocols[idx])
+}
+
 // visibleFields returns the ordered list of input indices the user should see
 // for the current protocol/provider/auth combination.
 func (m *Login) visibleFields() []int {
@@ -186,6 +209,19 @@ func (m *Login) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "esc":
 			return m, func() tea.Msg { return GoToChoiceMenuMsg{} }
+
+		case keyLeft, keyRight, "h", "l", "space":
+			// On the protocol combobox, left/right (or h/l, space) cycle the
+			// selection instead of editing text. Elsewhere, fall through so the
+			// focused textinput handles the key normally.
+			if m.focusIndex == inputProtocol {
+				if msg.String() == keyLeft || msg.String() == "h" {
+					m.cycleProtocol(-1)
+				} else {
+					m.cycleProtocol(1)
+				}
+				return m, nil
+			}
 
 		case "ctrl+v":
 			// Toggle password visibility while focused on the password field,
@@ -249,9 +285,13 @@ func (m *Login) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// Update the focused input field
+	// Update the focused input field. The protocol field is a combobox, not a
+	// text field, so it never consumes raw input here.
 	var cmds = make([]tea.Cmd, len(m.inputs))
 	for i := range m.inputs {
+		if i == inputProtocol {
+			continue
+		}
 		m.inputs[i], cmds[i] = m.inputs[i].Update(msg)
 	}
 
@@ -321,6 +361,37 @@ func (m *Login) submitForm() func() tea.Msg {
 	}
 }
 
+// viewProtocolCombobox renders the protocol selector as a segmented combobox,
+// highlighting the current selection and dimming the alternatives.
+func (m *Login) viewProtocolCombobox() string {
+	th := theme.ActiveTheme
+	focused := m.focusIndex == inputProtocol
+	cur := m.protocol()
+
+	promptColor := th.MutedText
+	if focused {
+		promptColor = th.AccentText
+	}
+	prompt := lipgloss.NewStyle().Foreground(promptColor).Render("🌐 > ")
+
+	selStyle := lipgloss.NewStyle().Foreground(th.Accent).Bold(true)
+	optStyle := lipgloss.NewStyle().Foreground(th.DimText)
+
+	parts := make([]string, len(loginProtocols))
+	for i, p := range loginProtocols {
+		switch {
+		case p == cur && focused:
+			parts[i] = selStyle.Render("‹ " + p + " ›")
+		case p == cur:
+			parts[i] = selStyle.Render("  " + p + "  ")
+		default:
+			parts[i] = optStyle.Render("  " + p + "  ")
+		}
+	}
+
+	return prompt + strings.Join(parts, "")
+}
+
 // View renders the login form.
 func (m *Login) View() tea.View {
 	title := "Add Account"
@@ -333,7 +404,7 @@ func (m *Login) View() tea.View {
 	tip := ""
 	switch m.focusIndex {
 	case inputProtocol:
-		tip = "Choose the protocol: imap (default), jmap, pop3, or maildir."
+		tip = "Use ←/→ to choose the protocol: imap (default), jmap, pop3, or maildir."
 	case inputProvider:
 		tip = "Enter your email provider (e.g., gmail, outlook, icloud) or 'custom'."
 	case inputName:
@@ -374,7 +445,7 @@ func (m *Login) View() tea.View {
 		titleStyle.Render(title),
 		"Enter your email account credentials.",
 		"",
-		m.inputs[inputProtocol].View(),
+		m.viewProtocolCombobox(),
 	}
 
 	switch proto {
@@ -461,6 +532,9 @@ func (m *Login) View() tea.View {
 		views = append(views, TipStyle.Render("Tip: "+tip))
 	}
 	helpLine := "enter: save • tab: next field • esc: back to menu"
+	if m.focusIndex == inputProtocol {
+		helpLine += " • ←/→: change protocol"
+	}
 	if m.focusIndex == inputPassword {
 		helpLine += " • ctrl+v: toggle password visibility"
 	}
