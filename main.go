@@ -340,6 +340,13 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		if msg.String() == "ctrl+c" {
+			// Persist an in-progress draft so quitting the composer
+			// doesn't discard the user's work.
+			if composer, ok := m.current.(*tui.Composer); ok && composer.HasContent() {
+				if err := config.SaveDraft(composer.ToDraft()); err != nil {
+					log.Printf("Error saving draft on quit: %v", err)
+				}
+			}
 			m.idleWatcher.StopAll()
 			if m.service != nil {
 				m.service.Close() //nolint:errcheck,gosec
