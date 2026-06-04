@@ -10,6 +10,7 @@ import (
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	overlay "github.com/floatpane/bubble-overlay"
 	"github.com/floatpane/matcha/config"
 	"github.com/floatpane/matcha/fetcher"
 )
@@ -633,45 +634,12 @@ func (m *FolderInbox) renderWithMoveOverlay(content string) string {
 	b.WriteString("\n\n")
 	b.WriteString(helpStyle.Render(t("folder_inbox.help")))
 
-	overlay := moveOverlayStyle.Render(b.String())
+	box := moveOverlayStyle.Render(b.String())
 
-	// Place overlay in the center of content
-	contentLines := strings.Split(content, "\n")
-	overlayLines := strings.Split(overlay, "\n")
-	contentHeight := len(contentLines)
-	overlayHeight := len(overlayLines)
-	overlayWidth := lipgloss.Width(overlay)
-
-	startRow := (contentHeight - overlayHeight) / 2
-	if startRow < 0 {
-		startRow = 0
-	}
-	startCol := (m.width - overlayWidth) / 2
-	if startCol < 0 {
-		startCol = 0
-	}
-
-	// Overlay the box on top of the content
-	for i, overlayLine := range overlayLines {
-		row := startRow + i
-		if row >= len(contentLines) {
-			break
-		}
-		line := contentLines[row]
-		lineWidth := lipgloss.Width(line)
-
-		// Build the new line: prefix + overlay + suffix
-		if startCol >= lineWidth {
-			contentLines[row] = line + strings.Repeat(" ", startCol-lineWidth) + overlayLine
-		} else {
-			// We need to place the overlay at startCol
-			// Due to ANSI escape codes, we can't simply slice the string
-			// Instead, place the overlay line padded to the left
-			contentLines[row] = lipgloss.PlaceHorizontal(m.width, lipgloss.Center, overlayLine)
-		}
-	}
-
-	return strings.Join(contentLines, "\n")
+	// Composite the box as a floating layer centered over the content, the same
+	// way the command palette does. The background is preserved on all sides;
+	// only the box's own cells are replaced.
+	return overlay.Center(content, box, m.width, m.height)
 }
 
 // SetFolders updates the folder list.
