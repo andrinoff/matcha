@@ -1528,6 +1528,15 @@ func (m *Composer) HidePluginPrompt() {
 	m.showPluginPrompt = false
 }
 
+// HasContent reports whether the composer holds anything worth persisting.
+// It is used to avoid saving empty drafts when the user quits the composer.
+func (m *Composer) HasContent() bool {
+	return m.hasAnyRecipient() ||
+		strings.TrimSpace(m.subjectInput.Value()) != "" ||
+		strings.TrimSpace(m.bodyInput.Value()) != "" ||
+		len(m.attachmentPaths) > 0
+}
+
 // ToDraft converts the composer state to a Draft for saving.
 func (m *Composer) ToDraft() config.Draft {
 	return config.Draft{
