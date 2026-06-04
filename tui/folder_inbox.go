@@ -322,6 +322,7 @@ func (m *FolderInbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocycl
 				if m.previewPane != nil {
 					previewMsg := tea.WindowSizeMsg{Width: paneWidth, Height: m.calculatePreviewHeight() - 1}
 					m.previewPane.Update(previewMsg)
+					m.previewPane.SetRowOffset(m.calculateInboxHeight() + 1)
 				}
 			} else {
 				inboxWidth := m.calculateInboxWidth()
@@ -416,19 +417,20 @@ func (m *FolderInbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocycl
 		email.Body = msg.Body
 		email.BodyMIMEType = msg.BodyMIMEType
 		email.Attachments = msg.Attachments
-		// Create preview pane with column offset for image rendering
+		// Create preview pane with column/row offsets for image rendering.
 		if m.isVerticalSplit() {
 			previewWidth := m.calculateInboxWidthVertical()
 			previewHeight := m.calculatePreviewHeight()
-			// In vertical mode, preview sits below inbox and starts at the same
-			// column offset as the inbox pane.
 			colOffset := sidebarWidth + 2
-			m.previewPane = NewEmailViewPreview(*email, previewWidth, previewHeight, colOffset, m.disableImages)
+			// In vertical split the preview starts below the inbox pane, so
+			// images must be pushed down by the inbox pane height + border row.
+			rowOffset := m.calculateInboxHeight() + 1
+			m.previewPane = NewEmailViewPreview(*email, previewWidth, previewHeight, colOffset, rowOffset, m.disableImages)
 		} else {
 			previewWidth := m.calculatePreviewWidth()
 			inboxWidth := m.calculateInboxWidth()
 			colOffset := sidebarWidth + 2 + inboxWidth + 2 // borders + padding
-			m.previewPane = NewEmailViewPreview(*email, previewWidth, m.height, colOffset, m.disableImages)
+			m.previewPane = NewEmailViewPreview(*email, previewWidth, m.height, colOffset, 0, m.disableImages)
 		}
 		return m, nil
 	}

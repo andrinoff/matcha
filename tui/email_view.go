@@ -75,6 +75,7 @@ type EmailView struct {
 	originalICSData    []byte
 	isPreviewMode      bool
 	columnOffset       int // horizontal offset for image rendering in split pane
+	rowOffset          int // vertical offset for image rendering in split pane (vertical layout)
 }
 
 func NewEmailView(email fetcher.Email, emailIndex, width, height int, mailbox MailboxKind, disableImages bool) *EmailView {
@@ -182,12 +183,22 @@ func NewEmailView(email fetcher.Email, emailIndex, width, height int, mailbox Ma
 	}
 }
 
-// NewEmailViewPreview creates EmailView in preview mode with column offset for images
-func NewEmailViewPreview(email fetcher.Email, width, height, colOffset int, disableImages bool) *EmailView {
+// NewEmailViewPreview creates EmailView in preview mode with column and row
+// offsets for out-of-band image rendering. rowOffset is non-zero in vertical
+// split layouts where the preview sits below the inbox pane.
+func NewEmailViewPreview(email fetcher.Email, width, height, colOffset, rowOffset int, disableImages bool) *EmailView {
 	ev := NewEmailView(email, 0, width, height, MailboxInbox, disableImages)
 	ev.isPreviewMode = true
 	ev.columnOffset = colOffset
+	ev.rowOffset = rowOffset
 	return ev
+}
+
+// SetRowOffset updates the vertical offset used for out-of-band image rendering.
+// Call this after a window resize in vertical split mode so images stay aligned
+// with the preview pane's new position.
+func (m *EmailView) SetRowOffset(offset int) {
+	m.rowOffset = offset
 }
 
 func (m *EmailView) Init() tea.Cmd {
@@ -437,7 +448,7 @@ func (m *EmailView) View() tea.View {
 			// always renders from the top-left), so we hide them once
 			// their start line scrolls above the viewport.
 			if p.Line >= yOffset && p.Line < yOffset+vpHeight {
-				screenRow := headerLines + (p.Line - yOffset)
+				screenRow := m.rowOffset + headerLines + (p.Line - yOffset)
 				if m.columnOffset > 0 {
 					view.RenderImageToStdout(p, screenRow, m.columnOffset+1)
 				} else {
