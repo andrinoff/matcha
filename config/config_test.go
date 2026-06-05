@@ -69,6 +69,39 @@ func TestSaveAndLoadConfig(t *testing.T) {
 	}
 }
 
+func TestHasSeenSetupGuidePersistence(t *testing.T) {
+	keyring.MockInit()
+	tempDir := t.TempDir()
+	t.Setenv("HOME", tempDir)
+
+	cfg := &Config{
+		Accounts: []Account{
+			{
+				ID:              "test-id",
+				Name:            "Test",
+				Email:           "test@example.com",
+				Password:        "secret",
+				ServiceProvider: "gmail",
+				SC:              &SessionCache{},
+			},
+		},
+		HasSeenSetupGuide: true,
+	}
+
+	if err := SaveConfig(cfg); err != nil {
+		t.Fatalf("SaveConfig() failed: %v", err)
+	}
+
+	loaded, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig() failed: %v", err)
+	}
+
+	if !loaded.HasSeenSetupGuide {
+		t.Error("HasSeenSetupGuide should be true after load, got false")
+	}
+}
+
 // TestAccountGetIMAPServer tests the logic that determines the IMAP server address.
 func TestAccountGetIMAPServer(t *testing.T) {
 	testCases := []struct {

@@ -140,6 +140,8 @@ type Config struct {
 	// keyed by plugin name then setting key. Values are JSON-native types
 	// (bool, float64, string) matching the plugin's declared schema.
 	PluginSettings map[string]map[string]interface{} `json:"plugin_settings,omitempty"`
+
+	HasSeenSetupGuide bool `json:"has_seen_setup_guide,omitempty"`
 }
 
 // GetSplitPaneOrientation returns the configured split pane orientation,
@@ -471,6 +473,7 @@ type secureDiskConfig struct {
 	DateFormat              string                            `json:"date_format,omitempty"`
 	Language                string                            `json:"language,omitempty"`
 	PluginSettings          map[string]map[string]interface{} `json:"plugin_settings,omitempty"`
+	HasSeenSetupGuide       bool                              `json:"has_seen_setup_guide,omitempty"`
 }
 
 // SaveConfig saves the given configuration to the config file and passwords to the keyring.
@@ -521,6 +524,7 @@ func SaveConfig(config *Config) error {
 			MailingLists:            config.MailingLists,
 			DateFormat:              config.DateFormat,
 			PluginSettings:          config.PluginSettings,
+			HasSeenSetupGuide:       config.HasSeenSetupGuide,
 		}
 		for _, acc := range config.Accounts {
 			sdc.Accounts = append(sdc.Accounts, secureDiskAccount{
@@ -632,6 +636,7 @@ func LoadConfig() (*Config, error) {
 		Language                string                            `json:"language,omitempty"`
 		BodyCacheThresholdMB    int                               `json:"body_cache_threshold_mb,omitempty"`
 		PluginSettings          map[string]map[string]interface{} `json:"plugin_settings,omitempty"`
+		HasSeenSetupGuide       bool                              `json:"has_seen_setup_guide,omitempty"`
 	}
 
 	var raw diskConfig
@@ -675,6 +680,7 @@ func LoadConfig() (*Config, error) {
 	config.Language = raw.Language
 	config.BodyCacheThresholdMB = raw.BodyCacheThresholdMB
 	config.PluginSettings = raw.PluginSettings
+	config.HasSeenSetupGuide = raw.HasSeenSetupGuide
 
 	for _, rawAcc := range raw.Accounts {
 		acc := Account{
