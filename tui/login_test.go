@@ -2,7 +2,45 @@ package tui
 
 import (
 	"testing"
+
+	tea "charm.land/bubbletea/v2"
 )
+
+func TestProtocolComboboxCycles(t *testing.T) {
+	m := NewLogin(true)
+
+	// Starts focused on the protocol combobox with the default selection.
+	if got := m.protocol(); got != "imap" {
+		t.Fatalf("initial protocol = %q, want imap", got)
+	}
+
+	right := tea.KeyPressMsg{Code: tea.KeyRight}
+	want := []string{"jmap", "pop3", "maildir", "imap"} // wraps around
+	for _, w := range want {
+		model, _ := m.Update(right)
+		m = model.(*Login)
+		if got := m.protocol(); got != w {
+			t.Fatalf("after right, protocol = %q, want %q", got, w)
+		}
+	}
+
+	// Left cycles backwards, wrapping from imap to maildir.
+	model, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
+	m = model.(*Login)
+	if got := m.protocol(); got != "maildir" {
+		t.Fatalf("after left, protocol = %q, want maildir", got)
+	}
+}
+
+func TestProtocolComboboxIgnoresTyping(t *testing.T) {
+	m := NewLogin(true)
+	// Focused on the protocol field; typed characters must not edit it.
+	model, _ := m.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
+	m = model.(*Login)
+	if got := m.protocol(); got != "imap" {
+		t.Fatalf("after typing, protocol = %q, want imap (unchanged)", got)
+	}
+}
 
 func TestValidPort(t *testing.T) {
 	tests := []struct {

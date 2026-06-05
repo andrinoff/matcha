@@ -2,11 +2,25 @@ package tui
 
 import (
 	"strconv"
+	"strings"
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/floatpane/matcha/theme"
 )
+
+// Supported account protocols.
+const (
+	protocolIMAP    = "imap"
+	protocolJMAP    = "jmap"
+	protocolPOP3    = "pop3"
+	protocolMaildir = "maildir"
+)
+
+// loginProtocols are the selectable protocols shown in the protocol combobox,
+// in cycle order.
+var loginProtocols = []string{protocolIMAP, protocolJMAP, protocolPOP3, protocolMaildir}
 
 // Login holds the state for the login/add account form.
 type Login struct {
@@ -59,8 +73,10 @@ func NewLogin(hideTips bool) *Login {
 
 		switch i {
 		case inputProtocol:
-			t.Placeholder = "Protocol (imap, jmap, pop3, or maildir)"
-			t.Focus()
+			// Rendered as a combobox (see viewProtocolCombobox); the textinput
+			// is only used to hold the selected value. Seed a default so a
+			// protocol is always selected.
+			t.SetValue(loginProtocols[0])
 			t.Prompt = "🌐 > "
 		case inputProvider:
 			t.Placeholder = "Provider (gmail, outlook, icloud, or custom)"
@@ -130,9 +146,24 @@ func (m *Login) Init() tea.Cmd {
 func (m *Login) protocol() string {
 	p := m.inputs[inputProtocol].Value()
 	if p == "" {
-		return "imap"
+		return protocolIMAP
 	}
 	return p
+}
+
+// cycleProtocol moves the protocol selection by delta (+1 next, -1 previous),
+// wrapping around the loginProtocols list.
+func (m *Login) cycleProtocol(delta int) {
+	cur := m.protocol()
+	idx := 0
+	for i, p := range loginProtocols {
+		if p == cur {
+			idx = i
+			break
+		}
+	}
+	idx = (idx + delta + len(loginProtocols)) % len(loginProtocols)
+	m.inputs[inputProtocol].SetValue(loginProtocols[idx])
 }
 
 // visibleFields returns the ordered list of input indices the user should see
@@ -145,14 +176,14 @@ func (m *Login) visibleFields() []int {
 	fields := []int{inputProtocol}
 
 	switch proto {
-	case "jmap":
+	case protocolJMAP:
 		// JMAP: no provider selector, just endpoint + common fields
 		fields = append(fields, inputName, inputEmail, inputFetchEmail, inputSendAsEmail, inputCatchAll, inputPassword, inputJMAPEndpoint)
-	case "pop3":
+	case protocolPOP3:
 		// POP3: custom server fields + SMTP for sending
 		fields = append(fields, inputName, inputEmail, inputFetchEmail, inputSendAsEmail, inputCatchAll, inputPassword,
 			inputPOP3Server, inputPOP3Port, inputSMTPServer, inputSMTPPort, inputInsecure)
-	case "maildir":
+	case protocolMaildir:
 		// Maildir: local filesystem only — no auth, no network.
 		fields = append(fields, inputName, inputEmail, inputFetchEmail, inputSendAsEmail, inputCatchAll, inputMaildirPath)
 	default:
@@ -186,6 +217,19 @@ func (m *Login) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "esc":
 			return m, func() tea.Msg { return GoToChoiceMenuMsg{} }
+
+		case keyLeft, keyRight, "h", "l", "space":
+			// On the protocol combobox, left/right (or h/l, space) cycle the
+			// selection instead of editing text. Elsewhere, fall through so the
+			// focused textinput handles the key normally.
+			if m.focusIndex == inputProtocol {
+				if msg.String() == keyLeft || msg.String() == "h" {
+					m.cycleProtocol(-1)
+				} else {
+					m.cycleProtocol(1)
+				}
+				return m, nil
+			}
 
 		case "ctrl+v":
 			// Toggle password visibility while focused on the password field,
@@ -249,9 +293,13 @@ func (m *Login) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// Update the focused input field
+	// Update the focused input field. The protocol field is a combobox, not a
+	// text field, so it never consumes raw input here.
 	var cmds = make([]tea.Cmd, len(m.inputs))
 	for i := range m.inputs {
+		if i == inputProtocol {
+			continue
+		}
 		m.inputs[i], cmds[i] = m.inputs[i].Update(msg)
 	}
 
@@ -321,6 +369,113 @@ func (m *Login) submitForm() func() tea.Msg {
 	}
 }
 
+// viewProtocolCombobox renders the protocol selector as a segmented combobox,
+// highlighting the current selection and dimming the alternatives.
+func (m *Login) viewProtocolCombobox() string {
+	th := theme.ActiveTheme
+	focused := m.focusIndex == inputProtocol
+	cur := m.protocol()
+
+	promptColor := th.MutedText
+	if focused {
+		promptColor = th.AccentText
+	}
+	prompt := lipgloss.NewStyle().Foreground(promptColor).Render("🌐 > ")
+
+	selStyle := lipgloss.NewStyle().Foreground(th.Accent).Bold(true)
+	optStyle := lipgloss.NewStyle().Foreground(th.DimText)
+
+	parts := make([]string, len(loginProtocols))
+	for i, p := range loginProtocols {
+		switch {
+		case p == cur && focused:
+			parts[i] = selStyle.Render("‹ " + p + " ›")
+		case p == cur:
+			parts[i] = selStyle.Render("  " + p + "  ")
+		default:
+			parts[i] = optStyle.Render("  " + p + "  ")
+		}
+	}
+
+	return prompt + strings.Join(parts, "")
+}
+
+// protocolFieldViews returns the rendered input fields specific to the given
+// protocol, in display order.
+func (m *Login) protocolFieldViews(proto string) []string {
+	common := []string{
+		m.inputs[inputName].View(),
+		m.inputs[inputEmail].View(),
+		m.inputs[inputFetchEmail].View(),
+		m.inputs[inputSendAsEmail].View(),
+		m.inputs[inputCatchAll].View(),
+	}
+
+	switch proto {
+	case protocolJMAP:
+		return append(common,
+			m.inputs[inputPassword].View(),
+			"",
+			listHeader.Render("JMAP Settings:"),
+			m.inputs[inputJMAPEndpoint].View(),
+		)
+	case protocolPOP3:
+		return append(common,
+			m.inputs[inputPassword].View(),
+			"",
+			listHeader.Render("POP3 Server Settings:"),
+			m.inputs[inputPOP3Server].View(),
+			m.inputs[inputPOP3Port].View(),
+			"",
+			listHeader.Render("SMTP Settings (for sending):"),
+			m.inputs[inputSMTPServer].View(),
+			m.inputs[inputSMTPPort].View(),
+			m.inputs[inputInsecure].View(),
+		)
+	case protocolMaildir:
+		return append(common,
+			"",
+			listHeader.Render("Maildir Settings:"),
+			m.inputs[inputMaildirPath].View(),
+		)
+	default:
+		return m.imapFieldViews(common)
+	}
+}
+
+// imapFieldViews renders the IMAP-specific fields (provider selector, optional
+// OAuth2/password, and custom server settings) appended after the common fields.
+func (m *Login) imapFieldViews(common []string) []string {
+	provider := m.inputs[inputProvider].Value()
+	hasOAuth := provider == "gmail" || provider == "outlook"
+
+	views := append([]string{m.inputs[inputProvider].View()}, common...)
+
+	if hasOAuth {
+		views = append(views, m.inputs[inputAuthMethod].View())
+	}
+
+	if !m.useOAuth2 {
+		views = append(views, m.inputs[inputPassword].View())
+	} else {
+		views = append(views, accountEmailStyle.Render("OAuth2 selected — browser authorization will open after submit"))
+	}
+
+	if m.showCustom {
+		views = append(views,
+			"",
+			accountEmailStyle.Render("Custom provider selected - configure server settings below"),
+			m.inputs[inputIMAPServer].View(),
+			m.inputs[inputIMAPPort].View(),
+			m.inputs[inputSMTPServer].View(),
+			m.inputs[inputSMTPPort].View(),
+			m.inputs[inputInsecure].View(),
+		)
+	}
+
+	return views
+}
+
 // View renders the login form.
 func (m *Login) View() tea.View {
 	title := "Add Account"
@@ -333,7 +488,7 @@ func (m *Login) View() tea.View {
 	tip := ""
 	switch m.focusIndex {
 	case inputProtocol:
-		tip = "Choose the protocol: imap (default), jmap, pop3, or maildir."
+		tip = "Use ←/→ to choose the protocol: imap (default), jmap, pop3, or maildir."
 	case inputProvider:
 		tip = "Enter your email provider (e.g., gmail, outlook, icloud) or 'custom'."
 	case inputName:
@@ -374,93 +529,19 @@ func (m *Login) View() tea.View {
 		titleStyle.Render(title),
 		"Enter your email account credentials.",
 		"",
-		m.inputs[inputProtocol].View(),
+		m.viewProtocolCombobox(),
 	}
 
-	switch proto {
-	case "jmap":
-		views = append(views,
-			m.inputs[inputName].View(),
-			m.inputs[inputEmail].View(),
-			m.inputs[inputFetchEmail].View(),
-			m.inputs[inputSendAsEmail].View(),
-			m.inputs[inputCatchAll].View(),
-			m.inputs[inputPassword].View(),
-			"",
-			listHeader.Render("JMAP Settings:"),
-			m.inputs[inputJMAPEndpoint].View(),
-		)
-	case "pop3":
-		views = append(views,
-			m.inputs[inputName].View(),
-			m.inputs[inputEmail].View(),
-			m.inputs[inputFetchEmail].View(),
-			m.inputs[inputSendAsEmail].View(),
-			m.inputs[inputCatchAll].View(),
-			m.inputs[inputPassword].View(),
-			"",
-			listHeader.Render("POP3 Server Settings:"),
-			m.inputs[inputPOP3Server].View(),
-			m.inputs[inputPOP3Port].View(),
-			"",
-			listHeader.Render("SMTP Settings (for sending):"),
-			m.inputs[inputSMTPServer].View(),
-			m.inputs[inputSMTPPort].View(),
-			m.inputs[inputInsecure].View(),
-		)
-	case "maildir":
-		views = append(views,
-			m.inputs[inputName].View(),
-			m.inputs[inputEmail].View(),
-			m.inputs[inputFetchEmail].View(),
-			m.inputs[inputSendAsEmail].View(),
-			m.inputs[inputCatchAll].View(),
-			"",
-			listHeader.Render("Maildir Settings:"),
-			m.inputs[inputMaildirPath].View(),
-		)
-	default:
-		// IMAP flow
-		provider := m.inputs[inputProvider].Value()
-		hasOAuth := provider == "gmail" || provider == "outlook"
-		views = append(views,
-			m.inputs[inputProvider].View(),
-			m.inputs[inputName].View(),
-			m.inputs[inputEmail].View(),
-			m.inputs[inputFetchEmail].View(),
-			m.inputs[inputSendAsEmail].View(),
-			m.inputs[inputCatchAll].View(),
-		)
-
-		if hasOAuth {
-			views = append(views, m.inputs[inputAuthMethod].View())
-		}
-
-		if !m.useOAuth2 {
-			views = append(views, m.inputs[inputPassword].View())
-		} else {
-			views = append(views, accountEmailStyle.Render("OAuth2 selected — browser authorization will open after submit"))
-		}
-
-		if m.showCustom {
-			customHint := accountEmailStyle.Render("Custom provider selected - configure server settings below")
-			views = append(views,
-				"",
-				customHint,
-				m.inputs[inputIMAPServer].View(),
-				m.inputs[inputIMAPPort].View(),
-				m.inputs[inputSMTPServer].View(),
-				m.inputs[inputSMTPPort].View(),
-				m.inputs[inputInsecure].View(),
-			)
-		}
-	}
+	views = append(views, m.protocolFieldViews(proto)...)
 
 	views = append(views, "")
 	if !m.hideTips && tip != "" {
 		views = append(views, TipStyle.Render("Tip: "+tip))
 	}
 	helpLine := "enter: save • tab: next field • esc: back to menu"
+	if m.focusIndex == inputProtocol {
+		helpLine += " • ←/→: change protocol"
+	}
 	if m.focusIndex == inputPassword {
 		helpLine += " • ctrl+v: toggle password visibility"
 	}
@@ -475,7 +556,7 @@ func (m *Login) SetEditMode(accountID, protocol, provider, name, email, fetchEma
 	m.accountID = accountID
 
 	if protocol == "" {
-		protocol = "imap"
+		protocol = protocolIMAP
 	}
 	m.inputs[inputProtocol].SetValue(protocol)
 	m.inputs[inputProvider].SetValue(provider)
@@ -516,7 +597,7 @@ func (m *Login) SetEditMode(accountID, protocol, provider, name, email, fetchEma
 		m.inputs[inputPOP3Port].SetValue(strconv.Itoa(pop3Port))
 	}
 	// Also set SMTP for POP3
-	if protocol == "pop3" {
+	if protocol == protocolPOP3 {
 		m.inputs[inputSMTPServer].SetValue(smtpServer)
 		if smtpPort != 0 {
 			m.inputs[inputSMTPPort].SetValue(strconv.Itoa(smtpPort))
