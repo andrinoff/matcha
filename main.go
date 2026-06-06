@@ -151,7 +151,8 @@ func newInitialModel(cfg *config.Config, mailtoURL *url.URL) *mainModel {
 		}
 		initialModel.current = tui.NewLogin(hideTips)
 	} else {
-		if mailtoURL != nil {
+		switch {
+		case mailtoURL != nil:
 			// mailto:addr@example.com?subject=test
 			to := mailtoURL.Opaque
 			if to == "" {
@@ -165,9 +166,9 @@ func newInitialModel(cfg *config.Config, mailtoURL *url.URL) *mainModel {
 			composer := tui.NewComposerWithAccounts(cfg.Accounts, cfg.Accounts[0].ID, to, subject, body, cfg.HideTips)
 			composer.SetSpellcheckOptions(cfg.DisableSpellcheck, cfg.DisableSpellSuggestions)
 			initialModel.current = composer
-		} else if !cfg.HasSeenSetupGuide {
+		case !cfg.HasSeenSetupGuide:
 			initialModel.current = newSetupGuide()
-		} else {
+		default:
 			initialModel.current = tui.NewChoice()
 		}
 		initialModel.config = cfg
@@ -190,7 +191,7 @@ func newSetupGuide() *tui.SetupGuide {
 	var setupMailto func() error
 	if isMac || isLinux {
 		setupMailto = func() error {
-			return silenced(func() error { return matchaCli.SetupMailto() })
+			return silenced(matchaCli.SetupMailto)
 		}
 	}
 
@@ -206,7 +207,7 @@ func silenced(fn func() error) error {
 	if err != nil {
 		return fn()
 	}
-	defer devNull.Close()
+	defer func() { _ = devNull.Close() }()
 	origOut, origErr := os.Stdout, os.Stderr
 	os.Stdout, os.Stderr = devNull, devNull
 	runErr := fn()

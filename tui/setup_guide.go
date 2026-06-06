@@ -128,7 +128,6 @@ func (m *SetupGuide) Init() tea.Cmd {
 
 func (m *SetupGuide) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -163,132 +162,20 @@ func (m *SetupGuide) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *SetupGuide) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch m.step {
-
-	case setupStepWelcome:
+	case setupStepWelcome, setupStepFeatures:
 		if msg.String() == keyEnter || msg.String() == " " {
-			return m, m.advanceStep()
+			m.advanceStep()
+			return m, nil
 		}
 
 	case setupStepHelper:
-		if m.helperStatus == setupStatusRunning {
-			return m, nil
-		}
-		if m.helperStatus != setupStatusPending {
-			switch msg.String() {
-			case keyEnter, " ":
-				return m, m.advanceStep()
-			case "q", "ctrl+c":
-				return m, func() tea.Msg { return GoToChoiceMenuMsg{} }
-			}
-			return m, nil
-		}
-		switch msg.String() {
-		case "up", "k":
-			m.cursor = 0
-		case keyDown, "j":
-			m.cursor = 1
-		case keyEnter:
-			if m.cursor == 0 && m.doInstallHelper != nil {
-				m.helperStatus = setupStatusRunning
-				fn := m.doInstallHelper
-				return m, func() tea.Msg {
-					err := fn()
-					return setupGuideHelperDoneMsg{err: err}
-				}
-			}
-			if m.cursor == 1 {
-				m.helperStatus = setupStatusSkipped
-				return m, m.advanceStep()
-			}
-		case "q", "ctrl+c":
-			return m, func() tea.Msg { return GoToChoiceMenuMsg{} }
-		}
+		return m.handleHelperKey(msg)
 
 	case setupStepMailto:
-		if m.mailtoStatus == setupStatusRunning {
-			return m, nil
-		}
-		if m.mailtoStatus != setupStatusPending {
-			switch msg.String() {
-			case keyEnter, " ":
-				return m, m.advanceStep()
-			case "q", "ctrl+c":
-				return m, func() tea.Msg { return GoToChoiceMenuMsg{} }
-			}
-			return m, nil
-		}
-		switch msg.String() {
-		case "up", "k":
-			m.cursor = 0
-		case keyDown, "j":
-			m.cursor = 1
-		case keyEnter:
-			if m.cursor == 0 && m.doSetupMailto != nil {
-				m.mailtoStatus = setupStatusRunning
-				fn := m.doSetupMailto
-				return m, func() tea.Msg {
-					err := fn()
-					return setupGuideMailtoDoneMsg{err: err}
-				}
-			}
-			if m.cursor == 1 {
-				m.mailtoStatus = setupStatusSkipped
-				return m, m.advanceStep()
-			}
-		case "q", "ctrl+c":
-			return m, func() tea.Msg { return GoToChoiceMenuMsg{} }
-		}
-
-	case setupStepFeatures:
-		if msg.String() == keyEnter || msg.String() == " " {
-			return m, m.advanceStep()
-		}
+		return m.handleMailtoKey(msg)
 
 	case setupStepShowcase:
-		switch m.showcaseTourStep {
-		case 0: // overview — any key advances
-			if msg.String() == keyEnter || msg.String() == " " {
-				m.showcaseTourStep = 1
-			}
-		case 1: // navigation — j/k live, space/enter to advance
-			switch msg.String() {
-			case "up", "k":
-				if m.showcaseCursor > 0 {
-					m.showcaseCursor--
-				}
-			case keyDown, "j":
-				if m.showcaseCursor < len(demoEmails)-1 {
-					m.showcaseCursor++
-				}
-			case keyEnter, " ":
-				m.showcaseTourStep = 2
-			}
-		case 2: // opening — enter opens email, space skips to commands
-			switch msg.String() {
-			case "up", "k":
-				if m.showcaseCursor > 0 {
-					m.showcaseCursor--
-				}
-			case keyDown, "j":
-				if m.showcaseCursor < len(demoEmails)-1 {
-					m.showcaseCursor++
-				}
-			case keyEnter:
-				m.showcaseMode = 1
-				m.showcaseTourStep = 3
-			case " ":
-				m.showcaseTourStep = 4
-			}
-		case 3: // email view — any key returns to inbox + advances
-			if msg.String() == keyEnter || msg.String() == " " || msg.String() == "esc" {
-				m.showcaseMode = 0
-				m.showcaseTourStep = 4
-			}
-		case 4: // commands — any key finishes
-			if msg.String() == keyEnter || msg.String() == " " {
-				return m, m.advanceStep()
-			}
-		}
+		m.handleShowcaseKey(msg)
 
 	case setupStepDone:
 		if msg.String() == keyEnter || msg.String() == " " {
@@ -299,7 +186,128 @@ func (m *SetupGuide) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *SetupGuide) advanceStep() tea.Cmd {
+func (m *SetupGuide) handleHelperKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if m.helperStatus == setupStatusRunning {
+		return m, nil
+	}
+	if m.helperStatus != setupStatusPending {
+		switch msg.String() {
+		case keyEnter, " ":
+			m.advanceStep()
+		case "q", keyCtrlC:
+			return m, func() tea.Msg { return GoToChoiceMenuMsg{} }
+		}
+		return m, nil
+	}
+	switch msg.String() {
+	case "up", "k":
+		m.cursor = 0
+	case keyDown, "j":
+		m.cursor = 1
+	case keyEnter:
+		if m.cursor == 0 && m.doInstallHelper != nil {
+			m.helperStatus = setupStatusRunning
+			fn := m.doInstallHelper
+			return m, func() tea.Msg {
+				err := fn()
+				return setupGuideHelperDoneMsg{err: err}
+			}
+		}
+		if m.cursor == 1 {
+			m.helperStatus = setupStatusSkipped
+			m.advanceStep()
+		}
+	case "q", keyCtrlC:
+		return m, func() tea.Msg { return GoToChoiceMenuMsg{} }
+	}
+	return m, nil
+}
+
+func (m *SetupGuide) handleMailtoKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if m.mailtoStatus == setupStatusRunning {
+		return m, nil
+	}
+	if m.mailtoStatus != setupStatusPending {
+		switch msg.String() {
+		case keyEnter, " ":
+			m.advanceStep()
+		case "q", keyCtrlC:
+			return m, func() tea.Msg { return GoToChoiceMenuMsg{} }
+		}
+		return m, nil
+	}
+	switch msg.String() {
+	case "up", "k":
+		m.cursor = 0
+	case keyDown, "j":
+		m.cursor = 1
+	case keyEnter:
+		if m.cursor == 0 && m.doSetupMailto != nil {
+			m.mailtoStatus = setupStatusRunning
+			fn := m.doSetupMailto
+			return m, func() tea.Msg {
+				err := fn()
+				return setupGuideMailtoDoneMsg{err: err}
+			}
+		}
+		if m.cursor == 1 {
+			m.mailtoStatus = setupStatusSkipped
+			m.advanceStep()
+		}
+	case "q", keyCtrlC:
+		return m, func() tea.Msg { return GoToChoiceMenuMsg{} }
+	}
+	return m, nil
+}
+
+func (m *SetupGuide) handleShowcaseKey(msg tea.KeyPressMsg) {
+	switch m.showcaseTourStep {
+	case 0: // overview — any key advances
+		if msg.String() == keyEnter || msg.String() == " " {
+			m.showcaseTourStep = 1
+		}
+	case 1: // navigation — j/k live, space/enter to advance
+		switch msg.String() {
+		case "up", "k":
+			if m.showcaseCursor > 0 {
+				m.showcaseCursor--
+			}
+		case keyDown, "j":
+			if m.showcaseCursor < len(demoEmails)-1 {
+				m.showcaseCursor++
+			}
+		case keyEnter, " ":
+			m.showcaseTourStep = 2
+		}
+	case 2: // opening — enter opens email, space skips to commands
+		switch msg.String() {
+		case "up", "k":
+			if m.showcaseCursor > 0 {
+				m.showcaseCursor--
+			}
+		case keyDown, "j":
+			if m.showcaseCursor < len(demoEmails)-1 {
+				m.showcaseCursor++
+			}
+		case keyEnter:
+			m.showcaseMode = 1
+			m.showcaseTourStep = 3
+		case " ":
+			m.showcaseTourStep = 4
+		}
+	case 3: // email view — any key returns to inbox + advances
+		if msg.String() == keyEnter || msg.String() == " " || msg.String() == "esc" {
+			m.showcaseMode = 0
+			m.showcaseTourStep = 4
+		}
+	case 4: // commands — any key finishes
+		if msg.String() == keyEnter || msg.String() == " " {
+			m.advanceStep()
+		}
+	}
+}
+
+func (m *SetupGuide) advanceStep() {
 	m.cursor = 0
 	next := m.step + 1
 
@@ -313,7 +321,6 @@ func (m *SetupGuide) advanceStep() tea.Cmd {
 	}
 
 	m.step = next
-	return nil
 }
 
 // ── View ──────────────────────────────────────────────────────────────────────
@@ -388,11 +395,12 @@ func (m *SetupGuide) viewProgress() string {
 
 	var dots []string
 	for _, s := range steps {
-		if s == m.step {
+		switch {
+		case s == m.step:
 			dots = append(dots, sgOkStyle.Render("●"))
-		} else if s < m.step {
+		case s < m.step:
 			dots = append(dots, sgDimStyle.Render("◉"))
-		} else {
+		default:
 			dots = append(dots, sgDimStyle.Render("○"))
 		}
 	}
