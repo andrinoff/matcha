@@ -152,6 +152,7 @@
       "disable_images": "Disable Image Display",
       "hide_tips": "Hide Contextual Tips",
       "disable_notifications": "Disable Notifications",
+      "disable_daemon": "Background Daemon",
       "enable_split_pane": "Split Pane View",
       "split_pane_orientation": "Split Pane Orientation",
       "split_pane_orientation_horizontal": "Horizontal",

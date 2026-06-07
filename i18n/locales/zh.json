@@ -148,6 +148,7 @@
       "disable_images": "禁用图片显示",
       "hide_tips": "隐藏上下文提示",
       "disable_notifications": "禁用通知",
+      "disable_daemon": "Background Daemon",
       "enable_split_pane": "分屏视图",
       "split_pane_orientation": "分屏方向",
       "split_pane_orientation_horizontal": "水平",

@@ -150,6 +150,7 @@
       "disable_images": "Bildanzeige Deaktivieren",
       "hide_tips": "Kontextuelle Tipps Ausblenden",
       "disable_notifications": "Benachrichtigungen Deaktivieren",
+      "disable_daemon": "Background Daemon",
       "enable_split_pane": "Geteilte Ansicht",
       "split_pane_orientation": "Ausrichtung der geteilten Ansicht",
       "split_pane_orientation_horizontal": "Horizontal",

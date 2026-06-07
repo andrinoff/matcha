@@ -125,6 +125,7 @@ type Config struct {
 	DisableImages           bool          `json:"disable_images,omitempty"`
 	HideTips                bool          `json:"hide_tips,omitempty"`
 	DisableNotifications    bool          `json:"disable_notifications,omitempty"`
+	DisableDaemon           bool          `json:"disable_daemon,omitempty"`
 	EnableSplitPane         bool          `json:"enable_split_pane,omitempty"`
 	SplitPaneOrientation    string        `json:"split_pane_orientation,omitempty"`
 	EnableThreaded          bool          `json:"enable_threaded,omitempty"`
@@ -470,6 +471,7 @@ type secureDiskConfig struct {
 	DisableImages           bool                              `json:"disable_images,omitempty"`
 	HideTips                bool                              `json:"hide_tips,omitempty"`
 	DisableNotifications    bool                              `json:"disable_notifications,omitempty"`
+	DisableDaemon           bool                              `json:"disable_daemon,omitempty"`
 	EnableSplitPane         bool                              `json:"enable_split_pane,omitempty"`
 	SplitPaneOrientation    string                            `json:"split_pane_orientation,omitempty"`
 	EnableThreaded          bool                              `json:"enable_threaded,omitempty"`
@@ -522,6 +524,7 @@ func SaveConfig(config *Config) error {
 			DisableImages:           config.DisableImages,
 			HideTips:                config.HideTips,
 			DisableNotifications:    config.DisableNotifications,
+			DisableDaemon:           config.DisableDaemon,
 			EnableSplitPane:         config.EnableSplitPane,
 			SplitPaneOrientation:    config.SplitPaneOrientation,
 			EnableThreaded:          config.EnableThreaded,
@@ -632,6 +635,7 @@ func LoadConfig() (*Config, error) {
 		DisableImages           bool                              `json:"disable_images,omitempty"`
 		HideTips                bool                              `json:"hide_tips,omitempty"`
 		DisableNotifications    bool                              `json:"disable_notifications,omitempty"`
+		DisableDaemon           bool                              `json:"disable_daemon,omitempty"`
 		EnableSplitPane         bool                              `json:"enable_split_pane,omitempty"`
 		SplitPaneOrientation    string                            `json:"split_pane_orientation,omitempty"`
 		EnableThreaded          bool                              `json:"enable_threaded,omitempty"`
@@ -677,6 +681,7 @@ func LoadConfig() (*Config, error) {
 	config.DisableImages = raw.DisableImages
 	config.HideTips = raw.HideTips
 	config.DisableNotifications = raw.DisableNotifications
+	config.DisableDaemon = raw.DisableDaemon
 	config.EnableSplitPane = raw.EnableSplitPane
 	config.SplitPaneOrientation = raw.SplitPaneOrientation
 	config.EnableThreaded = raw.EnableThreaded

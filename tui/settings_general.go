@@ -20,6 +20,7 @@ func (m *Settings) buildGeneralOptions() []generalOption {
 		{"settings_general.disable_images", onOff(m.cfg.DisableImages), "Prevent images from loading automatically in emails."},
 		{"settings_general.hide_tips", onOff(m.cfg.HideTips), "Hide helpful hints displayed at the bottom of the screen."},
 		{"settings_general.disable_notifications", onOff(m.cfg.DisableNotifications), "Turn off desktop notifications for new mail."},
+		{"settings_general.disable_daemon", onOff(!m.cfg.DisableDaemon), "Run a background daemon for push notifications and sync. Takes effect on restart."},
 		{"settings_general.enable_split_pane", onOff(m.cfg.EnableSplitPane), "View inbox and email side-by-side."},
 		{"settings_general.split_pane_orientation", getSplitPaneOrientationLabel(m.cfg.GetSplitPaneOrientation()), "Lay the split pane out side-by-side or stacked."},
 		{"settings_general.enable_threaded", onOff(m.cfg.EnableThreaded), "Group emails into conversations by reply chain. Per-folder overrides are kept."},
@@ -58,11 +59,15 @@ func (m *Settings) updateGeneral(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				m.cfg.DisableNotifications = !m.cfg.DisableNotifications
 				_ = config.SaveConfig(m.cfg)
 				saved = true
-			case 3: // Split Pane View
+			case 3: // Background Daemon
+				m.cfg.DisableDaemon = !m.cfg.DisableDaemon
+				_ = config.SaveConfig(m.cfg)
+				saved = true
+			case 4: // Split Pane View
 				m.cfg.EnableSplitPane = !m.cfg.EnableSplitPane
 				_ = config.SaveConfig(m.cfg)
 				saved = true
-			case 4: // Split Pane Orientation
+			case 5: // Split Pane Orientation
 				if m.cfg.GetSplitPaneOrientation() == config.SplitPaneVertical {
 					m.cfg.SplitPaneOrientation = config.SplitPaneHorizontal
 				} else {
@@ -70,23 +75,23 @@ func (m *Settings) updateGeneral(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				}
 				_ = config.SaveConfig(m.cfg)
 				saved = true
-			case 5: // Threaded Conversation View
+			case 6: // Threaded Conversation View
 				m.cfg.EnableThreaded = !m.cfg.EnableThreaded
 				_ = config.SaveConfig(m.cfg)
 				saved = true
-			case 6: // Detailed Dates
+			case 7: // Detailed Dates
 				m.cfg.EnableDetailedDates = !m.cfg.EnableDetailedDates
 				_ = config.SaveConfig(m.cfg)
 				saved = true
-			case 7: // Spellcheck
+			case 8: // Spellcheck
 				m.cfg.DisableSpellcheck = !m.cfg.DisableSpellcheck
 				_ = config.SaveConfig(m.cfg)
 				saved = true
-			case 8: // Spell Suggestions
+			case 9: // Spell Suggestions
 				m.cfg.DisableSpellSuggestions = !m.cfg.DisableSpellSuggestions
 				_ = config.SaveConfig(m.cfg)
 				saved = true
-			case 9: // Date Format
+			case 10: // Date Format
 				switch m.cfg.DateFormat {
 				case config.DateFormatEU:
 					m.cfg.DateFormat = config.DateFormatUS
@@ -97,7 +102,7 @@ func (m *Settings) updateGeneral(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				}
 				_ = config.SaveConfig(m.cfg)
 				saved = true
-			case 10: // Language
+			case 11: // Language
 				// Cycle through available languages
 				langs := i18n.LanguageCodes()
 				currentLang := m.cfg.GetLanguage()
@@ -118,7 +123,7 @@ func (m *Settings) updateGeneral(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 					func() tea.Msg { return ConfigSavedMsg{} },
 					func() tea.Msg { return LanguageChangedMsg{} },
 				)
-			case 11: // Edit Signature
+			case 12: // Edit Signature
 				if msg.String() == keyEnter || msg.String() == keyRight || msg.String() == "l" {
 					return m, func() tea.Msg { return GoToSignatureEditorMsg{} }
 				}
