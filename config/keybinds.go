@@ -68,6 +68,7 @@ type ComposerKeys struct {
 	SpellPrev      string `json:"spell_prev"`
 	SpellAccept    string `json:"spell_accept"`
 	SpellDismiss   string `json:"spell_dismiss"`
+	UndoSend       string `json:"undo_send"`
 }
 
 type FolderKeys struct {
@@ -138,6 +139,7 @@ func ValidateKeybinds(kb KeybindsConfig) []string {
 			"focus_attachments": kb.Email.FocusAttachments,
 		},
 		"composer": {
+			"undo_send":       kb.Composer.UndoSend,
 			"external_editor": kb.Composer.ExternalEditor,
 			"next_field":      kb.Composer.NextField,
 			"prev_field":      kb.Composer.PrevField,

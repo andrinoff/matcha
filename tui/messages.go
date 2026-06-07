@@ -43,6 +43,19 @@ type SendEmailMsg struct {
 	SignPGP         bool   // Whether to sign the email using PGP
 }
 
+type EmailQueuedMsg struct {
+	JobID        string
+	DelaySeconds int
+}
+
+type EmailDelayExpiredMsg struct {
+	JobID string
+}
+
+type UndoSendMsg struct {
+	JobID string
+}
+
 type Credentials struct {
 	Provider     string
 	Name         string

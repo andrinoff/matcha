@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/floatpane/matcha/daemonrpc"
+	"github.com/google/uuid"
 )
 
 // Per-handler timeouts. fetchTimeout covers reads against the upstream IMAP
@@ -336,5 +337,48 @@ func (d *Daemon) handleUnsubscribe(_ context.Context, conn *daemonrpc.Conn, para
 	}
 	d.subMu.Unlock()
 
+	return true, nil
+}
+
+func (d *Daemon) handleQueueEmail(_ context.Context, _ *daemonrpc.Conn, params json.RawMessage) (any, error) {
+	args, err := decodeParams[daemonrpc.QueueEmailParams](params)
+	if err != nil {
+		return nil, parseError(err)
+	}
+
+	id := uuid.New().String()
+	entry := &OutboxEntry{
+		ID:     id,
+		Params: args.Email,
+		SendAt: time.Now().Add(time.Duration(args.DelaySeconds) * time.Second),
+	}
+
+	d.outboxMu.Lock()
+	d.outbox[id] = entry
+	d.outboxMu.Unlock()
+
+	log.Printf("daemon: queued email %s, sending in %ds", id, args.DelaySeconds)
+
+	return daemonrpc.QueueEmailResult{JobID: id}, nil
+}
+
+func (d *Daemon) handleCancelEmail(_ context.Context, _ *daemonrpc.Conn, params json.RawMessage) (any, error) {
+	args, err := decodeParams[daemonrpc.CancelEmailParams](params)
+	if err != nil {
+		return nil, parseError(err)
+	}
+
+	d.outboxMu.Lock()
+	_, exists := d.outbox[args.JobID]
+	if exists {
+		delete(d.outbox, args.JobID)
+	}
+	d.outboxMu.Unlock()
+
+	if !exists {
+		return nil, fmt.Errorf("job %s not found", args.JobID)
+	}
+
+	log.Printf("daemon: cancelled email %s", args.JobID)
 	return true, nil
 }

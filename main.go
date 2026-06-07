@@ -125,8 +125,9 @@ type mainModel struct {
 	logPanel     *tui.LogPanel
 	// Command palette overlay (Zed/VS Code style). When paletteOpen is true the
 	// palette captures all key input and is rendered on top of the active view.
-	palette     *tui.CommandPalette
-	paletteOpen bool
+	palette      *tui.CommandPalette
+	paletteOpen  bool
+	pendingJobID string
 }
 
 type logEntryMsg struct {
@@ -421,6 +422,18 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
+		if msg.String() == config.Keybinds.Composer.UndoSend {
+			if m.pendingJobID != "" {
+				jobID := m.pendingJobID
+				m.pendingJobID = ""
+				return m, func() tea.Msg {
+					if err := m.service.CancelEmail(jobID); err != nil {
+						return tui.EmailResultMsg{Err: fmt.Errorf("could not undo: email may have already been sent")}
+					}
+					return tui.UndoSendMsg{JobID: jobID}
+				}
+			}
+		}
 		if msg.String() == "ctrl+c" {
 			// Persist an in-progress draft so quitting the composer
 			// doesn't discard the user's work.
@@ -1790,6 +1803,9 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 		if m.plugins != nil {
 			m.plugins.CallSendHook(plugin.HookEmailSendBefore, msg.To, msg.Cc, msg.Subject, msg.AccountID)
 		}
+
+		m.previousModel = m.current
+
 		// Get draft ID before clearing composer (if it's a composer)
 		var draftID string
 		if composer, ok := m.current.(*tui.Composer); ok {
@@ -1834,7 +1850,45 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 			}
 		}()
 
-		return m, tea.Batch(m.current.Init(), sendEmail(account, msg))
+		return m, tea.Batch(m.current.Init(), m.sendEmailCmd(account, msg))
+
+	case tui.EmailQueuedMsg:
+		m.pendingJobID = msg.JobID
+		m.current = tui.NewStatus(fmt.Sprintf("Message sent (%s to undo)", config.Keybinds.Composer.UndoSend))
+		return m, tea.Batch(
+			m.current.Init(),
+			tea.Tick(
+				time.Duration(msg.DelaySeconds)*time.Second, func(t time.Time) tea.Msg {
+					return tui.EmailDelayExpiredMsg{JobID: msg.JobID}
+				}),
+		)
+
+	case tui.EmailDelayExpiredMsg:
+		if m.pendingJobID == msg.JobID {
+			m.pendingJobID = ""
+			m.previousModel = nil
+
+			if m.plugins != nil {
+				m.plugins.CallHook(plugin.HookEmailSendAfter)
+			}
+
+			m.current = tui.NewChoice()
+			m.current, _ = m.current.Update(m.currentWindowSize())
+			return m, m.current.Init()
+		}
+
+		return m, nil
+
+	case tui.UndoSendMsg:
+		if m.previousModel != nil {
+			m.current = m.previousModel
+			m.previousModel = nil
+			m.current, _ = m.current.Update(m.currentWindowSize())
+			return m, m.current.Init()
+		}
+
+		m.previousModel = tui.NewChoice()
+		return m, m.current.Init()
 
 	case tui.SendRSVPMsg:
 		account := m.config.GetAccountByID(msg.AccountID)
@@ -2870,7 +2924,7 @@ func splitEmails(s string) []string {
 	return res
 }
 
-func sendEmail(account *config.Account, msg tui.SendEmailMsg) tea.Cmd {
+func (m *mainModel) sendEmailCmd(account *config.Account, msg tui.SendEmailMsg) tea.Cmd {
 	return func() tea.Msg {
 		if account == nil {
 			return tui.EmailResultMsg{Err: fmt.Errorf("no account configured")}
@@ -2925,20 +2979,15 @@ func sendEmail(account *config.Account, msg tui.SendEmailMsg) tea.Cmd {
 			attachments[filename] = fileData
 		}
 
-		rawMsg, err := sender.SendEmail(account, recipients, cc, bcc, msg.Subject, body, string(htmlBody), images, attachments, msg.InReplyTo, msg.References, msg.SignSMIME, msg.EncryptSMIME, msg.SignPGP, false)
+		delaySeconds := m.config.GetUndoDelaySeconds()
+		jobID, err := m.service.QueueEmail(account.ID, recipients, cc, bcc, msg.Subject, body, string(htmlBody), images, attachments, msg.InReplyTo, msg.References, msg.SignSMIME, msg.EncryptSMIME, msg.SignPGP, false, delaySeconds)
+
 		if err != nil {
-			log.Printf("Failed to send email: %v", err)
+			log.Printf("Failed to queue email: %v", err)
 			return tui.EmailResultMsg{Err: err}
 		}
 
-		// Append to Sent folder via IMAP (Gmail auto-saves, so skip it)
-		if account.ServiceProvider != "gmail" {
-			if err := fetcher.AppendToSentMailbox(account, rawMsg); err != nil {
-				log.Printf("Failed to append sent message to Sent folder: %v", err)
-			}
-		}
-
-		return tui.EmailResultMsg{}
+		return tui.EmailQueuedMsg{JobID: jobID, DelaySeconds: delaySeconds}
 	}
 }
 

@@ -2,6 +2,7 @@ package daemonclient
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
@@ -12,6 +13,8 @@ import (
 	_ "github.com/floatpane/matcha/backend/maildir" // register maildir backend for directService
 	"github.com/floatpane/matcha/config"
 	"github.com/floatpane/matcha/daemonrpc"
+	"github.com/floatpane/matcha/fetcher"
+	"github.com/floatpane/matcha/sender"
 )
 
 // Service abstracts daemon-backed vs direct email operations.
@@ -26,6 +29,8 @@ type Service interface {
 	MoveEmails(accountID string, uids []uint32, src, dst string) error
 	MarkRead(accountID, folder string, uids []uint32) error
 	MarkUnread(accountID, folder string, uids []uint32) error
+	QueueEmail(accountID string, to, cc, bcc []string, subject, body, htmlBody string, images map[string][]byte, attachments map[string][]byte, inReplyTo string, references []string, signSMIME, encryptSMIME, signPGP, encryptPGP bool, delaySeconds int) (string, error)
+	CancelEmail(jobID string) error
 	FetchFolders(accountID string) ([]backend.Folder, error)
 	RefreshFolder(accountID, folder string) error
 	Subscribe(accountID, folder string) error
@@ -170,6 +175,37 @@ func (s *daemonService) MarkUnread(accountID, folder string, uids []uint32) erro
 		Folder:    folder,
 		UIDs:      uids,
 		Read:      false,
+	}, nil)
+}
+
+func (s *daemonService) QueueEmail(accountID string, to, cc, bcc []string, subject, body, htmlBody string, images map[string][]byte, attachments map[string][]byte, inReplyTo string, references []string, signSMIME, encryptSMIME, signPGP, encryptPGP bool, delaySeconds int) (string, error) {
+	var result daemonrpc.QueueEmailResult
+	err := s.client.Call(daemonrpc.MethodQueueEmail, daemonrpc.QueueEmailParams{
+		Email: daemonrpc.SendEmailParams{
+			AccountID:    accountID,
+			To:           to,
+			Cc:           cc,
+			Bcc:          bcc,
+			Subject:      subject,
+			Body:         body,
+			HTMLBody:     htmlBody,
+			Images:       images,
+			Attachments:  attachments,
+			InReplyTo:    inReplyTo,
+			References:   references,
+			SignSMIME:    signSMIME,
+			EncryptSMIME: encryptSMIME,
+			SignPGP:      signPGP,
+			EncryptPGP:   encryptPGP,
+		},
+		DelaySeconds: delaySeconds,
+	}, &result)
+	return result.JobID, err
+}
+
+func (s *daemonService) CancelEmail(jobID string) error {
+	return s.client.Call(daemonrpc.MethodCancelEmail, daemonrpc.CancelEmailParams{
+		JobID: jobID,
 	}, nil)
 }
 
@@ -366,5 +402,45 @@ func (s *directService) Close() error {
 		p.Close() //nolint:errcheck,gosec
 	}
 	close(s.events)
+	return nil
+}
+
+func (s *directService) QueueEmail(accountID string, to, cc, bcc []string, subject, body, htmlBody string, images map[string][]byte, attachments map[string][]byte, inReplyTo string, references []string, signSMIME, encryptSMIME, signPGP, encryptPGP bool, _ int) (string, error) {
+	acct := s.cfg.GetAccountByID(accountID)
+	if acct == nil {
+		return "", fmt.Errorf("no account for %s", accountID)
+	}
+
+	rawMsg, err := sender.SendEmail(
+		acct,
+		to,
+		cc,
+		bcc,
+		subject,
+		body,
+		htmlBody,
+		images,
+		attachments,
+		inReplyTo,
+		references,
+		signSMIME,
+		encryptSMIME,
+		signPGP,
+		encryptPGP,
+	)
+	if err != nil {
+		return "", err
+	}
+
+	if acct.ServiceProvider != "gmail" {
+		if err := fetcher.AppendToSentMailbox(acct, rawMsg); err != nil {
+			log.Printf("direct: append to sent failed: %v", err)
+		}
+	}
+
+	return "", nil
+}
+
+func (s *directService) CancelEmail(_ string) error {
 	return nil
 }
