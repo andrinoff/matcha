@@ -2,6 +2,7 @@ package tui
 
 const (
 	keyEnter    = "enter"
+	keyCtrlC    = "ctrl+c"
 	keyDown     = "down"
 	keyLeft     = "left"
 	keyRight    = "right"

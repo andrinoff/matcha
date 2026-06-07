@@ -59,7 +59,7 @@ func (m *SignatureEditor) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyPressMsg:
 		switch msg.String() {
-		case "ctrl+c":
+		case keyCtrlC:
 			return m, tea.Quit
 		case "esc":
 			// Save and go back to settings

@@ -151,7 +151,8 @@ func newInitialModel(cfg *config.Config, mailtoURL *url.URL) *mainModel {
 		}
 		initialModel.current = tui.NewLogin(hideTips)
 	} else {
-		if mailtoURL != nil {
+		switch {
+		case mailtoURL != nil:
 			// mailto:addr@example.com?subject=test
 			to := mailtoURL.Opaque
 			if to == "" {
@@ -165,12 +166,53 @@ func newInitialModel(cfg *config.Config, mailtoURL *url.URL) *mainModel {
 			composer := tui.NewComposerWithAccounts(cfg.Accounts, cfg.Accounts[0].ID, to, subject, body, cfg.HideTips)
 			composer.SetSpellcheckOptions(cfg.DisableSpellcheck, cfg.DisableSpellSuggestions)
 			initialModel.current = composer
-		} else {
+		case !cfg.HasSeenSetupGuide:
+			initialModel.current = newSetupGuide()
+		default:
 			initialModel.current = tui.NewChoice()
 		}
 		initialModel.config = cfg
 	}
 	return initialModel
+}
+
+// newSetupGuide creates the first-run wizard with platform-appropriate callbacks.
+func newSetupGuide() *tui.SetupGuide {
+	isMac := runtime.GOOS == goosDarwin
+	isLinux := runtime.GOOS == "linux"
+
+	var installHelper func() error
+	if isMac {
+		installHelper = func() error {
+			return silenced(func() error { return matchaCli.RunHelper([]string{"install"}) })
+		}
+	}
+
+	var setupMailto func() error
+	if isMac || isLinux {
+		setupMailto = func() error {
+			return silenced(matchaCli.SetupMailto)
+		}
+	}
+
+	return tui.NewSetupGuide(isMac, isLinux, installHelper, setupMailto)
+}
+
+// silenced runs fn with os.Stdout and os.Stderr redirected to /dev/null so
+// that CLI functions which print progress don't corrupt the Bubble Tea TUI.
+// Bubble Tea captures its output writer at program creation time, so swapping
+// os.Stdout here only suppresses fmt.Printf / cmd.Stderr = os.Stderr calls.
+func silenced(fn func() error) error {
+	devNull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	if err != nil {
+		return fn()
+	}
+	defer func() { _ = devNull.Close() }()
+	origOut, origErr := os.Stdout, os.Stderr
+	os.Stdout, os.Stderr = devNull, devNull
+	runErr := fn()
+	os.Stdout, os.Stderr = origOut, origErr
+	return runErr
 }
 
 // ensureProviders creates backend providers for all configured accounts.
@@ -1406,6 +1448,17 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 		return m, nil
 
 	case tui.GoToChoiceMenuMsg:
+		m.current = tui.NewChoice()
+		m.current, _ = m.current.Update(m.currentWindowSize())
+		return m, m.current.Init()
+
+	case tui.SetupGuideDoneMsg:
+		if m.config != nil && !m.config.HasSeenSetupGuide {
+			m.config.HasSeenSetupGuide = true
+			if err := config.SaveConfig(m.config); err != nil {
+				log.Printf("could not save setup-guide flag: %v", err)
+			}
+		}
 		m.current = tui.NewChoice()
 		m.current, _ = m.current.Update(m.currentWindowSize())
 		return m, m.current.Init()

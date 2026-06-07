@@ -55,7 +55,7 @@ func (m *PasswordPrompt) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.verifying = true
 			return m, verifyPasswordCmd(password)
-		case "ctrl+c":
+		case keyCtrlC:
 			return m, tea.Quit
 		}
 		// Clear error on new input

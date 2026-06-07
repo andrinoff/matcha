@@ -593,3 +593,9 @@ type RSVPResultMsg struct {
 	Response  string // "ACCEPTED", "DECLINED", "TENTATIVE"
 	Organizer string // organizer email for Google Calendar note
 }
+
+// GoToSetupGuideMsg signals that the first-run setup guide should be shown.
+type GoToSetupGuideMsg struct{}
+
+// SetupGuideDoneMsg signals that the user completed (or dismissed) the setup guide.
+type SetupGuideDoneMsg struct{}
