@@ -154,6 +154,7 @@
       "disable_images": "Отключить Отображение Изображений",
       "hide_tips": "Скрыть Контекстные Подсказки",
       "disable_notifications": "Отключить Уведомления",
+      "disable_daemon": "Background Daemon",
       "enable_split_pane": "Разделённый вид",
       "enable_threaded": "Просмотр беседами",
       "enable_detailed_dates": "Подробные даты",

@@ -148,6 +148,7 @@
       "disable_images": "禁用图片显示",
       "hide_tips": "隐藏上下文提示",
       "disable_notifications": "禁用通知",
+      "disable_daemon": "Background Daemon",
       "enable_split_pane": "分屏视图",
       "enable_threaded": "会话视图",
       "enable_detailed_dates": "详细日期",
