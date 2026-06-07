@@ -37,8 +37,13 @@ type Service interface {
 }
 
 // NewService connects to the daemon, auto-starting it if needed.
-// Falls back to direct mode only if daemon cannot be started.
+// Falls back to direct mode only if daemon cannot be started, or if DisableDaemon is set.
 func NewService(cfg *config.Config) Service {
+	if cfg.DisableDaemon {
+		log.Println("service: daemon disabled by config, using direct mode")
+		return newDirectService(cfg)
+	}
+
 	// Try connecting to existing daemon.
 	if svc := tryConnect(); svc != nil {
 		return svc

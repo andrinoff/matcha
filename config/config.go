@@ -119,6 +119,7 @@ type Config struct {
 	DisableImages           bool          `json:"disable_images,omitempty"`
 	HideTips                bool          `json:"hide_tips,omitempty"`
 	DisableNotifications    bool          `json:"disable_notifications,omitempty"`
+	DisableDaemon           bool          `json:"disable_daemon,omitempty"`
 	EnableSplitPane         bool          `json:"enable_split_pane,omitempty"`
 	EnableThreaded          bool          `json:"enable_threaded,omitempty"`
 	EnableDetailedDates     bool          `json:"enable_detailed_dates,omitempty"`

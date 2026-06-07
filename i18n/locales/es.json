@@ -150,6 +150,7 @@
       "disable_images": "Deshabilitar Visualización de Imágenes",
       "hide_tips": "Ocultar Consejos Contextuales",
       "disable_notifications": "Deshabilitar Notificaciones",
+      "disable_daemon": "Background Daemon",
       "enable_split_pane": "Vista dividida",
       "enable_threaded": "Vista de conversación",
       "enable_detailed_dates": "Fechas detalladas",

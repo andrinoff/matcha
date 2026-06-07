@@ -154,6 +154,7 @@
       "disable_images": "تعطيل عرض الصور",
       "hide_tips": "إخفاء النصائح السياقية",
       "disable_notifications": "تعطيل الإشعارات",
+      "disable_daemon": "Background Daemon",
       "enable_split_pane": "عرض مقسم",
       "enable_threaded": "عرض المحادثات",
       "enable_detailed_dates": "تواريخ مفصلة",

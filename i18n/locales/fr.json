@@ -150,6 +150,7 @@
       "disable_images": "Désactiver l'Affichage des Images",
       "hide_tips": "Masquer les Conseils Contextuels",
       "disable_notifications": "Désactiver les Notifications",
+      "disable_daemon": "Background Daemon",
       "enable_split_pane": "Vue divisée",
       "enable_threaded": "Vue par conversation",
       "enable_detailed_dates": "Dates détaillées",

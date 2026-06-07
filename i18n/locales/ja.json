@@ -148,6 +148,7 @@
       "disable_images": "画像表示を無効化",
       "hide_tips": "コンテキストヒントを非表示",
       "disable_notifications": "通知を無効化",
+      "disable_daemon": "Background Daemon",
       "enable_split_pane": "分割ビュー",
       "enable_threaded": "スレッド表示",
       "enable_detailed_dates": "詳細な日付",

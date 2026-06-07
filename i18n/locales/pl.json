@@ -154,6 +154,7 @@
       "disable_images": "Wyłącz Wyświetlanie Obrazów",
       "hide_tips": "Ukryj Wskazówki Kontekstowe",
       "disable_notifications": "Wyłącz Powiadomienia",
+      "disable_daemon": "Background Daemon",
       "enable_split_pane": "Widok podzielony",
       "enable_threaded": "Widok wątków",
       "enable_detailed_dates": "Szczegółowe daty",

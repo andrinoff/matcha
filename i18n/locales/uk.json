@@ -152,6 +152,7 @@
       "disable_images": "Вимкнути показ зображень",
       "hide_tips": "Приховати контекстні підказки",
       "disable_notifications": "Вимкнути сповіщення",
+      "disable_daemon": "Background Daemon",
       "enable_split_pane": "Розділений вигляд",
       "enable_threaded": "Перегляд розмов",
       "enable_detailed_dates": "Детальні дати",
