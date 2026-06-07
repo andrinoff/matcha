@@ -48,6 +48,8 @@ const (
 	MethodGetCachedEmails = "GetCachedEmails"
 	MethodGetCachedBody   = "GetCachedBody"
 	MethodExportContacts  = "ExportContacts"
+	MethodQueueEmail      = "QueueEmail"
+	MethodCancelEmail     = "CancelEmail"
 )
 
 // Event type names.
@@ -93,6 +95,19 @@ type FetchEmailBodyParams struct {
 	UID       uint32 `json:"uid"`
 }
 
+type QueueEmailParams struct {
+	Email        SendEmailParams `json:"email"`
+	DelaySeconds int             `json:"delay_seconds"`
+}
+
+type QueueEmailResult struct {
+	JobID string `json:"job_id"`
+}
+
+type CancelEmailParams struct {
+	JobID string `json:"job_id"`
+}
+
 type FetchEmailBodyResult struct {
 	Body         string           `json:"body"`
 	BodyMIMEType string           `json:"body_mime_type,omitempty"`
@@ -116,6 +131,7 @@ type SendEmailParams struct {
 	Subject      string            `json:"subject"`
 	Body         string            `json:"body"`
 	HTMLBody     string            `json:"html_body,omitempty"`
+	Images       map[string][]byte `json:"images,omitempty"`
 	Attachments  map[string][]byte `json:"attachments,omitempty"`
 	InReplyTo    string            `json:"in_reply_to,omitempty"`
 	References   []string          `json:"references,omitempty"`
