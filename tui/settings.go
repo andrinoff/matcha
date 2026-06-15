@@ -347,10 +347,11 @@ func (m *Settings) updateMenu(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 		// Reset states
 		m.confirmingDelete = false
-		if m.activeCategory == CategoryContacts {
+		switch m.activeCategory {
+		case CategoryContacts:
 			m.contactsConfirming = false
 			m.contactsList = config.GetNamedContacts()
-		} else if m.activeCategory == CategoryTheme {
+		case CategoryTheme:
 			// Find current theme index
 			themes := theme.AllThemes()
 			for i, t := range themes {
@@ -359,7 +360,7 @@ func (m *Settings) updateMenu(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 					break
 				}
 			}
-		} else if m.activeCategory == CategoryEncryption {
+		case CategoryEncryption:
 			m.encError = ""
 			m.encPasswordInput.SetValue("")
 			m.encConfirmInput.SetValue("")
