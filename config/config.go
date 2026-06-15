@@ -1,12 +1,14 @@
 package config
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -95,6 +97,9 @@ type Account struct {
 
 	// OAuth2 settings
 	AuthMethod string `json:"auth_method,omitempty"` // "password" (default) or "oauth2"
+	// PassCmd is a shell command whose stdout is used as the password (e.g. "pass show email/user").
+	// When set, the keyring is bypassed and the command is evaluated at startup.
+	PassCmd string `json:"pass_cmd,omitempty"`
 
 	// Multi-protocol settings
 	Protocol     string `json:"protocol,omitempty"`      // "imap" (default), "jmap", or "pop3"
@@ -440,6 +445,7 @@ type secureDiskAccount struct {
 	PGPPIN             string `json:"pgp_pin,omitempty"`
 	PGPSignByDefault   bool   `json:"pgp_sign_by_default,omitempty"`
 	AuthMethod         string `json:"auth_method,omitempty"`
+	PassCmd            string `json:"pass_cmd,omitempty"`
 	Protocol           string `json:"protocol,omitempty"`
 	JMAPEndpoint       string `json:"jmap_endpoint,omitempty"`
 	POP3Server         string `json:"pop3_server,omitempty"`
@@ -476,7 +482,7 @@ func SaveConfig(config *Config) error {
 		// any hint to the user. Log the error as a warning so the misconfiguration
 		// (no keyring backend, locked keyring, etc.) is at least visible. See #616.
 		for _, acc := range config.Accounts {
-			if acc.Password != "" {
+			if acc.Password != "" && acc.PassCmd == "" {
 				if err := keyring.Set(keyringServiceName, acc.Email, acc.Password); err != nil {
 					log.Printf("matcha: failed to store password for %s in keyring: %v", acc.Email, err)
 				}
@@ -516,11 +522,15 @@ func SaveConfig(config *Config) error {
 			PluginSettings:          config.PluginSettings,
 		}
 		for _, acc := range config.Accounts {
+			var securePassword string
+			if acc.PassCmd == "" {
+				securePassword = acc.Password
+			}
 			sdc.Accounts = append(sdc.Accounts, secureDiskAccount{
 				ID:                 acc.ID,
 				Name:               acc.Name,
 				Email:              acc.Email,
-				Password:           acc.Password,
+				Password:           securePassword,
 				ServiceProvider:    acc.ServiceProvider,
 				FetchEmail:         acc.FetchEmail,
 				SendAsEmail:        acc.SendAsEmail,
@@ -538,6 +548,7 @@ func SaveConfig(config *Config) error {
 				PGPPIN:             acc.PGPPIN,
 				PGPSignByDefault:   acc.PGPSignByDefault,
 				AuthMethod:         acc.AuthMethod,
+				PassCmd:            acc.PassCmd,
 				Protocol:           acc.Protocol,
 				JMAPEndpoint:       acc.JMAPEndpoint,
 				POP3Server:         acc.POP3Server,
@@ -601,6 +612,7 @@ func LoadConfig() (*Config, error) {
 		PGPPIN             string `json:"pgp_pin,omitempty"`
 		PGPSignByDefault   bool   `json:"pgp_sign_by_default,omitempty"`
 		AuthMethod         string `json:"auth_method,omitempty"`
+		PassCmd            string `json:"pass_cmd,omitempty"`
 		Protocol           string `json:"protocol,omitempty"`
 		JMAPEndpoint       string `json:"jmap_endpoint,omitempty"`
 		POP3Server         string `json:"pop3_server,omitempty"`
@@ -692,6 +704,7 @@ func LoadConfig() (*Config, error) {
 			PGPKeySource:       rawAcc.PGPKeySource,
 			PGPSignByDefault:   rawAcc.PGPSignByDefault,
 			AuthMethod:         rawAcc.AuthMethod,
+			PassCmd:            rawAcc.PassCmd,
 			Protocol:           rawAcc.Protocol,
 			JMAPEndpoint:       rawAcc.JMAPEndpoint,
 			POP3Server:         rawAcc.POP3Server,
@@ -707,6 +720,13 @@ func LoadConfig() (*Config, error) {
 		}
 
 		switch {
+		case rawAcc.PassCmd != "":
+			// Evaluate the external command and use its stdout as the password.
+			if pwd, err := resolvePassCmd(rawAcc.PassCmd); err != nil {
+				log.Printf("matcha: pass_cmd for %s failed: %v", acc.Email, err)
+			} else {
+				acc.Password = pwd
+			}
 		case secureMode:
 			// In secure mode, passwords and PINs are stored in the encrypted config JSON
 			acc.Password = rawAcc.Password
@@ -744,6 +764,15 @@ func LoadConfig() (*Config, error) {
 	}
 
 	return &config, nil
+}
+
+// resolvePassCmd runs cmd via the shell and returns its trimmed stdout as the password.
+func resolvePassCmd(cmd string) (string, error) {
+	out, err := exec.CommandContext(context.Background(), "sh", "-c", cmd).Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimRight(string(out), "\r\n"), nil
 }
 
 // legacyConfigFormat represents the old single-account configuration format.
