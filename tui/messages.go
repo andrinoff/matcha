@@ -56,6 +56,11 @@ type UndoSendMsg struct {
 	JobID string
 }
 
+// ActionGracePeriodExpiredMsg is fired when the undo grace period for a delete/archive/move expires.
+type ActionGracePeriodExpiredMsg struct {
+	JobID string
+}
+
 type Credentials struct {
 	Provider     string
 	Name         string
