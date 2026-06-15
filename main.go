@@ -87,6 +87,20 @@ type UpdateAvailableMsg struct {
 }
 
 // internal struct for parsing GitHub release JSON.
+type pendingEmailAction struct {
+	jobID      string
+	kind       string // "delete", "archive", "move"
+	uids       []uint32
+	accountID  string
+	folderName string
+	destFolder string // for "move"
+	mailbox    tui.MailboxKind
+	// Snapshots for undo restore
+	emailsSnap []fetcher.Email
+	acctSnap   []fetcher.Email
+	folderSnap []fetcher.Email
+}
+
 type githubRelease struct {
 	TagName string `json:"tag_name"`
 	Assets  []struct {
@@ -124,8 +138,10 @@ type mainModel struct {
 	showLogPanel bool
 	logCh        <-chan logging.Entry
 	logPanel     *tui.LogPanel
-	pendingJobID string
-	sendNotice   string
+	pendingJobID  string
+	sendNotice    string
+	pendingAction *pendingEmailAction
+	actionNotice  string
 }
 
 type logEntryMsg struct {
@@ -343,6 +359,10 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		if msg.String() == config.Keybinds.Composer.UndoSend {
+			if m.pendingAction != nil {
+				m.restorePendingAction()
+				return m, nil
+			}
 			if m.pendingJobID != "" {
 				jobID := m.pendingJobID
 				m.pendingJobID = ""
@@ -880,6 +900,10 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 			m.folderInbox.GetInbox().RemoveEmail(msg.UID, msg.AccountID)
 		}
 
+		emailsSnap := slices.Clone(m.emails)
+		acctSnap := slices.Clone(m.emailsByAcct[msg.AccountID])
+		folderSnap := slices.Clone(m.folderEmails[folderName])
+
 		m.removeEmailFromStores(msg.UID, msg.AccountID)
 
 		if emails, ok := m.folderEmails[folderName]; ok {
@@ -893,7 +917,20 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 			go saveFolderEmailsToCache(folderName, filtered)
 		}
 
-		return m, m.moveEmailToFolderCmd(msg.UID, msg.AccountID, msg.SourceFolder, msg.DestFolder)
+		pa := &pendingEmailAction{
+			jobID:      fmt.Sprintf("action-%d", time.Now().UnixNano()),
+			kind:       "move",
+			uids:       []uint32{msg.UID},
+			accountID:  msg.AccountID,
+			folderName: folderName,
+			destFolder: msg.DestFolder,
+			emailsSnap: emailsSnap,
+			acctSnap:   acctSnap,
+			folderSnap: folderSnap,
+		}
+		flushCmd := m.flushPendingAction()
+		notice := fmt.Sprintf("Email moved to %s (%s to undo)", msg.DestFolder, config.Keybinds.Composer.UndoSend)
+		return m, tea.Batch(flushCmd, m.startActionGracePeriod(pa, notice))
 
 	case tui.UpdatePreviewMsg:
 		// Trigger preview body fetch
@@ -1803,6 +1840,15 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 		m.current, _ = m.current.Update(m.currentWindowSize())
 		return m, m.current.Init()
 
+	case tui.ActionGracePeriodExpiredMsg:
+		if m.pendingAction != nil && m.pendingAction.jobID == msg.JobID {
+			pa := m.pendingAction
+			m.pendingAction = nil
+			m.actionNotice = ""
+			return m, m.executePendingAction(pa)
+		}
+		return m, nil
+
 	case tui.SendRSVPMsg:
 		account := m.config.GetAccountByID(msg.AccountID)
 		if account == nil {
@@ -1870,6 +1916,10 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 			m.folderInbox.GetInbox().RemoveEmail(msg.UID, msg.AccountID)
 		}
 
+		emailsSnap := slices.Clone(m.emails)
+		acctSnap := slices.Clone(m.emailsByAcct[msg.AccountID])
+		folderSnap := slices.Clone(m.folderEmails[folderName])
+
 		m.removeEmailFromStores(msg.UID, msg.AccountID)
 
 		if emails, ok := m.folderEmails[folderName]; ok {
@@ -1883,7 +1933,20 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 			go saveFolderEmailsToCache(folderName, filtered)
 		}
 
-		return m, m.deleteFolderEmailCmd(msg.UID, msg.AccountID, folderName, msg.Mailbox)
+		pa := &pendingEmailAction{
+			jobID:      fmt.Sprintf("action-%d", time.Now().UnixNano()),
+			kind:       "delete",
+			uids:       []uint32{msg.UID},
+			accountID:  msg.AccountID,
+			folderName: folderName,
+			mailbox:    msg.Mailbox,
+			emailsSnap: emailsSnap,
+			acctSnap:   acctSnap,
+			folderSnap: folderSnap,
+		}
+		flushCmd := m.flushPendingAction()
+		notice := fmt.Sprintf("Email deleted (%s to undo)", config.Keybinds.Composer.UndoSend)
+		return m, tea.Batch(flushCmd, m.startActionGracePeriod(pa, notice))
 
 	case tui.ArchiveEmailMsg:
 		tui.ClearKittyGraphics()
@@ -1903,6 +1966,10 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 			m.folderInbox.GetInbox().RemoveEmail(msg.UID, msg.AccountID)
 		}
 
+		emailsSnap := slices.Clone(m.emails)
+		acctSnap := slices.Clone(m.emailsByAcct[msg.AccountID])
+		folderSnap := slices.Clone(m.folderEmails[folderName])
+
 		m.removeEmailFromStores(msg.UID, msg.AccountID)
 
 		if emails, ok := m.folderEmails[folderName]; ok {
@@ -1916,7 +1983,20 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 			go saveFolderEmailsToCache(folderName, filtered)
 		}
 
-		return m, m.archiveFolderEmailCmd(msg.UID, msg.AccountID, folderName, msg.Mailbox)
+		pa := &pendingEmailAction{
+			jobID:      fmt.Sprintf("action-%d", time.Now().UnixNano()),
+			kind:       "archive",
+			uids:       []uint32{msg.UID},
+			accountID:  msg.AccountID,
+			folderName: folderName,
+			mailbox:    msg.Mailbox,
+			emailsSnap: emailsSnap,
+			acctSnap:   acctSnap,
+			folderSnap: folderSnap,
+		}
+		flushCmd := m.flushPendingAction()
+		notice := fmt.Sprintf("Email archived (%s to undo)", config.Keybinds.Composer.UndoSend)
+		return m, tea.Batch(flushCmd, m.startActionGracePeriod(pa, notice))
 
 	case tui.EmailMarkedReadMsg:
 		if msg.Err != nil {
@@ -1963,6 +2043,10 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 			m.folderInbox.GetInbox().RemoveEmails(msg.UIDs, msg.AccountID)
 		}
 
+		emailsSnap := slices.Clone(m.emails)
+		acctSnap := slices.Clone(m.emailsByAcct[msg.AccountID])
+		folderSnap := slices.Clone(m.folderEmails[folderName])
+
 		for _, uid := range msg.UIDs {
 			m.removeEmailFromStores(uid, msg.AccountID)
 		}
@@ -1978,7 +2062,23 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 			go saveFolderEmailsToCache(folderName, filtered)
 		}
 
-		return m, m.batchDeleteEmailsCmd(msg.UIDs, msg.AccountID, folderName, msg.Mailbox, len(msg.UIDs))
+		pa := &pendingEmailAction{
+			jobID:      fmt.Sprintf("action-%d", time.Now().UnixNano()),
+			kind:       "delete",
+			uids:       msg.UIDs,
+			accountID:  msg.AccountID,
+			folderName: folderName,
+			mailbox:    msg.Mailbox,
+			emailsSnap: emailsSnap,
+			acctSnap:   acctSnap,
+			folderSnap: folderSnap,
+		}
+		flushCmd := m.flushPendingAction()
+		notice := fmt.Sprintf("%d emails deleted (%s to undo)", len(msg.UIDs), config.Keybinds.Composer.UndoSend)
+		if len(msg.UIDs) == 1 {
+			notice = fmt.Sprintf("Email deleted (%s to undo)", config.Keybinds.Composer.UndoSend)
+		}
+		return m, tea.Batch(flushCmd, m.startActionGracePeriod(pa, notice))
 
 	case tui.BatchArchiveEmailsMsg:
 		tui.ClearKittyGraphics()
@@ -1997,6 +2097,10 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 			m.folderInbox.GetInbox().RemoveEmails(msg.UIDs, msg.AccountID)
 		}
 
+		emailsSnap := slices.Clone(m.emails)
+		acctSnap := slices.Clone(m.emailsByAcct[msg.AccountID])
+		folderSnap := slices.Clone(m.folderEmails[folderName])
+
 		for _, uid := range msg.UIDs {
 			m.removeEmailFromStores(uid, msg.AccountID)
 		}
@@ -2012,7 +2116,23 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 			go saveFolderEmailsToCache(folderName, filtered)
 		}
 
-		return m, m.batchArchiveEmailsCmd(msg.UIDs, msg.AccountID, folderName, msg.Mailbox, len(msg.UIDs))
+		pa := &pendingEmailAction{
+			jobID:      fmt.Sprintf("action-%d", time.Now().UnixNano()),
+			kind:       "archive",
+			uids:       msg.UIDs,
+			accountID:  msg.AccountID,
+			folderName: folderName,
+			mailbox:    msg.Mailbox,
+			emailsSnap: emailsSnap,
+			acctSnap:   acctSnap,
+			folderSnap: folderSnap,
+		}
+		flushCmd := m.flushPendingAction()
+		notice := fmt.Sprintf("%d emails archived (%s to undo)", len(msg.UIDs), config.Keybinds.Composer.UndoSend)
+		if len(msg.UIDs) == 1 {
+			notice = fmt.Sprintf("Email archived (%s to undo)", config.Keybinds.Composer.UndoSend)
+		}
+		return m, tea.Batch(flushCmd, m.startActionGracePeriod(pa, notice))
 
 	case tui.BatchMoveEmailsMsg:
 		if m.config == nil {
@@ -2029,6 +2149,10 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 			m.folderInbox.GetInbox().RemoveEmails(msg.UIDs, msg.AccountID)
 		}
 
+		emailsSnap := slices.Clone(m.emails)
+		acctSnap := slices.Clone(m.emailsByAcct[msg.AccountID])
+		folderSnap := slices.Clone(m.folderEmails[folderName])
+
 		for _, uid := range msg.UIDs {
 			m.removeEmailFromStores(uid, msg.AccountID)
 		}
@@ -2044,7 +2168,23 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 			go saveFolderEmailsToCache(folderName, filtered)
 		}
 
-		return m, m.batchMoveEmailsCmd(msg.UIDs, msg.AccountID, msg.SourceFolder, msg.DestFolder, len(msg.UIDs))
+		pa := &pendingEmailAction{
+			jobID:      fmt.Sprintf("action-%d", time.Now().UnixNano()),
+			kind:       "move",
+			uids:       msg.UIDs,
+			accountID:  msg.AccountID,
+			folderName: folderName,
+			destFolder: msg.DestFolder,
+			emailsSnap: emailsSnap,
+			acctSnap:   acctSnap,
+			folderSnap: folderSnap,
+		}
+		flushCmd := m.flushPendingAction()
+		notice := fmt.Sprintf("%d emails moved to %s (%s to undo)", len(msg.UIDs), msg.DestFolder, config.Keybinds.Composer.UndoSend)
+		if len(msg.UIDs) == 1 {
+			notice = fmt.Sprintf("Email moved to %s (%s to undo)", msg.DestFolder, config.Keybinds.Composer.UndoSend)
+		}
+		return m, tea.Batch(flushCmd, m.startActionGracePeriod(pa, notice))
 
 	case tui.BatchEmailActionDoneMsg:
 		if msg.Err != nil {
@@ -2127,6 +2267,9 @@ func (m *mainModel) View() tea.View {
 	if m.sendNotice != "" {
 		v.Content = m.renderSendNoticeOverlay(v.Content)
 	}
+	if m.actionNotice != "" {
+		v.Content = m.renderActionNoticeOverlay(v.Content)
+	}
 	v.AltScreen = true
 	return v
 }
@@ -2141,6 +2284,66 @@ func (m *mainModel) renderSendNoticeOverlay(content string) string {
 	boxWidth := lipgloss.Width(lines[0])
 	col := max(0, m.width-boxWidth)
 	return overlay.Block(content, lines, 0, col)
+}
+
+func (m *mainModel) renderActionNoticeOverlay(content string) string {
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(theme.ActiveTheme.Accent).
+		Padding(0, 1).
+		Render(m.actionNotice)
+	lines := strings.Split(box, "\n")
+	return overlay.Block(content, lines, 0, 0)
+}
+
+func (m *mainModel) startActionGracePeriod(pa *pendingEmailAction, notice string) tea.Cmd {
+	m.pendingAction = pa
+	m.actionNotice = notice
+	delay := time.Duration(m.config.GetUndoDelaySeconds()) * time.Second
+	jobID := pa.jobID
+	return tea.Tick(delay, func(t time.Time) tea.Msg {
+		return tui.ActionGracePeriodExpiredMsg{JobID: jobID}
+	})
+}
+
+func (m *mainModel) flushPendingAction() tea.Cmd {
+	if m.pendingAction == nil {
+		return nil
+	}
+	pa := m.pendingAction
+	m.pendingAction = nil
+	m.actionNotice = ""
+	return m.executePendingAction(pa)
+}
+
+func (m *mainModel) executePendingAction(pa *pendingEmailAction) tea.Cmd {
+	switch pa.kind {
+	case "delete":
+		return m.batchDeleteEmailsCmd(pa.uids, pa.accountID, pa.folderName, pa.mailbox, len(pa.uids))
+	case "archive":
+		return m.batchArchiveEmailsCmd(pa.uids, pa.accountID, pa.folderName, pa.mailbox, len(pa.uids))
+	case "move":
+		return m.batchMoveEmailsCmd(pa.uids, pa.accountID, pa.folderName, pa.destFolder, len(pa.uids))
+	}
+	return nil
+}
+
+func (m *mainModel) restorePendingAction() {
+	if m.pendingAction == nil {
+		return
+	}
+	pa := m.pendingAction
+	m.pendingAction = nil
+	m.actionNotice = ""
+
+	m.emails = pa.emailsSnap
+	m.emailsByAcct[pa.accountID] = pa.acctSnap
+	m.folderEmails[pa.folderName] = pa.folderSnap
+
+	if m.folderInbox != nil {
+		m.folderInbox.SetEmails(pa.folderSnap, m.config.Accounts)
+	}
+	go saveFolderEmailsToCache(pa.folderName, pa.folderSnap)
 }
 
 func (m *mainModel) currentWindowSize() tea.WindowSizeMsg {
