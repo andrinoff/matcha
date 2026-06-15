@@ -348,6 +348,8 @@ func (m *Settings) updateMenu(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		// Reset states
 		m.confirmingDelete = false
 		switch m.activeCategory {
+		case CategoryGeneral, CategoryAccounts, CategoryMailingLists, CategoryPlugins:
+			// no extra reset needed
 		case CategoryContacts:
 			m.contactsConfirming = false
 			m.contactsList = config.GetNamedContacts()
