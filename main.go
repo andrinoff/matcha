@@ -2293,7 +2293,9 @@ func (m *mainModel) renderActionNoticeOverlay(content string) string {
 		Padding(0, 1).
 		Render(m.actionNotice)
 	lines := strings.Split(box, "\n")
-	return overlay.Block(content, lines, 0, 0)
+	boxWidth := lipgloss.Width(lines[0])
+	col := max(0, m.width-boxWidth)
+	return overlay.Block(content, lines, 0, col)
 }
 
 func (m *mainModel) startActionGracePeriod(pa *pendingEmailAction, notice string) tea.Cmd {
