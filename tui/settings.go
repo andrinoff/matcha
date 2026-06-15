@@ -98,15 +98,15 @@ type Settings struct {
 }
 
 type SettingsState struct {
-	ActivePane      SettingsPane
-	ActiveCategory  SettingsCategory
-	MenuCursor      int
-	GeneralCursor   int
-	AccountsCursor  int
-	ThemeCursor     int
-	ListsCursor     int
-	PluginCursor    int
-	ContactsCursor  int
+	ActivePane     SettingsPane
+	ActiveCategory SettingsCategory
+	MenuCursor     int
+	GeneralCursor  int
+	AccountsCursor int
+	ThemeCursor    int
+	ListsCursor    int
+	PluginCursor   int
+	ContactsCursor int
 }
 
 func NewSettings(cfg *config.Config) *Settings {
