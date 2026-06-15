@@ -122,8 +122,16 @@
       "category_mailing_lists": "Списки Рассылки",
       "category_encryption": "Шифрование Приложения",
       "category_plugins": "Плагины",
+      "category_contacts": "Контакты",
       "help_menu": "↑/↓: навигация • вправо/enter: выбор • esc: назад",
       "help_content": "left/esc: назад в меню"
+    },
+    "settings_contacts": {
+      "title": "Книга контактов",
+      "no_contacts": "Именованных контактов пока нет.",
+      "add_contact": "Добавить новый контакт",
+      "delete_confirm": "Удалить контакт?",
+      "help": "↑/↓: навигация • e/enter: редактировать • d: удалить • enter на +: добавить • esc: меню"
     },
     "settings_accounts": {
       "title": "Настройки Учётных Записей",

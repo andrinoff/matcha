@@ -408,6 +408,109 @@ func MigrateContactsCacheUsage(accountIDs []string) error {
 	return SaveContactsCache(cache)
 }
 
+// GetNamedContacts returns all contacts with an explicit name, sorted alphabetically.
+func GetNamedContacts() []Contact {
+	cache, err := LoadContactsCache()
+	if err != nil {
+		return nil
+	}
+	var result []Contact
+	for _, c := range cache.Contacts {
+		name := strings.TrimSpace(c.Name)
+		if name != "" && !strings.EqualFold(name, c.Email) {
+			result = append(result, c)
+		}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return strings.ToLower(result[i].Name) < strings.ToLower(result[j].Name)
+	})
+	return result
+}
+
+// SearchUnnamedContacts returns up to 5 contacts without an explicit name,
+// matching query against the email field, sorted by usage. Used for email
+// field autofill in the contact editor.
+func SearchUnnamedContacts(query string) []Contact {
+	cache, err := LoadContactsCache()
+	if err != nil {
+		return nil
+	}
+	query = strings.ToLower(strings.TrimSpace(query))
+	if query == "" {
+		return nil
+	}
+	var matches []Contact
+	for _, c := range cache.Contacts {
+		name := strings.TrimSpace(c.Name)
+		isUnnamed := name == "" || strings.EqualFold(name, c.Email)
+		if !isUnnamed {
+			continue
+		}
+		if strings.Contains(strings.ToLower(c.Email), query) {
+			matches = append(matches, c)
+		}
+	}
+	sort.Slice(matches, func(i, j int) bool {
+		left := ContactAggregateUsage(matches[i])
+		right := ContactAggregateUsage(matches[j])
+		if left.UseCount != right.UseCount {
+			return left.UseCount > right.UseCount
+		}
+		return left.LastUsed.After(right.LastUsed)
+	})
+	if len(matches) > 5 {
+		matches = matches[:5]
+	}
+	return matches
+}
+
+// DeleteContact removes the contact with the given email from the cache.
+func DeleteContact(email string) error {
+	cache, err := LoadContactsCache()
+	if err != nil {
+		return err
+	}
+	email = normalizeContactEmail(email)
+	filtered := cache.Contacts[:0]
+	for _, c := range cache.Contacts {
+		if !strings.EqualFold(c.Email, email) {
+			filtered = append(filtered, c)
+		}
+	}
+	cache.Contacts = filtered
+	return SaveContactsCache(cache)
+}
+
+// UpdateContact updates the name and email of an existing contact identified
+// by originalEmail. Returns an error if the contact is not found or if the
+// new email collides with a different existing contact.
+func UpdateContact(originalEmail, newName, newEmail string) error {
+	cache, err := LoadContactsCache()
+	if err != nil {
+		return err
+	}
+	originalEmail = normalizeContactEmail(originalEmail)
+	newEmail = normalizeContactEmail(newEmail)
+	newName = strings.TrimSpace(newName)
+
+	if !strings.EqualFold(originalEmail, newEmail) {
+		for _, c := range cache.Contacts {
+			if strings.EqualFold(c.Email, newEmail) {
+				return errors.New("a contact with that email already exists")
+			}
+		}
+	}
+
+	for i, c := range cache.Contacts {
+		if strings.EqualFold(c.Email, originalEmail) {
+			cache.Contacts[i].Name = newName
+			cache.Contacts[i].Email = newEmail
+			return SaveContactsCache(cache)
+		}
+	}
+	return errors.New("contact not found")
+}
+
 func removeAccountFromContactsCache(accountID string) error {
 	cache, err := LoadContactsCache()
 	if err != nil {

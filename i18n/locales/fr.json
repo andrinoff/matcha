@@ -120,8 +120,16 @@
       "category_mailing_lists": "Listes de Diffusion",
       "category_encryption": "Chiffrement de l'Application",
       "category_plugins": "Plugins",
+      "category_contacts": "Contacts",
       "help_menu": "↑/↓: naviguer • droite/entrée: sélectionner • esc: retour",
       "help_content": "left/esc: retour au menu"
+    },
+    "settings_contacts": {
+      "title": "Carnet de Contacts",
+      "no_contacts": "Aucun contact nommé pour l'instant.",
+      "add_contact": "Ajouter un Nouveau Contact",
+      "delete_confirm": "Supprimer le contact ?",
+      "help": "↑/↓: naviguer • e/entrée: modifier • d: supprimer • entrée sur +: ajouter • esc: menu"
     },
     "settings_accounts": {
       "title": "Paramètres des Comptes",

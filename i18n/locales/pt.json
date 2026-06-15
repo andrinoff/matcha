@@ -120,8 +120,16 @@
       "category_mailing_lists": "Listas de E-mail",
       "category_encryption": "Criptografia do Aplicativo",
       "category_plugins": "Plugins",
+      "category_contacts": "Contatos",
       "help_menu": "↑/↓: navegar • direita/enter: selecionar • esc: voltar",
       "help_content": "left/esc: voltar ao menu"
+    },
+    "settings_contacts": {
+      "title": "Agenda de Contatos",
+      "no_contacts": "Nenhum contato nomeado ainda.",
+      "add_contact": "Adicionar Novo Contato",
+      "delete_confirm": "Excluir contato?",
+      "help": "↑/↓: navegar • e/enter: editar • d: excluir • enter em +: adicionar • esc: menu"
     },
     "settings_accounts": {
       "title": "Configurações de Contas",

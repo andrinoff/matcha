@@ -1363,6 +1363,33 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 		m.current, _ = m.current.Update(m.currentWindowSize())
 		return m, m.current.Init()
 
+	case tui.GoToAddContactMsg:
+		m.current = tui.NewContactEditor()
+		m.current, _ = m.current.Update(m.currentWindowSize())
+		return m, m.current.Init()
+
+	case tui.GoToEditContactMsg:
+		editor := tui.NewContactEditor()
+		editor.SetEditMode(msg.OriginalEmail, msg.Name, msg.Email)
+		m.current = editor
+		m.current, _ = m.current.Update(m.currentWindowSize())
+		return m, m.current.Init()
+
+	case tui.SaveContactMsg:
+		if msg.IsEdit {
+			_ = config.UpdateContact(msg.OriginalEmail, msg.Name, msg.Email)
+		} else {
+			_ = config.AddContact(msg.Name, msg.Email)
+		}
+		s := m.newSettings()
+		s.RestoreState(tui.SettingsState{
+			ActivePane:     tui.PaneContent,
+			ActiveCategory: tui.CategoryContacts,
+		})
+		m.current = s
+		m.current, _ = m.current.Update(m.currentWindowSize())
+		return m, m.current.Init()
+
 	case tui.SaveMailingListMsg:
 		if m.config != nil {
 			var addrs []string
@@ -2240,7 +2267,7 @@ func (m *mainModel) closePalette() {
 // would interfere with typing) and while an inbox search/filter is active.
 func (m *mainModel) paletteAllowed() bool {
 	switch v := m.current.(type) {
-	case *tui.Composer, *tui.Login, *tui.SignatureEditor, *tui.MailingListEditor,
+	case *tui.Composer, *tui.Login, *tui.SignatureEditor, *tui.MailingListEditor, *tui.ContactEditor,
 		*tui.PasswordPrompt, *tui.FilePicker, *tui.Status:
 		return false
 	case *tui.Inbox:

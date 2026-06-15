@@ -122,8 +122,16 @@
       "category_mailing_lists": "Listy Mailingowe",
       "category_encryption": "Szyfrowanie Aplikacji",
       "category_plugins": "Wtyczki",
+      "category_contacts": "Kontakty",
       "help_menu": "↑/↓: nawigacja • prawo/enter: wybierz • esc: wstecz",
       "help_content": "left/esc: powrót do menu"
+    },
+    "settings_contacts": {
+      "title": "Książka Kontaktów",
+      "no_contacts": "Brak nazwanych kontaktów.",
+      "add_contact": "Dodaj Nowy Kontakt",
+      "delete_confirm": "Usunąć kontakt?",
+      "help": "↑/↓: nawigacja • e/enter: edytuj • d: usuń • enter na +: dodaj • esc: menu"
     },
     "settings_accounts": {
       "title": "Ustawienia Kont",

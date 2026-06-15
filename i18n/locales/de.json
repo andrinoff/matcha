@@ -120,8 +120,16 @@
       "category_mailing_lists": "Mailinglisten",
       "category_encryption": "App-Verschlüsselung",
       "category_plugins": "Plugins",
+      "category_contacts": "Kontakte",
       "help_menu": "↑/↓: navigieren • rechts/enter: auswählen • esc: zurück",
       "help_content": "left/esc: zurück zum Menü"
+    },
+    "settings_contacts": {
+      "title": "Kontaktbuch",
+      "no_contacts": "Noch keine benannten Kontakte.",
+      "add_contact": "Neuen Kontakt Hinzufügen",
+      "delete_confirm": "Kontakt löschen?",
+      "help": "↑/↓: navigieren • e/enter: bearbeiten • d: löschen • enter auf +: hinzufügen • esc: Menü"
     },
     "settings_accounts": {
       "title": "Kontoeinstellungen",
