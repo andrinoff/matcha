@@ -121,8 +121,16 @@
       "category_mailing_lists": "Списки розсилки",
       "category_encryption": "Шифрування додатка",
       "category_plugins": "Плагіни",
+      "category_contacts": "Контакти",
       "help_menu": "↑/↓: навігація • right/enter: вибрати • esc: назад",
       "help_content": "left/esc: назад до меню"
+    },
+    "settings_contacts": {
+      "title": "Книга контактів",
+      "no_contacts": "Іменованих контактів ще немає.",
+      "add_contact": "Додати новий контакт",
+      "delete_confirm": "Видалити контакт?",
+      "help": "↑/↓: навігація • e/enter: редагувати • d: видалити • enter на +: додати • esc: меню"
     },
     "settings_accounts": {
       "title": "Налаштування облікових записів",

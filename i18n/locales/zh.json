@@ -119,8 +119,16 @@
       "category_mailing_lists": "邮件列表",
       "category_encryption": "应用加密",
       "category_plugins": "插件",
+      "category_contacts": "联系人",
       "help_menu": "↑/↓: 导航 • 右/enter: 选择 • esc: 返回",
       "help_content": "left/esc: 返回菜单"
+    },
+    "settings_contacts": {
+      "title": "通讯录",
+      "no_contacts": "尚无命名联系人。",
+      "add_contact": "添加新联系人",
+      "delete_confirm": "删除联系人？",
+      "help": "↑/↓: 导航 • e/enter: 编辑 • d: 删除 • 在+按enter: 添加 • esc: 菜单"
     },
     "settings_accounts": {
       "title": "账户设置",

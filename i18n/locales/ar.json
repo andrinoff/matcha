@@ -122,8 +122,16 @@
       "category_mailing_lists": "القوائم البريدية",
       "category_encryption": "تشفير التطبيق",
       "category_plugins": "الإضافات",
+      "category_contacts": "جهات الاتصال",
       "help_menu": "↑/↓: التنقل • يمين/enter: اختيار • esc: رجوع",
       "help_content": "left/esc: العودة للقائمة"
+    },
+    "settings_contacts": {
+      "title": "دفتر جهات الاتصال",
+      "no_contacts": "لا توجد جهات اتصال مسماة بعد.",
+      "add_contact": "إضافة جهة اتصال جديدة",
+      "delete_confirm": "حذف جهة الاتصال؟",
+      "help": "↑/↓: التنقل • e/enter: تعديل • d: حذف • enter على +: إضافة • esc: القائمة"
     },
     "settings_accounts": {
       "title": "إعدادات الحسابات",

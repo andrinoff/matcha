@@ -119,8 +119,16 @@
       "category_mailing_lists": "メーリングリスト",
       "category_encryption": "アプリの暗号化",
       "category_plugins": "プラグイン",
+      "category_contacts": "連絡先",
       "help_menu": "↑/↓: 移動 • 右/enter: 選択 • esc: 戻る",
       "help_content": "left/esc: メニューに戻る"
+    },
+    "settings_contacts": {
+      "title": "連絡先帳",
+      "no_contacts": "名前付きの連絡先はまだありません。",
+      "add_contact": "新しい連絡先を追加",
+      "delete_confirm": "連絡先を削除しますか？",
+      "help": "↑/↓: 移動 • e/enter: 編集 • d: 削除 • +でenter: 追加 • esc: メニュー"
     },
     "settings_accounts": {
       "title": "アカウント設定",
