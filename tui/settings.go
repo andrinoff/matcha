@@ -39,6 +39,7 @@ const (
 	CategoryMailingLists
 	CategoryEncryption
 	CategoryPlugins
+	CategoryContacts
 )
 
 type Settings struct {
@@ -58,6 +59,11 @@ type Settings struct {
 	themeCursor      int
 	listsCursor      int
 	confirmingDelete bool
+
+	// Contacts state
+	contactsCursor     int
+	contactsConfirming bool
+	contactsList       []config.Contact
 
 	// S/MIME Config fields
 	isCryptoConfig     bool
@@ -92,14 +98,15 @@ type Settings struct {
 }
 
 type SettingsState struct {
-	ActivePane     SettingsPane
-	ActiveCategory SettingsCategory
-	MenuCursor     int
-	GeneralCursor  int
-	AccountsCursor int
-	ThemeCursor    int
-	ListsCursor    int
-	PluginCursor   int
+	ActivePane      SettingsPane
+	ActiveCategory  SettingsCategory
+	MenuCursor      int
+	GeneralCursor   int
+	AccountsCursor  int
+	ThemeCursor     int
+	ListsCursor     int
+	PluginCursor    int
+	ContactsCursor  int
 }
 
 func NewSettings(cfg *config.Config) *Settings {
@@ -155,6 +162,7 @@ func (m *Settings) GetState() SettingsState {
 		ThemeCursor:    m.themeCursor,
 		ListsCursor:    m.listsCursor,
 		PluginCursor:   m.pluginListCursor,
+		ContactsCursor: m.contactsCursor,
 	}
 }
 
@@ -167,6 +175,10 @@ func (m *Settings) RestoreState(state SettingsState) {
 	m.themeCursor = state.ThemeCursor
 	m.listsCursor = state.ListsCursor
 	m.pluginListCursor = state.PluginCursor
+	m.contactsCursor = state.ContactsCursor
+	if state.ActiveCategory == CategoryContacts {
+		m.contactsList = config.GetNamedContacts()
+	}
 }
 
 func (m *Settings) Init() tea.Cmd {
@@ -276,6 +288,8 @@ func (m *Settings) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.updateEncryption(msg)
 	case CategoryPlugins:
 		return m.updatePlugins(msg)
+	case CategoryContacts:
+		return m.updateContacts(msg)
 	}
 
 	return m, nil
@@ -289,6 +303,8 @@ func (m *Settings) canFocusSettingsMenuWithLeft() bool {
 		return config.IsSecureModeEnabled() && !m.confirmingDisable
 	case CategoryPlugins:
 		return !m.pluginEditing && m.pluginSelected == ""
+	case CategoryContacts:
+		return !m.contactsConfirming
 	case CategoryGeneral, CategoryTheme, CategoryMailingLists:
 		return true
 	default:
@@ -318,7 +334,7 @@ func (m *Settings) contentFocusStyle() lipgloss.Style {
 }
 
 func (m *Settings) updateMenu(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	categoryCount := int(CategoryPlugins) + 1
+	categoryCount := int(CategoryContacts) + 1
 
 	switch msg.String() {
 	case "up", "k":
@@ -331,7 +347,10 @@ func (m *Settings) updateMenu(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 		// Reset states
 		m.confirmingDelete = false
-		if m.activeCategory == CategoryTheme {
+		if m.activeCategory == CategoryContacts {
+			m.contactsConfirming = false
+			m.contactsList = config.GetNamedContacts()
+		} else if m.activeCategory == CategoryTheme {
 			// Find current theme index
 			themes := theme.AllThemes()
 			for i, t := range themes {
@@ -374,6 +393,7 @@ func (m *Settings) View() tea.View {
 		t("settings.category_mailing_lists"),
 		t("settings.category_encryption"),
 		t("settings.category_plugins"),
+		t("settings.category_contacts"),
 	}
 	for i, c := range categories {
 		cursor := "  "
@@ -419,6 +439,8 @@ func (m *Settings) View() tea.View {
 		right = m.viewEncryption()
 	case CategoryPlugins:
 		right = m.viewPlugins()
+	case CategoryContacts:
+		right = m.viewContacts()
 	}
 
 	rightPanel := lipgloss.NewStyle().

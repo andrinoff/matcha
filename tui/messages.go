@@ -322,6 +322,24 @@ type SaveMailingListMsg struct {
 	EditIndex int // -1 means new, >= 0 means editing existing
 }
 
+// GoToAddContactMsg signals navigation to the add contact screen.
+type GoToAddContactMsg struct{}
+
+// GoToEditContactMsg signals navigation to edit an existing contact.
+type GoToEditContactMsg struct {
+	OriginalEmail string
+	Name          string
+	Email         string
+}
+
+// SaveContactMsg signals that a new or edited contact should be saved.
+type SaveContactMsg struct {
+	Name          string
+	Email         string
+	OriginalEmail string // empty = new contact
+	IsEdit        bool
+}
+
 // AddAccountMsg signals that a new account should be added.
 type AddAccountMsg struct {
 	Credentials Credentials
