@@ -135,9 +135,9 @@ type mainModel struct {
 	// mailto: URL parsed from os.Args
 	mailtoURL *url.URL
 	// Optional in-app log panel.
-	showLogPanel bool
-	logCh        <-chan logging.Entry
-	logPanel     *tui.LogPanel
+	showLogPanel  bool
+	logCh         <-chan logging.Entry
+	logPanel      *tui.LogPanel
 	pendingJobID  string
 	sendNotice    string
 	pendingAction *pendingEmailAction
