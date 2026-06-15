@@ -76,11 +76,11 @@ var (
 )
 
 const (
-	goosDarwin         = "darwin"
-	folderInbox        = "INBOX"
-	actionKindDelete   = "delete"
-	actionKindArchive  = "archive"
-	actionKindMove     = "move"
+	goosDarwin        = "darwin"
+	folderInbox       = "INBOX"
+	actionKindDelete  = "delete"
+	actionKindArchive = "archive"
+	actionKindMove    = "move"
 )
 
 // UpdateAvailableMsg is sent into the TUI when a newer release is detected.
