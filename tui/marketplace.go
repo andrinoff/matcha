@@ -68,9 +68,8 @@ type Marketplace struct {
 	offset        int // scroll offset
 	width         int
 	height        int
-	state         marketplaceState
-	errMsg        string
-	status        string // transient status message
+	state  marketplaceState
+	status string // transient status message
 	standalone    bool   // true when launched via `matcha marketplace` (not from main menu)
 	lastClickTime time.Time
 	lastClickY    int
@@ -157,8 +156,7 @@ func (m Marketplace) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case RegistryFetchedMsg:
 		if msg.Err != nil {
 			m.state = marketplaceError
-			m.errMsg = msg.Err.Error()
-			return m, nil
+			return m, func() tea.Msg { return NotifyMsg{Message: msg.Err.Error()} }
 		}
 		m.entries = msg.Entries
 		m.state = marketplaceReady
@@ -166,7 +164,9 @@ func (m Marketplace) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case PluginInstalledMsg:
 		if msg.Err != nil {
-			m.status = fmt.Sprintf("Failed to install %s: %v", msg.Name, msg.Err)
+			return m, func() tea.Msg {
+				return NotifyMsg{Message: fmt.Sprintf("Failed to install %s: %v", msg.Name, msg.Err)}
+			}
 		} else {
 			m.status = fmt.Sprintf("Installed %s", msg.Name)
 			m.installed[msg.Name] = true
@@ -296,9 +296,7 @@ func (m Marketplace) View() tea.View {
 	case marketplaceLoading:
 		b.WriteString("  Fetching plugins...\n")
 	case marketplaceError:
-		errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
-		b.WriteString(errStyle.Render(fmt.Sprintf("  Error: %s", m.errMsg)))
-		b.WriteString("\n")
+		b.WriteString("  Failed to load plugins.\n")
 	case marketplaceReady:
 		visible := m.visibleRows()
 		end := m.offset + visible

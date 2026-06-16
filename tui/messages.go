@@ -8,6 +8,12 @@ import (
 	"github.com/floatpane/matcha/fetcher"
 )
 
+// NotifyMsg is returned as a tea.Cmd by sub-components to request
+// an error notification overlay in the main model.
+type NotifyMsg struct {
+	Message string
+}
+
 type MailboxKind string
 
 const (

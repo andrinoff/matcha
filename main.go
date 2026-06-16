@@ -145,10 +145,12 @@ type mainModel struct {
 	// palette captures all key input and is rendered on top of the active view.
 	palette       *tui.CommandPalette
 	paletteOpen   bool
-	pendingJobID  string
-	sendNotice    string
-	pendingAction *pendingEmailAction
-	actionNotice  string
+	pendingJobID      string
+	sendNotice        string
+	pendingAction     *pendingEmailAction
+	actionNotice      string
+	errorNotification overlay.Notification
+	showErrorNotif    bool
 }
 
 type logEntryMsg struct {
@@ -447,6 +449,10 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
+		if m.showErrorNotif && msg.String() == "x" {
+			m.showErrorNotif = false
+			return m, nil
+		}
 		if msg.String() == config.Keybinds.Composer.UndoSend {
 			if m.pendingAction != nil {
 				m.restorePendingAction()
@@ -798,14 +804,10 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 				parts = append(parts, fmt.Sprintf("%s: %v", name, err))
 			}
 			sort.Strings(parts)
-			m.previousModel = m.current
-			m.current = tui.NewStatus(fmt.Sprintf(
+			return m, m.showErrorCmd(fmt.Sprintf(
 				"Folder fetch failed for %d account(s): %s",
 				len(parts), strings.Join(parts, "; "),
 			))
-			return m, tea.Tick(4*time.Second, func(t time.Time) tea.Msg {
-				return tui.RestoreViewMsg{}
-			})
 		}
 		return m, nil
 
@@ -1099,13 +1101,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 	case tui.EmailMovedMsg:
 		if msg.Err != nil {
 			log.Printf("Move failed: %v", msg.Err)
-			if m.folderInbox != nil {
-				m.previousModel = m.folderInbox
-			}
-			m.current = tui.NewStatus(fmt.Sprintf("Error: %v", msg.Err))
-			return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
-				return tui.RestoreViewMsg{}
-			})
+			return m, m.showErrorCmd(msg.Err.Error())
 		}
 		return m, nil
 
@@ -1659,13 +1655,17 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 		m.current = tui.NewStatus("Fetching email content...")
 		return m, tea.Batch(append(m.pluginFlagCmds(), m.current.Init(), fetchFolderEmailBodyCmd(m.config, msg.UID, msg.AccountID, folderName, msg.Mailbox), m.pluginNotifyCmd())...)
 
+	case tui.FetchErr:
+		log.Printf("paginated fetch error: %v", error(msg))
+		return m, m.showErrorCmd(error(msg).Error())
+
 	case tui.EmailBodyFetchedMsg:
 		if msg.Err != nil {
 			log.Printf("could not fetch email body: %v", msg.Err)
 			if m.folderInbox != nil {
 				m.current = m.folderInbox
 			}
-			return m, nil
+			return m, m.showErrorCmd(msg.Err.Error())
 		}
 
 		// Update the email in our stores
@@ -1989,13 +1989,17 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 		}
 		return m, nil
 
+	case clearErrorNotifMsg:
+		m.showErrorNotif = false
+		return m, nil
+
+	case tui.NotifyMsg:
+		return m, m.showErrorCmd(msg.Message)
+
 	case tui.SendRSVPMsg:
 		account := m.config.GetAccountByID(msg.AccountID)
 		if account == nil {
-			m.current = tui.NewStatus("Error: account not found")
-			return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
-				return tui.RestoreViewMsg{}
-			})
+			return m, m.showErrorCmd("account not found")
 		}
 
 		m.current = tui.NewStatus("Sending RSVP...")
@@ -2004,12 +2008,9 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 	case tui.RSVPResultMsg:
 		if msg.Err != nil {
 			log.Printf("Failed to send RSVP: %v", msg.Err)
-			m.previousModel = tui.NewChoice()
-			m.previousModel, _ = m.previousModel.Update(m.currentWindowSize())
-			m.current = tui.NewStatus(fmt.Sprintf("RSVP error: %v", msg.Err))
-			return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
-				return tui.RestoreViewMsg{}
-			})
+			m.current = tui.NewChoice()
+			m.current, _ = m.current.Update(m.currentWindowSize())
+			return m, tea.Batch(m.current.Init(), m.showErrorCmd(msg.Err.Error()))
 		}
 		status := fmt.Sprintf("RSVP sent: %s", msg.Response)
 		if strings.HasSuffix(strings.ToLower(msg.Organizer), "@gmail.com") || strings.HasSuffix(strings.ToLower(msg.Organizer), "@googlemail.com") {
@@ -2024,12 +2025,9 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 		m.sendNotice = ""
 		if msg.Err != nil {
 			log.Printf("Failed to send email: %v", msg.Err)
-			m.previousModel = tui.NewChoice()
-			m.previousModel, _ = m.previousModel.Update(m.currentWindowSize())
-			m.current = tui.NewStatus(fmt.Sprintf("Error: %v", msg.Err))
-			return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
-				return tui.RestoreViewMsg{}
-			})
+			m.current = tui.NewChoice()
+			m.current, _ = m.current.Update(m.currentWindowSize())
+			return m, tea.Batch(m.current.Init(), m.showErrorCmd(msg.Err.Error()))
 		}
 		if m.plugins != nil {
 			m.plugins.CallHook(plugin.HookEmailSendAfter)
@@ -2155,13 +2153,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 	case tui.EmailActionDoneMsg:
 		if msg.Err != nil {
 			log.Printf("Action failed: %v", msg.Err)
-			if m.folderInbox != nil {
-				m.previousModel = m.folderInbox
-			}
-			m.current = tui.NewStatus(fmt.Sprintf("Error: %v", msg.Err))
-			return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
-				return tui.RestoreViewMsg{}
-			})
+			return m, m.showErrorCmd(msg.Err.Error())
 		}
 
 		return m, nil
@@ -2329,10 +2321,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 	case tui.BatchEmailActionDoneMsg:
 		if msg.Err != nil {
 			log.Printf("Batch %s failed: %v", msg.Action, msg.Err)
-			m.current = tui.NewStatus(fmt.Sprintf("Error: %v", msg.Err))
-			return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
-				return tui.RestoreViewMsg{}
-			})
+			return m, m.showErrorCmd(msg.Err.Error())
 		}
 
 		return m, nil
@@ -2412,6 +2401,9 @@ func (m *mainModel) View() tea.View {
 	}
 	if m.actionNotice != "" {
 		v.Content = m.renderActionNoticeOverlay(v.Content)
+	}
+	if m.showErrorNotif {
+		v.Content = m.errorNotification.PlaceOn(v.Content)
 	}
 	v.AltScreen = true
 	return v
@@ -2552,6 +2544,21 @@ func keyMsgFromBinding(s string) tea.KeyPressMsg {
 		km.Text = base
 	}
 	return km
+}
+
+type clearErrorNotifMsg struct{}
+
+func (m *mainModel) showErrorCmd(msg string) tea.Cmd {
+	col := max(0, m.width-44)
+	m.errorNotification = overlay.NewError(
+		overlay.WithMessage(msg),
+		overlay.WithKey("x"),
+		overlay.WithPosition(0, col),
+	)
+	m.showErrorNotif = true
+	return tea.Tick(8*time.Second, func(time.Time) tea.Msg {
+		return clearErrorNotifMsg{}
+	})
 }
 
 func (m *mainModel) renderSendNoticeOverlay(content string) string {
