@@ -143,8 +143,8 @@ type mainModel struct {
 	logPanel     *tui.LogPanel
 	// Command palette overlay (Zed/VS Code style). When paletteOpen is true the
 	// palette captures all key input and is rendered on top of the active view.
-	palette       *tui.CommandPalette
-	paletteOpen   bool
+	palette           *tui.CommandPalette
+	paletteOpen       bool
 	pendingJobID      string
 	sendNotice        string
 	pendingAction     *pendingEmailAction

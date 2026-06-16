@@ -74,8 +74,8 @@ type Composer struct {
 	encryptSMIME     bool
 	width            int
 	height           int
-	confirmingExit bool
-	hideTips       bool
+	confirmingExit   bool
+	hideTips         bool
 
 	// Multi-account support
 	accounts           []config.Account
@@ -218,7 +218,6 @@ func (m *Composer) hasAnyRecipient() bool {
 		strings.TrimSpace(m.ccInput.Value()) != "" ||
 		strings.TrimSpace(m.bccInput.Value()) != ""
 }
-
 
 func (m *Composer) validateFromField() bool { //nolint:unparam
 	if !m.isCatchAllAccount() {
