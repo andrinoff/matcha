@@ -167,10 +167,9 @@ func (m Marketplace) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, func() tea.Msg {
 				return NotifyMsg{Message: fmt.Sprintf("Failed to install %s: %v", msg.Name, msg.Err)}
 			}
-		} else {
-			m.status = fmt.Sprintf("Installed %s", msg.Name)
-			m.installed[msg.Name] = true
 		}
+		m.status = fmt.Sprintf("Installed %s", msg.Name)
+		m.installed[msg.Name] = true
 		return m, nil
 
 	case tea.KeyPressMsg:
