@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -61,16 +62,18 @@ type PluginInstalledMsg struct {
 }
 
 type Marketplace struct {
-	entries    []plugins.PluginEntry
-	installed  map[string]bool
-	cursor     int
-	offset     int // scroll offset
-	width      int
-	height     int
-	state      marketplaceState
-	errMsg     string
-	status     string // transient status message
-	standalone bool   // true when launched via `matcha marketplace` (not from main menu)
+	entries       []plugins.PluginEntry
+	installed     map[string]bool
+	cursor        int
+	offset        int // scroll offset
+	width         int
+	height        int
+	state         marketplaceState
+	errMsg        string
+	status        string // transient status message
+	standalone    bool   // true when launched via `matcha marketplace` (not from main menu)
+	lastClickTime time.Time
+	lastClickY    int
 }
 
 func NewMarketplace(standalone bool) Marketplace {
@@ -84,6 +87,12 @@ func (m Marketplace) Init() tea.Cmd {
 	return fetchRegistry
 }
 
+func (m Marketplace) itemsStartY() int {
+	// DocStyle top margin (1) + choiceLogo blank+5 lines (6) + explicit \n (1) = 8
+	// mpTitleStyle title (1) + \n\n (2) = 3
+	return 8 + 3
+}
+
 func fetchRegistry() tea.Msg {
 	entries, err := plugins.FetchRegistry()
 	return RegistryFetchedMsg{Entries: entries, Err: err}
@@ -91,6 +100,55 @@ func fetchRegistry() tea.Msg {
 
 func (m Marketplace) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.MouseWheelMsg:
+		if m.state != marketplaceReady {
+			return m, nil
+		}
+		switch msg.Button {
+		case tea.MouseWheelDown:
+			if m.cursor < len(m.entries)-1 {
+				m.cursor++
+				visible := m.visibleRows()
+				if m.cursor >= m.offset+visible {
+					m.offset = m.cursor - visible + 1
+				}
+			}
+		case tea.MouseWheelUp:
+			if m.cursor > 0 {
+				m.cursor--
+				if m.cursor < m.offset {
+					m.offset = m.cursor
+				}
+			}
+		}
+		return m, nil
+
+	case tea.MouseClickMsg:
+		if msg.Button != tea.MouseLeft || m.state != marketplaceReady {
+			return m, nil
+		}
+		rowInList := msg.Y - m.itemsStartY()
+		if rowInList >= 0 {
+			entryIdx := m.offset + rowInList/2
+			if entryIdx >= 0 && entryIdx < len(m.entries) {
+				now := time.Now()
+				isDoubleClick := msg.Y == m.lastClickY && now.Sub(m.lastClickTime) < 500*time.Millisecond
+				m.lastClickTime = now
+				m.lastClickY = msg.Y
+				m.cursor = entryIdx
+				if isDoubleClick {
+					entry := m.entries[m.cursor]
+					if m.installed[entry.Name] {
+						m.status = fmt.Sprintf("%s is already installed", entry.Name)
+						return m, nil
+					}
+					m.status = fmt.Sprintf("Installing %s...", entry.Name)
+					return m, installPlugin(entry)
+				}
+			}
+		}
+		return m, nil
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -116,50 +174,55 @@ func (m Marketplace) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyPressMsg:
-		kb := config.Keybinds
-		if m.state != marketplaceReady {
-			if msg.String() == "q" || msg.String() == kb.Global.Cancel || msg.String() == kb.Global.Quit {
-				if m.standalone {
-					return m, tea.Quit
-				}
-				return m, func() tea.Msg { return GoToChoiceMenuMsg{} }
-			}
-			return m, nil
-		}
+		return m.handleKeyPress(msg)
+	}
+	return m, nil
+}
 
-		switch msg.String() {
-		case "q", kb.Global.Cancel:
+func (m Marketplace) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	kb := config.Keybinds
+	if m.state != marketplaceReady {
+		if msg.String() == "q" || msg.String() == kb.Global.Cancel || msg.String() == kb.Global.Quit {
 			if m.standalone {
 				return m, tea.Quit
 			}
 			return m, func() tea.Msg { return GoToChoiceMenuMsg{} }
-		case kb.Global.Quit:
+		}
+		return m, nil
+	}
+
+	switch msg.String() {
+	case "q", kb.Global.Cancel:
+		if m.standalone {
 			return m, tea.Quit
-		case "up", kb.Global.NavUp:
-			if m.cursor > 0 {
-				m.cursor--
-				if m.cursor < m.offset {
-					m.offset = m.cursor
-				}
+		}
+		return m, func() tea.Msg { return GoToChoiceMenuMsg{} }
+	case kb.Global.Quit:
+		return m, tea.Quit
+	case "up", kb.Global.NavUp:
+		if m.cursor > 0 {
+			m.cursor--
+			if m.cursor < m.offset {
+				m.offset = m.cursor
 			}
-		case keyDown, kb.Global.NavDown:
-			if m.cursor < len(m.entries)-1 {
-				m.cursor++
-				visible := m.visibleRows()
-				if m.cursor >= m.offset+visible {
-					m.offset = m.cursor - visible + 1
-				}
+		}
+	case keyDown, kb.Global.NavDown:
+		if m.cursor < len(m.entries)-1 {
+			m.cursor++
+			visible := m.visibleRows()
+			if m.cursor >= m.offset+visible {
+				m.offset = m.cursor - visible + 1
 			}
-		case keyEnter:
-			if m.cursor < len(m.entries) {
-				entry := m.entries[m.cursor]
-				if m.installed[entry.Name] {
-					m.status = fmt.Sprintf("%s is already installed", entry.Name)
-					return m, nil
-				}
-				m.status = fmt.Sprintf("Installing %s...", entry.Name)
-				return m, installPlugin(entry)
+		}
+	case keyEnter:
+		if m.cursor < len(m.entries) {
+			entry := m.entries[m.cursor]
+			if m.installed[entry.Name] {
+				m.status = fmt.Sprintf("%s is already installed", entry.Name)
+				return m, nil
 			}
+			m.status = fmt.Sprintf("Installing %s...", entry.Name)
+			return m, installPlugin(entry)
 		}
 	}
 	return m, nil
@@ -284,5 +347,9 @@ func (m Marketplace) View() tea.View {
 		mainContent += "\n\n"
 	}
 
-	return tea.NewView(DocStyle.Render(mainContent + "\n" + help))
+	v := tea.NewView(DocStyle.Render(mainContent + "\n" + help))
+	if config.MouseEnabled != nil && *config.MouseEnabled {
+		v.MouseMode = tea.MouseModeCellMotion
+	}
+	return v
 }
