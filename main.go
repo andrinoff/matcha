@@ -449,7 +449,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
-		if m.showErrorNotif && msg.String() == "x" {
+		if m.showErrorNotif && msg.String() == config.Keybinds.Global.DismissNotification {
 			m.showErrorNotif = false
 			return m, nil
 		}
@@ -2552,7 +2552,7 @@ func (m *mainModel) showErrorCmd(msg string) tea.Cmd {
 	col := max(0, m.width-44)
 	m.errorNotification = overlay.NewError(
 		overlay.WithMessage(msg),
-		overlay.WithKey("x"),
+		overlay.WithKey(config.Keybinds.Global.DismissNotification),
 		overlay.WithPosition(0, col),
 	)
 	m.showErrorNotif = true

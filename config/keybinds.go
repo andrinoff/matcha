@@ -27,11 +27,12 @@ type KeybindsConfig struct {
 }
 
 type GlobalKeys struct {
-	Quit           string `json:"quit"`
-	Cancel         string `json:"cancel"`
-	NavUp          string `json:"nav_up"`
-	NavDown        string `json:"nav_down"`
-	CommandPalette string `json:"command_palette"`
+	Quit                string `json:"quit"`
+	Cancel              string `json:"cancel"`
+	NavUp               string `json:"nav_up"`
+	NavDown             string `json:"nav_down"`
+	CommandPalette      string `json:"command_palette"`
+	DismissNotification string `json:"dismiss_notification"`
 }
 
 type InboxKeys struct {
@@ -109,11 +110,12 @@ func LoadKeybindsFromDir(cfgDir string) error {
 func ValidateKeybinds(kb KeybindsConfig) []string {
 	return keybind.Validate(map[string]map[string]string{
 		"global": {
-			"quit":            kb.Global.Quit,
-			"cancel":          kb.Global.Cancel,
-			"nav_up":          kb.Global.NavUp,
-			"nav_down":        kb.Global.NavDown,
-			"command_palette": kb.Global.CommandPalette,
+			"quit":                 kb.Global.Quit,
+			"cancel":               kb.Global.Cancel,
+			"nav_up":               kb.Global.NavUp,
+			"nav_down":             kb.Global.NavDown,
+			"command_palette":      kb.Global.CommandPalette,
+			"dismiss_notification": kb.Global.DismissNotification,
 		},
 		"inbox": {
 			"visual_mode":     kb.Inbox.VisualMode,
