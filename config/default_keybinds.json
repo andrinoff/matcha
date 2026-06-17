@@ -4,7 +4,8 @@
     "cancel": "esc",
     "nav_up": "k",
     "nav_down": "j",
-    "command_palette": "ctrl+k"
+    "command_palette": "ctrl+k",
+    "dismiss_notification": "x"
   },
   "inbox": {
     "visual_mode": "v",

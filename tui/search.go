@@ -18,7 +18,6 @@ type SearchOverlay struct {
 	results []fetcher.Email
 	loading bool
 	done    bool
-	err     string
 	width   int
 }
 
@@ -43,11 +42,10 @@ func (o *SearchOverlay) Update(msg tea.Msg, mailbox MailboxKind, accountID strin
 		o.width = msg.Width
 		return nil
 	case SearchResultsMsg:
-		o.loading, o.done, o.err = false, msg.Err == nil, ""
+		o.loading, o.done = false, msg.Err == nil
 		o.query = msg.Query
 		if msg.Err != nil {
-			o.err = msg.Err.Error()
-			return nil
+			return func() tea.Msg { return NotifyMsg{Message: msg.Err.Error()} }
 		}
 		o.results = msg.Emails
 		return nil
@@ -65,7 +63,7 @@ func (o *SearchOverlay) Update(msg tea.Msg, mailbox MailboxKind, accountID strin
 			if raw == "" {
 				return nil
 			}
-			o.loading, o.done, o.err, o.results = true, false, "", nil
+			o.loading, o.done, o.results = true, false, nil
 			query := backend.ParseSearchQuery(raw)
 			return func() tea.Msg { return SearchRequestedMsg{Query: query, Mailbox: mailbox, AccountID: accountID} }
 		}
@@ -86,9 +84,6 @@ func (o *SearchOverlay) View() string {
 	content := "Search mail\n\n" + o.input.View()
 	if o.loading {
 		content += "\n\nSearching..."
-	}
-	if o.err != "" {
-		content += "\n\n" + lipgloss.NewStyle().Foreground(theme.ActiveTheme.Danger).Render(o.err)
 	}
 	if o.done {
 		content += fmt.Sprintf("\n\n%d result(s). Press Enter to apply, Esc to dismiss.\n", len(o.results))

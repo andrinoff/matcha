@@ -120,9 +120,3 @@ func TestSnapshot_SearchOverlay_Loading(t *testing.T) {
 	overlay.loading = true
 	assertGolden(t, "search_overlay_loading", overlay.View())
 }
-
-func TestSnapshot_SearchOverlay_Error(t *testing.T) {
-	overlay := NewSearchOverlay(80, 24)
-	overlay.err = "connection refused"
-	assertGolden(t, "search_overlay_error", overlay.View())
-}

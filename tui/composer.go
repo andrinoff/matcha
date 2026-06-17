@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 	"unicode"
 
 	"charm.land/bubbles/v2/textarea"
@@ -56,8 +55,6 @@ const (
 	focusSend
 )
 
-type hideComposerNoticeMsg struct{}
-
 // Composer model holds the state of the email composition UI.
 type Composer struct {
 	focusIndex       int
@@ -78,8 +75,6 @@ type Composer struct {
 	width            int
 	height           int
 	confirmingExit   bool
-	showNotice       bool
-	noticeText       string
 	hideTips         bool
 
 	// Multi-account support
@@ -222,19 +217,6 @@ func (m *Composer) hasAnyRecipient() bool {
 	return strings.TrimSpace(m.toInput.Value()) != "" ||
 		strings.TrimSpace(m.ccInput.Value()) != "" ||
 		strings.TrimSpace(m.bccInput.Value()) != ""
-}
-
-func (m *Composer) showComposerNotice(message string) tea.Cmd {
-	m.noticeText = message
-	m.showNotice = true
-	return tea.Tick(5*time.Second, func(time.Time) tea.Msg {
-		return hideComposerNoticeMsg{}
-	})
-}
-
-func (m *Composer) hideComposerNotice() {
-	m.showNotice = false
-	m.noticeText = ""
 }
 
 func (m *Composer) validateFromField() bool { //nolint:unparam
@@ -646,7 +628,7 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 
 	switch msg := msg.(type) {
 	case tea.MouseClickMsg:
-		if msg.Button == tea.MouseLeft && !m.confirmingExit && !m.showNotice && !m.showAccountPicker && !m.showPluginPrompt {
+		if msg.Button == tea.MouseLeft && !m.confirmingExit && !m.showAccountPicker && !m.showPluginPrompt {
 			bodyH := m.bodyInput.Height()
 			sigH := m.signatureInput.Height()
 			var newFocus int
@@ -701,10 +683,6 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 			m.bodyInput.SetHeight(bodyHeight)
 			m.signatureInput.SetHeight(sigHeight)
 		}
-
-	case hideComposerNoticeMsg:
-		m.hideComposerNotice()
-		return m, nil
 
 	case spellcheckReadyMsg:
 		if msg.checker != nil {
@@ -844,14 +822,6 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 			}
 		}
 
-		if m.showNotice {
-			switch msg.String() {
-			case keyEnter, "esc", " ":
-				m.hideComposerNotice()
-			}
-			return m, nil
-		}
-
 		// Spellcheck suggestion popup (only while body is focused).
 		if m.focusIndex == focusBody && m.spellShow && len(m.spellSuggestions) > 0 {
 			sk := config.Keybinds.Composer
@@ -985,10 +955,12 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 			case focusSend:
 				if msg.String() == keyEnter {
 					if !m.canSendEmail() {
-						return m, m.showComposerNotice(t("composer.invalid_email_fields"))
+						msg := t("composer.invalid_email_fields")
+						return m, func() tea.Msg { return NotifyMsg{Message: msg} }
 					}
 					if !m.hasAnyRecipient() {
-						return m, m.showComposerNotice(t("composer.recipient_required"))
+						msg := t("composer.recipient_required")
+						return m, func() tea.Msg { return NotifyMsg{Message: msg} }
 					}
 					acc := m.getSelectedAccount()
 					accountID := ""
@@ -1340,16 +1312,6 @@ func (m *Composer) View() tea.View { //nolint:gocyclo
 			lipgloss.JoinVertical(lipgloss.Center,
 				t("composer.exit_confirm"),
 				HelpStyle.Render("\n(y/n)"),
-			),
-		)
-		return tea.NewView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, dialog))
-	}
-
-	if m.showNotice {
-		dialog := DialogBoxStyle.Render(
-			lipgloss.JoinVertical(lipgloss.Center,
-				dangerStyle.Render(m.noticeText),
-				HelpStyle.Render("\nenter/esc: close"),
 			),
 		)
 		return tea.NewView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, dialog))

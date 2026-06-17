@@ -183,10 +183,11 @@ func TestComposerSendValidatesEmailFields(t *testing.T) {
 			composer = model.(*Composer)
 
 			if cmd == nil {
-				t.Fatal("Expected auto-close command for composer notice")
+				t.Fatal("Expected a NotifyMsg command after failed send attempt")
 			}
-			if !composer.showNotice {
-				t.Fatal("Expected composer notice to be shown after send attempt")
+			msg := cmd()
+			if _, ok := msg.(NotifyMsg); !ok {
+				t.Fatalf("Expected NotifyMsg from failed send, got %T", msg)
 			}
 			if tt.wantCcError && composer.ccError == "" {
 				t.Fatal("Expected Cc validation error after send attempt")
@@ -194,18 +195,11 @@ func TestComposerSendValidatesEmailFields(t *testing.T) {
 			if tt.wantFromError && composer.fromError == "" {
 				t.Fatal("Expected From validation error after send attempt")
 			}
-
-			model, _ = composer.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-			composer = model.(*Composer)
-
-			if composer.showNotice {
-				t.Fatal("Expected composer notice to close on Enter")
-			}
 			if tt.wantCcError && !strings.Contains(fmt.Sprint(composer.View()), composer.ccError) {
-				t.Fatal("Expected Cc validation error to be rendered after closing notice")
+				t.Fatal("Expected Cc validation error to be rendered in composer view")
 			}
 			if tt.wantFromError && !strings.Contains(fmt.Sprint(composer.View()), composer.fromError) {
-				t.Fatal("Expected From validation error to be rendered after closing notice")
+				t.Fatal("Expected From validation error to be rendered in composer view")
 			}
 		})
 	}
