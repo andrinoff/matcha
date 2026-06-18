@@ -10,7 +10,7 @@ import (
 type PGPStatus int
 
 const (
-	PGPStatusNone      PGPStatus = iota // no PGP content
+	PGPStatusNone       PGPStatus = iota // no PGP content
 	PGPStatusVerified                    // signature present and valid
 	PGPStatusUnverified                  // signature present but key missing or invalid
 	PGPStatusEncrypted                   // encrypted and successfully decrypted

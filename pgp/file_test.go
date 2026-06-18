@@ -278,7 +278,6 @@ func TestFileBasedProviderVerifyUnknownKey(t *testing.T) {
 	}
 }
 
-
 func TestPGPStatusString(t *testing.T) {
 	cases := []struct {
 		status PGPStatus
@@ -327,9 +326,9 @@ func extractSignedPartsRaw(t *testing.T, signedMsg []byte) (signedPart, sigData 
 
 	body := s[headerEnd+4:]
 
-	delim1 := "--" + boundary + "\r\n"    // start of each part
+	delim1 := "--" + boundary + "\r\n"     // start of each part
 	delim2 := "\r\n--" + boundary + "\r\n" // separator between parts
-	delimEnd := "\r\n--" + boundary + "--"  // closing boundary
+	delimEnd := "\r\n--" + boundary + "--" // closing boundary
 
 	// Find the content of part 1.
 	idx1 := strings.Index(body, delim1)
