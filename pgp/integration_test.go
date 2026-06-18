@@ -14,7 +14,7 @@ package pgp
 //	MATCHA_PGP_PUBLIC_KEY   path to the account public key (.asc or .gpg)
 //	MATCHA_PGP_PRIVATE_KEY  path to the account private key (file-based tests)
 //	MATCHA_PGP_PIN          passphrase (file) or YubiKey PIN (smartcard); may be empty
-//	MATCHA_PGP_EMAIL        email address used to look up the recipient key in MATCHA_PGP_DIR
+//	MATCHA_PGP_EMAIL        email address whose public key lives in MATCHA_PGP_DIR
 //	MATCHA_PGP_DIR          directory holding per-address recipient public keys
 
 import (

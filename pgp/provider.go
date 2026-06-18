@@ -19,6 +19,8 @@ const (
 // String returns the UI badge string for a PGPStatus.
 func (s PGPStatus) String() string {
 	switch s {
+	case PGPStatusNone:
+		return ""
 	case PGPStatusVerified:
 		return "[PGP: Verified]"
 	case PGPStatusUnverified:

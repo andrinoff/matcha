@@ -116,16 +116,14 @@ func (p *FileBasedProvider) Verify(signedContent, signatureData []byte) (PGPStat
 	msg.Write(signatureData)
 	msg.WriteString("\r\n--" + boundary + "--\r\n")
 
-	mr, err := pgpmail.Read(&msg, keyring, nil, nil)
-	if err != nil || mr.MessageDetails == nil || mr.MessageDetails.UnverifiedBody == nil {
+	mr, _ := pgpmail.Read(&msg, keyring, nil, nil)
+	if mr == nil || mr.MessageDetails == nil || mr.MessageDetails.UnverifiedBody == nil {
 		return PGPStatusUnverified, nil
 	}
 	// Must drain UnverifiedBody to EOF to trigger signature verification.
-	if _, err := io.ReadAll(mr.MessageDetails.UnverifiedBody); err != nil {
-		return PGPStatusUnverified, nil
-	}
+	_, _ = io.ReadAll(mr.MessageDetails.UnverifiedBody)
 	if mr.MessageDetails.SignatureError != nil {
-		return PGPStatusUnverified, nil
+		return PGPStatusUnverified, mr.MessageDetails.SignatureError
 	}
 	return PGPStatusVerified, nil
 }
