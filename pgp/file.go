@@ -48,7 +48,7 @@ func (p *FileBasedProvider) Sign(payload []byte) ([]byte, error) {
 }
 
 // Encrypt wraps payload in a RFC 3156 multipart/encrypted MIME message.
-// Recipient public keys are loaded from pgpDir/<email>.asc (or .gpg).
+// Recipient public keys are loaded from pgpDir/<email>.asc, .gpg, or .pem.
 // The sender's own public key is added so the Sent copy is readable.
 func (p *FileBasedProvider) Encrypt(payload []byte, recipients []string) ([]byte, error) {
 	entityList, err := p.loadRecipientEntities(recipients)
@@ -188,7 +188,7 @@ func (p *FileBasedProvider) loadRecipientEntities(recipients []string) (openpgp.
 }
 
 func (p *FileBasedProvider) loadPublicKeyForEmail(email string) (*openpgp.Entity, error) {
-	for _, ext := range []string{".asc", ".gpg"} {
+	for _, ext := range []string{".asc", ".gpg", ".pem"} {
 		if entity, err := loadPublicEntity(filepath.Join(p.pgpDir, email+ext)); err == nil {
 			return entity, nil
 		}
@@ -218,7 +218,7 @@ func (p *FileBasedProvider) loadPublicKeyring() openpgp.EntityList {
 			continue
 		}
 		name := entry.Name()
-		if strings.HasSuffix(name, ".asc") || strings.HasSuffix(name, ".gpg") {
+		if strings.HasSuffix(name, ".asc") || strings.HasSuffix(name, ".gpg") || strings.HasSuffix(name, ".pem") {
 			addKey(filepath.Join(p.pgpDir, name))
 		}
 	}
