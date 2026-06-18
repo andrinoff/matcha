@@ -86,8 +86,8 @@ github.com/floatpane/go-keybind v0.0.1 h1:UrzPQ4ldR9sKQt/efpUfcs6gH8Mwy2NO5vwFTV
 github.com/floatpane/go-keybind v0.0.1/go.mod h1:B8l43ypYOcjknyaHgU0EXUAbrUvfnV2HOzYSzyqcPJI=
 github.com/floatpane/go-mailpatch v0.0.2 h1:ZkV44HiK+8Qx+7TIGdtoetfVuURKZcFWIBmmcrJTwTk=
 github.com/floatpane/go-mailpatch v0.0.2/go.mod h1:mbnMyEWq+x+AH49ysRnSjKN8ZgbbxfYRX2mCQw3n82c=
-github.com/floatpane/go-openpgp-card-hl v0.0.1 h1:1DYmzwGDb8eneZxbc/xtwjXeFY8DFL3eYnUooMT0L0w=
-github.com/floatpane/go-openpgp-card-hl v0.0.1/go.mod h1:Mrx+ukCnpEpMAxyB0p8Ch2gu78Q3Ir40BxBybb2jirw=
+github.com/floatpane/go-openpgp-card-hl v0.1.0 h1:sBdxuCX7mWi+3lKvlVFJ1oHbuqZUEwWT5S9uB2aPszI=
+github.com/floatpane/go-openpgp-card-hl v0.1.0/go.mod h1:Mrx+ukCnpEpMAxyB0p8Ch2gu78Q3Ir40BxBybb2jirw=
 github.com/floatpane/go-patchapply v0.0.1 h1:VtCBe1HfG645axYzHqIGTLZgmmM9Tkoyd7XRJ74y6Ek=
 github.com/floatpane/go-patchapply v0.0.1/go.mod h1:YekZ5hy6gosCoYujvbKuB+cOvy1+lPPC0S/nTpThGQ4=
 github.com/floatpane/go-secretbox v0.1.0 h1:xNryazmCP0oR/yVxIkHRc5bcV56YrbisY+bMl8BBfwU=
