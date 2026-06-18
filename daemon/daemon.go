@@ -556,26 +556,39 @@ func (d *Daemon) sendOutboxEntry(entry *OutboxEntry) {
 		return
 	}
 
-	rawMsg, err := sender.SendEmail(
-		acct,
-		entry.Params.To,
-		entry.Params.Cc,
-		entry.Params.Bcc,
-		entry.Params.Subject,
-		entry.Params.Body,
-		entry.Params.HTMLBody,
-		entry.Params.Images,
-		entry.Params.Attachments,
-		entry.Params.InReplyTo,
-		entry.Params.References,
-		entry.Params.SignSMIME,
-		entry.Params.EncryptSMIME,
-		entry.Params.SignPGP,
-		entry.Params.EncryptPGP,
-	)
-	if err != nil {
-		log.Printf("daemon: outbox send failed for %s: %v", entry.ID, err)
-		return
+	var rawMsg []byte
+
+	if len(entry.Params.PrebuiltRaw) > 0 {
+		// Message was pre-built (e.g. PGP-signed) in the client process; just deliver.
+		allRecipients := append(append([]string{}, entry.Params.To...), append(entry.Params.Cc, entry.Params.Bcc...)...)
+		if err := sender.DeliverRaw(acct, allRecipients, entry.Params.PrebuiltRaw); err != nil {
+			log.Printf("daemon: outbox deliver failed for %s: %v", entry.ID, err)
+			return
+		}
+		rawMsg = entry.Params.PrebuiltRaw
+	} else {
+		var err error
+		rawMsg, err = sender.SendEmail(
+			acct,
+			entry.Params.To,
+			entry.Params.Cc,
+			entry.Params.Bcc,
+			entry.Params.Subject,
+			entry.Params.Body,
+			entry.Params.HTMLBody,
+			entry.Params.Images,
+			entry.Params.Attachments,
+			entry.Params.InReplyTo,
+			entry.Params.References,
+			entry.Params.SignSMIME,
+			entry.Params.EncryptSMIME,
+			entry.Params.SignPGP,
+			entry.Params.EncryptPGP,
+		)
+		if err != nil {
+			log.Printf("daemon: outbox send failed for %s: %v", entry.ID, err)
+			return
+		}
 	}
 
 	if acct.ServiceProvider != "gmail" {

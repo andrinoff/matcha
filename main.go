@@ -3271,7 +3271,18 @@ func (m *mainModel) sendEmailCmd(account *config.Account, msg tui.SendEmailMsg) 
 		}
 
 		delaySeconds := m.config.GetUndoDelaySeconds()
-		jobID, err := m.service.QueueEmail(account.ID, recipients, cc, bcc, msg.Subject, body, string(htmlBody), images, attachments, msg.InReplyTo, msg.References, msg.SignSMIME, msg.EncryptSMIME, msg.SignPGP, false, delaySeconds)
+
+		var prebuiltRaw []byte
+		if msg.SignPGP || msg.EncryptPGP {
+			var buildErr error
+			prebuiltRaw, buildErr = sender.BuildEmail(account, recipients, cc, bcc, msg.Subject, body, string(htmlBody), images, attachments, msg.InReplyTo, msg.References, msg.SignSMIME, msg.EncryptSMIME, msg.SignPGP, msg.EncryptPGP)
+			if buildErr != nil {
+				log.Printf("Failed to build PGP email: %v", buildErr)
+				return tui.EmailResultMsg{Err: buildErr}
+			}
+		}
+
+		jobID, err := m.service.QueueEmail(account.ID, recipients, cc, bcc, msg.Subject, body, string(htmlBody), images, attachments, msg.InReplyTo, msg.References, msg.SignSMIME, msg.EncryptSMIME, false, false, delaySeconds, prebuiltRaw)
 
 		if err != nil {
 			log.Printf("Failed to queue email: %v", err)

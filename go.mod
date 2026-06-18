@@ -81,3 +81,5 @@ require (
 	golang.org/x/sys v0.46.0 // indirect
 	kernel.org/pub/linux/libs/security/libcap/psx v1.2.77 // indirect
 )
+
+replace github.com/floatpane/go-openpgp-card-hl v0.1.1 => ../go-openpgp-card-hl

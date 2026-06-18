@@ -58,7 +58,14 @@ func (p *SmartcardProvider) Decrypt(payload []byte) ([]byte, error) {
 	}
 	defer card.Close() //nolint:errcheck
 
-	return card.DecryptMIME(payload, p.account.PGPPIN, pubEntity)
+	plain, err := card.DecryptMIME(payload, p.account.PGPPIN, pubEntity)
+	if err == nil {
+		return plain, nil
+	}
+	if errors.Is(err, cardhl.ErrUnsupportedKey) {
+		return gpgAgentDecryptMIME(payload, p.account.PGPPIN)
+	}
+	return nil, err
 }
 
 // Verify delegates to FileBasedProvider since signature verification requires

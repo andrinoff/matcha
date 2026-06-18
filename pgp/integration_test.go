@@ -18,12 +18,10 @@ package pgp
 //	MATCHA_PGP_DIR          directory holding per-address recipient public keys
 
 import (
-	"errors"
 	"os"
 	"strings"
 	"testing"
 
-	cardhl "github.com/floatpane/go-openpgp-card-hl"
 	"github.com/floatpane/matcha/config"
 )
 
@@ -213,9 +211,6 @@ func TestIntegrationYubiKeyEncryptDecrypt(t *testing.T) {
 	sc := &SmartcardProvider{account: account, pgpDir: pgpDir}
 	plain, err := sc.Decrypt(encrypted)
 	if err != nil {
-		if errors.Is(err, cardhl.ErrUnsupportedKey) {
-			t.Skip("YubiKey decryption key is ECDH/Curve25519 — RSA required; use gpg-agent for these keys")
-		}
 		t.Fatalf("Decrypt: %v", err)
 	}
 
