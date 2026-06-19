@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
+	"github.com/ProtonMail/go-crypto/openpgp/armor"
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
 	"github.com/emersion/go-message/mail"
@@ -2045,19 +2046,45 @@ func decryptPGPMessage(encryptedData []byte, account *config.Account) ([]byte, e
 		return nil, errors.New("no PGP keys found in private keyring")
 	}
 
-	// Decrypt using go-pgpmail
-	mr, err := pgpmail.Read(bytes.NewReader(encryptedData), openpgp.EntityList{entityList[0]}, nil, nil)
+	// encryptedData is the bare armored OpenPGP block (the body of the
+	// application/octet-stream part), not a full MIME message, so decrypt it
+	// directly with openpgp.ReadMessage rather than pgpmail.Read (which would
+	// try to parse the "-----BEGIN PGP MESSAGE-----" line as a MIME header).
+	block, err := armor.Decode(bytes.NewReader(encryptedData))
 	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt PGP message: %w", err)
+		return nil, fmt.Errorf("failed to decode PGP armor: %w", err)
 	}
 
-	// Read decrypted content from UnverifiedBody
-	if mr.MessageDetails == nil || mr.MessageDetails.UnverifiedBody == nil {
+	// Passphrase prompt: decrypt any encrypted private keys with PGPPIN.
+	var promptErr error
+	prompt := func(keys []openpgp.Key, _ bool) ([]byte, error) {
+		if account.PGPPIN == "" {
+			return nil, errors.New("private key is encrypted but no passphrase configured")
+		}
+		passphrase := []byte(account.PGPPIN)
+		for _, k := range keys {
+			if k.PrivateKey != nil && k.PrivateKey.Encrypted {
+				if err := k.PrivateKey.Decrypt(passphrase); err != nil {
+					promptErr = err
+				}
+			}
+		}
+		return passphrase, nil
+	}
+
+	md, err := openpgp.ReadMessage(block.Body, entityList, prompt, nil)
+	if err != nil {
+		if promptErr != nil {
+			return nil, fmt.Errorf("failed to decrypt PGP message (key passphrase): %w", promptErr)
+		}
+		return nil, fmt.Errorf("failed to decrypt PGP message: %w", err)
+	}
+	if md.UnverifiedBody == nil {
 		return nil, errors.New("no decrypted content available")
 	}
 
 	var decrypted bytes.Buffer
-	if _, err := io.Copy(&decrypted, mr.MessageDetails.UnverifiedBody); err != nil {
+	if _, err := io.Copy(&decrypted, md.UnverifiedBody); err != nil {
 		return nil, fmt.Errorf("failed to read decrypted content: %w", err)
 	}
 
