@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
+	"github.com/ProtonMail/go-crypto/openpgp/armor"
 	textproto "github.com/emersion/go-message/textproto"
 	pgpmail "github.com/emersion/go-pgpmail"
 
@@ -90,6 +91,35 @@ func (p *FileBasedProvider) Decrypt(payload []byte) ([]byte, error) {
 	var out bytes.Buffer
 	if _, err := io.Copy(&out, mr.MessageDetails.UnverifiedBody); err != nil {
 		return nil, fmt.Errorf("pgp decrypt read: %w", err)
+	}
+	return out.Bytes(), nil
+}
+
+// DecryptBare decrypts a bare ASCII-armored OpenPGP ciphertext block using the
+// account's private key. Unlike Decrypt, the input is the raw armored block
+// (the body of application/octet-stream), not a full multipart/encrypted message.
+func (p *FileBasedProvider) DecryptBare(armored []byte) ([]byte, error) {
+	entity, err := p.loadPrivateEntity()
+	if err != nil {
+		return nil, err
+	}
+
+	block, err := armor.Decode(bytes.NewReader(armored))
+	if err != nil {
+		return nil, fmt.Errorf("pgp: decode armor: %w", err)
+	}
+
+	md, err := openpgp.ReadMessage(block.Body, openpgp.EntityList{entity}, nil, nil)
+	if err != nil {
+		return nil, fmt.Errorf("pgp: decrypt: %w", err)
+	}
+	if md.UnverifiedBody == nil {
+		return nil, errors.New("pgp: no decrypted content")
+	}
+
+	var out bytes.Buffer
+	if _, err := io.Copy(&out, md.UnverifiedBody); err != nil {
+		return nil, fmt.Errorf("pgp: read decrypted content: %w", err)
 	}
 	return out.Bytes(), nil
 }

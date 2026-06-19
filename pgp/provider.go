@@ -47,6 +47,11 @@ type PGPProvider interface {
 	// inner message body.
 	Decrypt(payload []byte) ([]byte, error)
 
+	// DecryptBare decrypts a bare ASCII-armored OpenPGP ciphertext block
+	// (the raw body of an application/octet-stream MIME part, not wrapped in
+	// a multipart/encrypted envelope).
+	DecryptBare(armored []byte) ([]byte, error)
+
 	// Verify checks a detached PGP signature against signedContent (the first
 	// MIME body part of a multipart/signed message). Returns PGPStatusVerified
 	// when the signature is valid and a matching public key is in the keyring,

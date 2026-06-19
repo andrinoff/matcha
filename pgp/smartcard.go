@@ -1,6 +1,7 @@
 package pgp
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 
@@ -66,6 +67,22 @@ func (p *SmartcardProvider) Decrypt(payload []byte) ([]byte, error) {
 		return gpgAgentDecryptMIME(payload, p.account.PGPPIN)
 	}
 	return nil, err
+}
+
+// DecryptBare wraps a bare ASCII-armored OpenPGP ciphertext block in a minimal
+// multipart/encrypted MIME envelope and delegates to Decrypt, which handles
+// both RSA PC/SC decryption and the gpg-agent fallback for ECDH/Curve25519.
+func (p *SmartcardProvider) DecryptBare(armored []byte) ([]byte, error) {
+	const boundary = "pgp-bare-wrap"
+	var mime bytes.Buffer
+	fmt.Fprintf(&mime, "Content-Type: multipart/encrypted; protocol=\"application/pgp-encrypted\"; boundary=\"%s\"\r\n\r\n", boundary)
+	fmt.Fprintf(&mime, "--%s\r\n", boundary)
+	mime.WriteString("Content-Type: application/pgp-encrypted\r\n\r\nVersion: 1\r\n")
+	fmt.Fprintf(&mime, "\r\n--%s\r\n", boundary)
+	mime.WriteString("Content-Type: application/octet-stream\r\n\r\n")
+	mime.Write(armored)
+	fmt.Fprintf(&mime, "\r\n--%s--\r\n", boundary)
+	return p.Decrypt(mime.Bytes())
 }
 
 // Verify delegates to FileBasedProvider since signature verification requires
