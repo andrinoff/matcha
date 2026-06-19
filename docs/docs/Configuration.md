@@ -33,7 +33,8 @@ Configuration is stored in `~/.config/matcha/config.json`.
       "imap_server": "imap.company.com",
       "imap_port": 993,
       "smtp_server": "smtp.company.com",
-      "smtp_port": 587
+      "smtp_port": 587,
+      "smtp_username": "jdoe"
     }
   ],
   "mailing_lists": [
@@ -56,6 +57,8 @@ Configuration is stored in `~/.config/matcha/config.json`.
 ```
 
 `send_as_email` is optional. When set, Matcha uses it for the outgoing `From` header while continuing to authenticate with the account's login address.
+
+`smtp_username` is optional. When set, Matcha uses it instead of `email` when authenticating with the SMTP server. Set this when your mail provider uses different credentials for IMAP and SMTP — for example, a full email address for IMAP but a short username for SMTP. The corresponding SMTP password is stored separately in the OS keyring under the key `<email>:smtp-password`; if no SMTP-specific password is stored, the main account password is used as a fallback.
 
 `enable_split_pane` enables a side-by-side view where the email list and the selected email are shown on the same screen.
 

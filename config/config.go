@@ -93,6 +93,11 @@ type Account struct {
 	SMTPPort   int    `json:"smtp_port,omitempty"`
 	Insecure   bool   `json:"insecure,omitempty"`
 
+	// Optional SMTP-specific credentials. When set, these override Email/Password for SMTP auth only.
+	// Useful when the SMTP login differs from the IMAP login (e.g. short username vs full email).
+	SMTPUsername string `json:"smtp_username,omitempty"`
+	SMTPPassword string `json:"-"` // stored in keyring, not JSON
+
 	// S/MIME settings
 	SMIMECert          string `json:"smime_cert,omitempty"`            // Path to the public certificate PEM
 	SMIMEKey           string `json:"smime_key,omitempty"`             // Path to the private key PEM
@@ -320,6 +325,22 @@ func (a *Account) GetSMTPPort() int {
 	}
 }
 
+// GetSMTPUsername returns the SMTP login username, falling back to Email when not set.
+func (a *Account) GetSMTPUsername() string {
+	if a.SMTPUsername != "" {
+		return a.SMTPUsername
+	}
+	return a.Email
+}
+
+// GetSMTPPassword returns the SMTP password, falling back to Password when not set.
+func (a *Account) GetSMTPPassword() string {
+	if a.SMTPPassword != "" {
+		return a.SMTPPassword
+	}
+	return a.Password
+}
+
 // GetFetchEmail returns the configured fetch identity, falling back to Email.
 func (a *Account) GetFetchEmail() string {
 	if a.FetchEmail != "" {
@@ -460,6 +481,8 @@ type secureDiskAccount struct {
 	SMTPServer         string `json:"smtp_server,omitempty"`
 	SMTPPort           int    `json:"smtp_port,omitempty"`
 	Insecure           bool   `json:"insecure,omitempty"`
+	SMTPUsername       string `json:"smtp_username,omitempty"`
+	SMTPPassword       string `json:"smtp_password,omitempty"`
 	SMIMECert          string `json:"smime_cert,omitempty"`
 	SMIMEKey           string `json:"smime_key,omitempty"`
 	SMIMESignByDefault bool   `json:"smime_sign_by_default,omitempty"`
@@ -512,6 +535,11 @@ func SaveConfig(config *Config) error {
 			if acc.Password != "" && acc.PassCmd == "" {
 				if err := keyring.Set(keyringServiceName, acc.Email, acc.Password); err != nil {
 					log.Printf("matcha: failed to store password for %s in keyring: %v", acc.Email, err)
+				}
+			}
+			if acc.SMTPPassword != "" && acc.PassCmd == "" {
+				if err := keyring.Set(keyringServiceName, acc.Email+":smtp-password", acc.SMTPPassword); err != nil {
+					log.Printf("matcha: failed to store SMTP password for %s in keyring: %v", acc.Email, err)
 				}
 			}
 			if acc.PGPPIN != "" && acc.PGPKeySource == "yubikey" {
@@ -568,6 +596,8 @@ func SaveConfig(config *Config) error {
 				SMTPServer:         acc.SMTPServer,
 				SMTPPort:           acc.SMTPPort,
 				Insecure:           acc.Insecure,
+				SMTPUsername:       acc.SMTPUsername,
+				SMTPPassword:       acc.SMTPPassword,
 				SMIMECert:          acc.SMIMECert,
 				SMIMEKey:           acc.SMIMEKey,
 				SMIMESignByDefault: acc.SMIMESignByDefault,
@@ -632,6 +662,8 @@ func LoadConfig() (*Config, error) {
 		SMTPServer         string `json:"smtp_server,omitempty"`
 		SMTPPort           int    `json:"smtp_port,omitempty"`
 		Insecure           bool   `json:"insecure,omitempty"`
+		SMTPUsername       string `json:"smtp_username,omitempty"`
+		SMTPPassword       string `json:"smtp_password,omitempty"`
 		SMIMECert          string `json:"smime_cert,omitempty"`
 		SMIMEKey           string `json:"smime_key,omitempty"`
 		SMIMESignByDefault bool   `json:"smime_sign_by_default,omitempty"`
@@ -731,6 +763,7 @@ func LoadConfig() (*Config, error) {
 			SMTPServer:         rawAcc.SMTPServer,
 			SMTPPort:           rawAcc.SMTPPort,
 			Insecure:           rawAcc.Insecure,
+			SMTPUsername:       rawAcc.SMTPUsername,
 			SMIMECert:          rawAcc.SMIMECert,
 			SMIMEKey:           rawAcc.SMIMEKey,
 			SMIMESignByDefault: rawAcc.SMIMESignByDefault,
@@ -766,6 +799,7 @@ func LoadConfig() (*Config, error) {
 			// In secure mode, passwords and PINs are stored in the encrypted config JSON
 			acc.Password = rawAcc.Password
 			acc.PGPPIN = rawAcc.PGPPIN
+			acc.SMTPPassword = rawAcc.SMTPPassword
 		case rawAcc.Password != "":
 			// Found a plain-text password! Move it to the OS Keyring.
 			if err := keyring.Set(keyringServiceName, rawAcc.Email, rawAcc.Password); err != nil {
@@ -785,6 +819,12 @@ func LoadConfig() (*Config, error) {
 			if acc.PGPKeySource == "yubikey" {
 				if pin, err := keyring.Get(keyringServiceName, acc.Email+":pgp-pin"); err == nil {
 					acc.PGPPIN = pin
+				}
+			}
+			// Load SMTP-specific password from keyring if smtp_username is set
+			if acc.SMTPUsername != "" {
+				if smtpPwd, err := keyring.Get(keyringServiceName, acc.Email+":smtp-password"); err == nil {
+					acc.SMTPPassword = smtpPwd
 				}
 			}
 		}
