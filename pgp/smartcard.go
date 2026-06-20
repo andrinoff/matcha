@@ -2,6 +2,7 @@ package pgp
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -19,7 +20,9 @@ import (
 // scdaemon never releases the card. gpg re-spawns scdaemon on demand, so the
 // gpg-agent fallback path still works afterward.
 func releaseSCDaemon() {
-	if err := exec.Command("gpgconf", "--kill", "scdaemon").Run(); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := exec.CommandContext(ctx, "gpgconf", "--kill", "scdaemon").Run(); err != nil {
 		loglevel.Debugf("pgp smartcard: kill scdaemon: %v", err)
 	}
 }

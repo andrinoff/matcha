@@ -82,7 +82,10 @@ func presetSmartcardPIN(pin string) {
 	hexPIN := hex.EncodeToString([]byte(pin))
 	// -1 means the cached passphrase does not expire.
 	asuCmd := fmt.Sprintf("PRESET_PASSPHRASE %s -1 %s", grip, hexPIN)
-	if out, err := exec.Command("gpg-connect-agent", asuCmd, "/bye").CombinedOutput(); err != nil {
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if out, err := exec.CommandContext(ctx, "gpg-connect-agent", asuCmd, "/bye").CombinedOutput(); err != nil {
 		loglevel.Debugf("pgp: preset PIN failed: %v: %s", err, strings.TrimSpace(string(out)))
 	}
 }
@@ -114,12 +117,16 @@ func ensureAllowPresetPassphrase() {
 		content += "\n"
 	}
 	content += "allow-preset-passphrase\n"
-	if err := os.WriteFile(confPath, []byte(content), 0o600); err != nil {
+	// confPath is derived from GNUPGHOME or the user's home dir, not from
+	// untrusted input, so this is not an attacker-controlled path.
+	if err := os.WriteFile(confPath, []byte(content), 0o600); err != nil { //nolint:gosec // G304: path from env/home, not user input
 		loglevel.Debugf("pgp: write gpg-agent.conf: %v", err)
 		return
 	}
 
-	if out, err := exec.Command("gpg-connect-agent", "reloadagent", "/bye").CombinedOutput(); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if out, err := exec.CommandContext(ctx, "gpg-connect-agent", "reloadagent", "/bye").CombinedOutput(); err != nil {
 		loglevel.Debugf("pgp: reload gpg-agent: %v: %s", err, strings.TrimSpace(string(out)))
 	}
 }
@@ -140,10 +147,12 @@ func gpgAgentConfPath() string {
 // decryptKeygrip returns the keygrip of the encryption subkey on the connected
 // OpenPGP card by parsing `gpg --with-keygrip --with-colons --card-status`.
 func decryptKeygrip() (string, error) {
-	out, err := exec.Command("gpg", "--with-keygrip", "--with-colons", "--card-status").Output()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "gpg", "--with-keygrip", "--with-colons", "--card-status").Output()
 	if err != nil {
 		// Fallback: list-secret-keys also shows card stubs with their grips.
-		out, err = exec.Command("gpg", "--with-keygrip", "--with-colons", "--list-secret-keys").Output()
+		out, err = exec.CommandContext(ctx, "gpg", "--with-keygrip", "--with-colons", "--list-secret-keys").Output()
 		if err != nil {
 			return "", fmt.Errorf("gpg keygrip lookup: %w", err)
 		}

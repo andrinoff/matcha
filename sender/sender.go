@@ -200,7 +200,7 @@ func writeQuotedPrintable(w io.Writer, body string) error {
 // BuildEmail builds a complete MIME email message (including any PGP/S/MIME
 // signing and encryption) without connecting to SMTP. The returned bytes can
 // be passed to DeliverRaw for deferred or grace-period delivery.
-func BuildEmail(account *config.Account, to, cc, bcc []string, subject, plainBody, htmlBody string, images map[string][]byte, attachments map[string][]byte, inReplyTo string, references []string, signSMIME, encryptSMIME, signPGP, encryptPGP bool) ([]byte, error) { //nolint:gocyclo
+func BuildEmail(account *config.Account, to, cc, bcc []string, subject, plainBody, htmlBody string, images map[string][]byte, attachments map[string][]byte, inReplyTo string, references []string, signSMIME, encryptSMIME, signPGP, encryptPGP bool) ([]byte, error) {
 	return buildEmailMsg(account, to, cc, bcc, subject, plainBody, htmlBody, images, attachments, inReplyTo, references, signSMIME, encryptSMIME, signPGP, encryptPGP)
 }
 
@@ -214,7 +214,7 @@ func DeliverRaw(account *config.Account, allRecipients []string, rawMsg []byte) 
 	return deliverSMTP(account, smtpServer, account.GetSMTPPort(), allRecipients, rawMsg)
 }
 
-func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody, htmlBody string, images map[string][]byte, attachments map[string][]byte, inReplyTo string, references []string, signSMIME bool, encryptSMIME bool, signPGP bool, encryptPGP bool) ([]byte, error) { //nolint:gocyclo
+func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody, htmlBody string, images map[string][]byte, attachments map[string][]byte, inReplyTo string, references []string, signSMIME bool, encryptSMIME bool, signPGP bool, encryptPGP bool) ([]byte, error) {
 	smtpServer := account.GetSMTPServer()
 	smtpPort := account.GetSMTPPort()
 
@@ -691,7 +691,7 @@ func buildEmailMsg(account *config.Account, to, cc, bcc []string, subject, plain
 }
 
 // deliverSMTP sends rawMsg to allRecipients via SMTP using account credentials.
-func deliverSMTP(account *config.Account, smtpServer string, smtpPort int, allRecipients []string, rawMsg []byte) error { //nolint:gocyclo
+func deliverSMTP(account *config.Account, smtpServer string, smtpPort int, allRecipients []string, rawMsg []byte) error {
 	addr := fmt.Sprintf("%s:%d", smtpServer, smtpPort)
 
 	smtpUser := account.GetSMTPUsername()
