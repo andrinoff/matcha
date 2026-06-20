@@ -52,6 +52,8 @@ const (
 	focusSignature
 	focusAttachment
 	focusEncryptSMIME
+	focusSignPGP
+	focusEncryptPGP
 	focusSend
 )
 
@@ -72,6 +74,8 @@ type Composer struct {
 	attachmentNames  map[string]string
 	attachmentCursor int
 	encryptSMIME     bool
+	signPGP          bool
+	encryptPGP       bool
 	width            int
 	height           int
 	confirmingExit   bool
@@ -292,6 +296,13 @@ func (m *Composer) updateSignature() {
 	}
 }
 
+// updatePGPDefaults seeds signPGP from the selected account's PGPSignByDefault.
+func (m *Composer) updatePGPDefaults() {
+	if acc := m.getSelectedAccount(); acc != nil {
+		m.signPGP = acc.PGPSignByDefault
+	}
+}
+
 // NewComposerWithAccounts initializes a composer with multiple account support.
 func NewComposerWithAccounts(accounts []config.Account, selectedAccountID string, to, subject, body string, hideTips bool) *Composer {
 	m := NewComposer("", to, subject, body, hideTips)
@@ -305,6 +316,7 @@ func NewComposerWithAccounts(accounts []config.Account, selectedAccountID string
 		}
 	}
 	m.updateSignature()
+	m.updatePGPDefaults()
 
 	return m
 }
@@ -796,11 +808,13 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 				if m.selectedAccountIdx > 0 {
 					m.selectedAccountIdx--
 					m.updateSignature()
+					m.updatePGPDefaults()
 				}
 			case keyDown, "j":
 				if m.selectedAccountIdx < len(m.accounts)-1 {
 					m.selectedAccountIdx++
 					m.updateSignature()
+					m.updatePGPDefaults()
 				}
 			case keyEnter:
 				m.showAccountPicker = false
@@ -889,6 +903,17 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 				m.focusIndex = maxFocus
 			}
 
+			// Skip PGP focus states when PGP is not configured for the account.
+			if selAcc := m.getSelectedAccount(); selAcc == nil || (selAcc.PGPKeySource == "" && selAcc.PGPPublicKey == "") {
+				if m.focusIndex == focusSignPGP || m.focusIndex == focusEncryptPGP {
+					if msg.String() == kb.Composer.PrevField {
+						m.focusIndex = focusEncryptSMIME
+					} else {
+						m.focusIndex = focusSend
+					}
+				}
+			}
+
 			if previousFocus == focusFrom {
 				m.validateFromField()
 			} else if previousFocus != m.focusIndex {
@@ -952,6 +977,18 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 				}
 				return m, nil
 
+			case focusSignPGP:
+				if msg.String() == keyEnter || msg.String() == " " {
+					m.signPGP = !m.signPGP
+				}
+				return m, nil
+
+			case focusEncryptPGP:
+				if msg.String() == keyEnter || msg.String() == " " {
+					m.encryptPGP = !m.encryptPGP
+				}
+				return m, nil
+
 			case focusSend:
 				if msg.String() == keyEnter {
 					if !m.canSendEmail() {
@@ -987,7 +1024,8 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 							Signature:       m.signatureInput.Value(),
 							SignSMIME:       acc != nil && acc.SMIMESignByDefault,
 							EncryptSMIME:    m.encryptSMIME,
-							SignPGP:         acc != nil && acc.PGPSignByDefault,
+							SignPGP:         m.signPGP,
+							EncryptPGP:      m.encryptPGP,
 						}
 					}
 				}
@@ -1148,6 +1186,27 @@ func (m *Composer) View() tea.View { //nolint:gocyclo
 		encField = focusedStyle.Render(fmt.Sprintf("> %s %s", t("composer.encrypt_smime"), encToggle))
 	}
 
+	acc := m.getSelectedAccount()
+	hasPGP := acc != nil && (acc.PGPKeySource != "" || acc.PGPPublicKey != "")
+
+	signPGPToggle := "[ ]"
+	if m.signPGP {
+		signPGPToggle = "[x]"
+	}
+	signPGPField := blurredStyle.Render(fmt.Sprintf("  %s %s", t("composer.sign_pgp"), signPGPToggle))
+	if m.focusIndex == focusSignPGP {
+		signPGPField = focusedStyle.Render(fmt.Sprintf("> %s %s", t("composer.sign_pgp"), signPGPToggle))
+	}
+
+	encPGPToggle := "[ ]"
+	if m.encryptPGP {
+		encPGPToggle = "[x]"
+	}
+	encPGPField := blurredStyle.Render(fmt.Sprintf("  %s %s", t("composer.encrypt_pgp"), encPGPToggle))
+	if m.focusIndex == focusEncryptPGP {
+		encPGPField = focusedStyle.Render(fmt.Sprintf("> %s %s", t("composer.encrypt_pgp"), encPGPToggle))
+	}
+
 	// Build To field with suggestions
 	toFieldView := m.toInput.View()
 	if m.toError != "" {
@@ -1211,6 +1270,10 @@ func (m *Composer) View() tea.View { //nolint:gocyclo
 		tip = fmt.Sprintf("Enter: add file • up/down: select attachment • %s: remove selected", ck.Delete)
 	case focusEncryptSMIME:
 		tip = "Press Space or Enter to toggle S/MIME encryption on or off."
+	case focusSignPGP:
+		tip = "Press Space or Enter to toggle PGP signing on or off."
+	case focusEncryptPGP:
+		tip = "Press Space or Enter to toggle PGP encryption on or off."
 	case focusSend:
 		tip = "Press Enter to send the email."
 	}
@@ -1237,6 +1300,14 @@ func (m *Composer) View() tea.View { //nolint:gocyclo
 	}
 	composerViewElements = append(composerViewElements,
 		smimeToggleStyle.Render(encField),
+	)
+	if hasPGP {
+		composerViewElements = append(composerViewElements,
+			smimeToggleStyle.Render(signPGPField),
+			smimeToggleStyle.Render(encPGPField),
+		)
+	}
+	composerViewElements = append(composerViewElements,
 		button,
 		"",
 	)

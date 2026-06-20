@@ -32,6 +32,8 @@
       "attachments_none": "None",
       "enter_to_add": "Enter to add",
       "encrypt_smime": "Encrypt Email (S/MIME)",
+      "sign_pgp": "Sign Email (PGP)",
+      "encrypt_pgp": "Encrypt Email (PGP)",
       "send": "Send",
       "switchable": "switchable",
       "enter_to_switch": "Enter to switch",

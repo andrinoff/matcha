@@ -139,6 +139,7 @@ type SendEmailParams struct {
 	EncryptSMIME bool              `json:"encrypt_smime,omitempty"`
 	SignPGP      bool              `json:"sign_pgp,omitempty"`
 	EncryptPGP   bool              `json:"encrypt_pgp,omitempty"`
+	PrebuiltRaw  []byte            `json:"prebuilt_raw,omitempty"`
 }
 
 type DeleteEmailsParams struct {

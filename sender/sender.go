@@ -197,7 +197,24 @@ func writeQuotedPrintable(w io.Writer, body string) error {
 }
 
 // SendEmail constructs a multipart message with plain text, HTML, embedded images, and attachments.
-func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody, htmlBody string, images map[string][]byte, attachments map[string][]byte, inReplyTo string, references []string, signSMIME bool, encryptSMIME bool, signPGP bool, encryptPGP bool) ([]byte, error) { //nolint:gocyclo
+// BuildEmail builds a complete MIME email message (including any PGP/S/MIME
+// signing and encryption) without connecting to SMTP. The returned bytes can
+// be passed to DeliverRaw for deferred or grace-period delivery.
+func BuildEmail(account *config.Account, to, cc, bcc []string, subject, plainBody, htmlBody string, images map[string][]byte, attachments map[string][]byte, inReplyTo string, references []string, signSMIME, encryptSMIME, signPGP, encryptPGP bool) ([]byte, error) {
+	return buildEmailMsg(account, to, cc, bcc, subject, plainBody, htmlBody, images, attachments, inReplyTo, references, signSMIME, encryptSMIME, signPGP, encryptPGP)
+}
+
+// DeliverRaw sends a pre-built raw MIME message via SMTP without rebuilding it.
+// allRecipients must be the full envelope recipient list (to + cc + bcc).
+func DeliverRaw(account *config.Account, allRecipients []string, rawMsg []byte) error {
+	smtpServer := account.GetSMTPServer()
+	if smtpServer == "" {
+		return fmt.Errorf("unsupported or missing service_provider: %s", account.ServiceProvider)
+	}
+	return deliverSMTP(account, smtpServer, account.GetSMTPPort(), allRecipients, rawMsg)
+}
+
+func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody, htmlBody string, images map[string][]byte, attachments map[string][]byte, inReplyTo string, references []string, signSMIME bool, encryptSMIME bool, signPGP bool, encryptPGP bool) ([]byte, error) {
 	smtpServer := account.GetSMTPServer()
 	smtpPort := account.GetSMTPPort()
 
@@ -205,11 +222,19 @@ func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody
 		return nil, fmt.Errorf("unsupported or missing service_provider: %s", account.ServiceProvider)
 	}
 
-	smtpUser := account.GetSMTPUsername()
-	smtpPass := account.GetSMTPPassword()
-	plainAuth := smtp.PlainAuth("", smtpUser, smtpPass, smtpServer)
-	loginAuthFallback := &loginAuth{username: smtpUser, password: smtpPass}
+	rawMsg, err := buildEmailMsg(account, to, cc, bcc, subject, plainBody, htmlBody, images, attachments, inReplyTo, references, signSMIME, encryptSMIME, signPGP, encryptPGP)
+	if err != nil {
+		return nil, err
+	}
 
+	allRecipients := append(append([]string{}, to...), append(cc, bcc...)...)
+	if err := deliverSMTP(account, smtpServer, smtpPort, allRecipients, rawMsg); err != nil {
+		return nil, err
+	}
+	return rawMsg, nil
+}
+
+func buildEmailMsg(account *config.Account, to, cc, bcc []string, subject, plainBody, htmlBody string, images map[string][]byte, attachments map[string][]byte, inReplyTo string, references []string, signSMIME, encryptSMIME, signPGP, encryptPGP bool) ([]byte, error) { //nolint:gocyclo
 	fromHeader := account.FormatFromHeader()
 
 	// Set top-level headers (From/To/Subject/Date/etc)
@@ -246,7 +271,6 @@ func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody
 
 	var payloadToEncrypt []byte
 	var innerBodyBytes []byte
-	var err error
 
 	// Detect plaintext-only mode
 	plaintextOnly := detectPlaintextOnly(plainBody, images, attachments)
@@ -663,12 +687,17 @@ func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody
 		msg.Write(encrypted)
 	}
 
-	// Combine all recipients for the envelope
-	allRecipients := append([]string{}, to...)
-	allRecipients = append(allRecipients, cc...)
-	allRecipients = append(allRecipients, bcc...)
+	return msg.Bytes(), nil
+}
 
+// deliverSMTP sends rawMsg to allRecipients via SMTP using account credentials.
+func deliverSMTP(account *config.Account, smtpServer string, smtpPort int, allRecipients []string, rawMsg []byte) error {
 	addr := fmt.Sprintf("%s:%d", smtpServer, smtpPort)
+
+	smtpUser := account.GetSMTPUsername()
+	smtpPass := account.GetSMTPPassword()
+	plainAuth := smtp.PlainAuth("", smtpUser, smtpPass, smtpServer)
+	loginAuthFallback := &loginAuth{username: smtpUser, password: smtpPass}
 
 	tlsConfig := &tls.Config{
 		ServerName:         smtpServer,
@@ -682,52 +711,45 @@ func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody
 	}
 
 	var c *smtp.Client
+	var err error
 
-	// Port 465 uses implicit TLS (the connection starts with TLS).
-	// All other ports use plain TCP with optional STARTTLS upgrade.
 	if smtpPort == 465 {
-		conn, err := tls.Dial("tcp", addr, tlsConfig) //nolint:noctx
-		if err != nil {
-			return nil, err
+		conn, dialErr := tls.Dial("tcp", addr, tlsConfig) //nolint:noctx
+		if dialErr != nil {
+			return dialErr
 		}
 		c, err = smtp.NewClient(conn, smtpServer)
 		if err != nil {
 			conn.Close() //nolint:errcheck,gosec
-			return nil, err
+			return err
 		}
 	} else {
-		var err error
 		c, err = smtp.Dial(addr)
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
 	defer c.Close() //nolint:errcheck
 
 	if err = c.Hello(smtpHelloHostname()); err != nil {
-		return nil, err
+		return err
 	}
 
-	// Trigger STARTTLS if supported (not needed for implicit TLS on port 465)
 	if smtpPort != 465 {
 		if ok, _ := c.Extension("STARTTLS"); ok {
 			if err = c.StartTLS(tlsConfig); err != nil {
-				return nil, err
+				return err
 			}
 		}
 	}
 
-	// Authenticate using the best available mechanism.
-	// c.Extension("AUTH") returns the list of supported mechanisms.
 	if ok, mechs := c.Extension("AUTH"); ok {
 		mechList := strings.ToUpper(mechs)
-
 		switch {
 		case account.IsOAuth2():
-			// Use XOAUTH2 for OAuth2-enabled accounts
 			token, tokenErr := config.GetOAuth2Token(account.Email)
 			if tokenErr != nil {
-				return nil, fmt.Errorf("oauth2: %w", tokenErr)
+				return fmt.Errorf("oauth2: %w", tokenErr)
 			}
 			err = c.Auth(&xoauth2Auth{username: account.Email, token: token})
 		case strings.Contains(mechList, "PLAIN"):
@@ -735,46 +757,33 @@ func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody
 		case strings.Contains(mechList, "LOGIN"):
 			err = c.Auth(loginAuthFallback)
 		default:
-			// Fall back to PLAIN and let the server decide
 			err = c.Auth(plainAuth)
 		}
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
 
-	// Send Envelope
 	if err = c.Mail(account.GetSendAsEmail()); err != nil {
-		return nil, err
+		return err
 	}
 	for _, r := range allRecipients {
 		if err = c.Rcpt(r); err != nil {
-			return nil, err
+			return err
 		}
 	}
 
-	// Write Data
 	w, err := c.Data()
 	if err != nil {
-		return nil, err
+		return err
 	}
-	_, err = w.Write(msg.Bytes())
-	if err != nil {
-		return nil, err
+	if _, err = w.Write(rawMsg); err != nil {
+		return err
 	}
-	err = w.Close()
-	if err != nil {
-		return nil, err
+	if err = w.Close(); err != nil {
+		return err
 	}
-
-	rawMsg := make([]byte, len(msg.Bytes()))
-	copy(rawMsg, msg.Bytes())
-
-	if err := c.Quit(); err != nil {
-		return nil, err
-	}
-
-	return rawMsg, nil
+	return c.Quit()
 }
 
 // SendCalendarReply sends an iMIP (RFC 6047) calendar reply.
@@ -1133,16 +1142,17 @@ func encryptEmailPGP(payload []byte, recipients []string, account *config.Accoun
 			}
 		}
 
-		// Try .asc (armored) first, then .gpg (binary)
+		// Try .asc, .gpg, .pem extensions
 		var keyData []byte
-		keyPath := filepath.Join(pgpDir, email+".asc")
-		keyData, err = os.ReadFile(keyPath)
-		if err != nil {
-			keyPath = filepath.Join(pgpDir, email+".gpg")
-			keyData, err = os.ReadFile(keyPath)
-			if err != nil {
-				return nil, fmt.Errorf("missing PGP key for %s (tried .asc and .gpg): %w", email, err)
+		var readErr error
+		for _, ext := range []string{".asc", ".gpg", ".pem"} {
+			keyData, readErr = os.ReadFile(filepath.Join(pgpDir, email+ext))
+			if readErr == nil {
+				break
 			}
+		}
+		if readErr != nil {
+			return nil, fmt.Errorf("missing PGP key for %s (tried .asc, .gpg, .pem in %s): %w", email, pgpDir, readErr)
 		}
 
 		// Try armored format first
@@ -1178,18 +1188,49 @@ func encryptEmailPGP(payload []byte, recipients []string, account *config.Accoun
 		return nil, errors.New("cannot encrypt: no valid PGP public keys found for recipients")
 	}
 
-	// Encrypt using go-pgpmail
-	var encrypted bytes.Buffer
-
-	// Create a minimal header for the encrypted content
+	// Split transport headers (From, To, Subject, …) from the MIME body.
+	// pgpmail.Encrypt needs transport headers in its header param so they
+	// appear unencrypted in the outer message; only content headers + body
+	// are encrypted.
 	var header messagetextproto.Header
+	var bodyPayload []byte
+	if idx := bytes.Index(payload, []byte("\r\n\r\n")); idx >= 0 {
+		headerBytes := payload[:idx]
+		rawBody := payload[idx+4:]
 
+		var contentHeaders bytes.Buffer
+		for _, line := range bytes.Split(headerBytes, []byte("\r\n")) {
+			if len(line) == 0 {
+				continue
+			}
+			parts := bytes.SplitN(line, []byte(": "), 2)
+			if len(parts) != 2 {
+				continue
+			}
+			key := string(parts[0])
+			val := string(parts[1])
+			upper := strings.ToUpper(key)
+			if strings.HasPrefix(upper, "CONTENT-") || upper == "MIME-VERSION" {
+				contentHeaders.Write(line)
+				contentHeaders.WriteString("\r\n")
+			} else {
+				header.Set(key, val)
+			}
+		}
+		contentHeaders.WriteString("\r\n")
+		contentHeaders.Write(rawBody)
+		bodyPayload = contentHeaders.Bytes()
+	} else {
+		bodyPayload = payload
+	}
+
+	var encrypted bytes.Buffer
 	mw, err := pgpmail.Encrypt(&encrypted, header, entityList, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create PGP encryptor: %w", err)
 	}
 
-	if _, err := mw.Write(payload); err != nil {
+	if _, err := mw.Write(bodyPayload); err != nil {
 		return nil, fmt.Errorf("failed to write message for encryption: %w", err)
 	}
 

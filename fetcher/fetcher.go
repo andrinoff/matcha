@@ -26,10 +26,12 @@ import (
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
+	"github.com/emersion/go-message"
 	"github.com/emersion/go-message/mail"
 	"github.com/emersion/go-pgpmail"
 	"github.com/floatpane/matcha/config"
 	"github.com/floatpane/matcha/internal/loglevel"
+	"github.com/floatpane/matcha/pgp"
 	"go.mozilla.org/pkcs7"
 	"golang.org/x/text/encoding"
 	"golang.org/x/text/encoding/ianaindex"
@@ -1033,25 +1035,43 @@ func FetchEmailBodyFromMailbox(account *config.Account, mailbox string, uid uint
 		// We handle decryption when we find the encrypted data part (application/octet-stream).
 		// Skip the version info part (application/pgp-encrypted) and continue processing.
 
-		// Detect encrypted data part of PGP message
-		if strings.Contains(filename, ".asc") || (mimeType == "application/octet-stream" && part.Encoding == "7bit") {
+		// Detect encrypted data part of PGP message.
+		// Match: filename ends with .asc, OR anonymous application/octet-stream (RFC 3156
+		// encrypted data part has no filename). The previous "7bit" encoding check was
+		// dropped because IMAP servers return "7BIT" (uppercase) while the default for
+		// nil encoding in go-imap is "7bit" (lowercase) — the mismatch silently blocked
+		// all decryption attempts.
+		isPossiblePGPData := strings.Contains(strings.ToLower(filename), ".asc") ||
+			(mimeType == "application/octet-stream" && filename == "")
+		if isPossiblePGPData {
 			// This might be PGP encrypted data
+			loglevel.Debugf("pgp: fetching part %s (encoding=%s, mime=%s)", partID, part.Encoding, mimeType)
 			data, err := fetchInlinePart(partID, part.Encoding)
+			loglevel.Debugf("pgp: fetchInlinePart returned len=%d err=%v", len(data), err)
 			if err == nil && bytes.Contains(data, []byte("-----BEGIN PGP MESSAGE-----")) {
 				// This is PGP encrypted content
-				if account.PGPPrivateKey != "" {
-					decrypted, err := decryptPGPMessage(data, account)
-					if err == nil {
-						// Parse the decrypted MIME content
-						mr, err := mail.CreateReader(bytes.NewReader(decrypted))
-						if err == nil {
+				pgpProvider, provErr := pgp.NewProvider(account)
+				loglevel.Debugf("pgp: NewProvider returned provErr=%v", provErr)
+				if provErr == nil {
+					loglevel.Debugf("pgp: calling DecryptBare")
+					decrypted, decErr := pgpProvider.DecryptBare(data)
+					loglevel.Debugf("pgp: DecryptBare returned len=%d decErr=%v", len(decrypted), decErr)
+					if decErr == nil {
+						// Parse the decrypted MIME content.
+						// mail.CreateReader can return (reader, non-nil-error) for
+						// unknown charsets — accept the reader in that case too.
+						mr, parseErr := mail.CreateReader(bytes.NewReader(decrypted))
+						if mr != nil && (parseErr == nil || message.IsUnknownCharset(parseErr)) {
 							for {
 								p, err := mr.NextPart()
 								if errors.Is(err, io.EOF) {
 									break
 								}
-								if err != nil {
+								if err != nil && !message.IsUnknownCharset(err) {
 									break
+								}
+								if p == nil {
+									continue
 								}
 
 								if h, ok := p.Header.(*mail.InlineHeader); ok {
@@ -1069,21 +1089,28 @@ func FetchEmailBodyFromMailbox(account *config.Account, mailbox string, uid uint
 									}
 								}
 							}
-
-							// Add status marker
-							attachments = append(attachments, Attachment{
-								Filename:       "pgp-status.internal",
-								IsPGPEncrypted: true,
-								PGPVerified:    true, // Decryption succeeded
-							})
 						}
+
+						// Fallback: if MIME parsing failed or yielded no body, treat
+						// the raw decrypted bytes as plain text.
+						if extractedBody == "" {
+							extractedBody = strings.TrimSpace(string(decrypted))
+							extractedBodyMIMEType = mimeTextPlain
+							plainPartID = "decrypted"
+						}
+
+						attachments = append(attachments, Attachment{
+							Filename:       "pgp-status.internal",
+							IsPGPEncrypted: true,
+							PGPVerified:    true,
+						})
 					} else {
-						extractedBody = fmt.Sprintf("**PGP Decryption Failed:** %s\n", err)
+						extractedBody = fmt.Sprintf("**PGP Decryption Failed:** %s\n", decErr)
 						extractedBodyMIMEType = mimeTextPlain
 						htmlPartID = partExtracted
 					}
 				} else {
-					extractedBody = "**PGP Encrypted:** Private key not configured\n"
+					extractedBody = "**PGP Encrypted:** Key not configured\n"
 					extractedBodyMIMEType = mimeTextPlain
 					htmlPartID = partExtracted
 				}
@@ -2017,51 +2044,6 @@ func DeleteFolderEmail(account *config.Account, folder string, uid uint32) error
 // ArchiveFolderEmail archives an email from an arbitrary folder.
 func ArchiveFolderEmail(account *config.Account, folder string, uid uint32) error {
 	return ArchiveEmailFromMailbox(account, folder, uid)
-}
-
-// decryptPGPMessage decrypts a PGP-encrypted message using the account's private key.
-func decryptPGPMessage(encryptedData []byte, account *config.Account) ([]byte, error) {
-	if account.PGPPrivateKey == "" {
-		return nil, errors.New("PGP private key not configured")
-	}
-
-	// Load private key
-	keyFile, err := os.ReadFile(account.PGPPrivateKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read PGP private key: %w", err)
-	}
-
-	// Try armored format first
-	entityList, err := openpgp.ReadArmoredKeyRing(bytes.NewReader(keyFile))
-	if err != nil {
-		// Try binary format
-		entityList, err = openpgp.ReadKeyRing(bytes.NewReader(keyFile))
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse PGP private key: %w", err)
-		}
-	}
-
-	if len(entityList) == 0 {
-		return nil, errors.New("no PGP keys found in private keyring")
-	}
-
-	// Decrypt using go-pgpmail
-	mr, err := pgpmail.Read(bytes.NewReader(encryptedData), openpgp.EntityList{entityList[0]}, nil, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt PGP message: %w", err)
-	}
-
-	// Read decrypted content from UnverifiedBody
-	if mr.MessageDetails == nil || mr.MessageDetails.UnverifiedBody == nil {
-		return nil, errors.New("no decrypted content available")
-	}
-
-	var decrypted bytes.Buffer
-	if _, err := io.Copy(&decrypted, mr.MessageDetails.UnverifiedBody); err != nil {
-		return nil, fmt.Errorf("failed to read decrypted content: %w", err)
-	}
-
-	return decrypted.Bytes(), nil
 }
 
 // loadPGPKeyring builds an openpgp.EntityList from the account's public key
