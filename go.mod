@@ -19,7 +19,7 @@ require (
 	github.com/floatpane/go-icalendar v0.0.1
 	github.com/floatpane/go-keybind v0.0.1
 	github.com/floatpane/go-mailpatch v0.0.2
-	github.com/floatpane/go-openpgp-card-hl v0.1.1
+	github.com/floatpane/go-openpgp-card-hl v0.1.2
 	github.com/floatpane/go-patchapply v0.0.1
 	github.com/floatpane/go-secretbox v0.1.0
 	github.com/floatpane/go-uds-jsonrpc v0.0.1
@@ -81,5 +81,3 @@ require (
 	golang.org/x/sys v0.46.0 // indirect
 	kernel.org/pub/linux/libs/security/libcap/psx v1.2.77 // indirect
 )
-
-replace github.com/floatpane/go-openpgp-card-hl v0.1.1 => ../go-openpgp-card-hl
