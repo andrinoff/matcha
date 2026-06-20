@@ -203,6 +203,33 @@ gpg/card> admin
 gpg/card> generate
 ```
 
+### Decrypting Email with a YubiKey
+
+Matcha can also decrypt incoming PGP email using the decryption key on your
+YubiKey — the private key never leaves the device. No extra configuration is
+needed beyond the YubiKey setup above; decryption uses the same PIN.
+
+How it works under the hood:
+
+- **RSA keys** are decrypted over a direct PC/SC session. Matcha first runs
+  `gpgconf --kill scdaemon` to release the card, because GnuPG's `scdaemon`
+  otherwise holds it inside a PC/SC transaction and any direct access would
+  block indefinitely (the YubiKey LED glows steadily rather than flashing).
+- **ECDH / Curve25519 keys** are not supported over the direct PC/SC path, so
+  Matcha falls back to the local `gpg` binary (which talks to `gpg-agent`). If
+  the direct session hangs for more than 20 seconds it also falls back to this
+  path automatically.
+
+To suppress the `gpg-agent` PIN prompt — a `pinentry` dialog clashes with the
+TUI — Matcha pre-caches your PIN with the agent via `PRESET_PASSPHRASE`. This
+requires `allow-preset-passphrase` in `~/.gnupg/gpg-agent.conf`, so Matcha adds
+that line automatically (and reloads the agent) the first time it decrypts. No
+manual edit is needed.
+
+> [!NOTE]
+> Decryption debug output (card open, fallback decisions, PIN caching) is only
+> emitted when Matcha runs at debug log level — start it with `--debug --logs`.
+
 ## Status Indicators
 
 When viewing an email, Matcha shows the PGP status in the header:
@@ -296,6 +323,38 @@ gpgconf --kill scdaemon
 ```
 
 This tells `scdaemon` to use `pcscd` as its backend instead of grabbing the USB device directly, allowing both GnuPG and Matcha to share the YubiKey.
+
+### Decryption hangs and the YubiKey LED glows steadily
+
+A steady (non-flashing) LED means the card is held in a session, not waiting for
+a touch. GnuPG's `scdaemon` is holding the card in a PC/SC transaction, so
+Matcha's direct decryption session blocks.
+
+Matcha now runs `gpgconf --kill scdaemon` before each decryption to release the
+card, and times out after 20 seconds to fall back to the `gpg-agent` path. If it
+still hangs, free the card manually:
+
+```bash
+gpgconf --kill scdaemon
+```
+
+You can also let GnuPG and Matcha share the reader via `pcscd` (see
+[LIBUSB_ERROR_BUSY](#libusb_error_busy-in-pcscd-logs) above).
+
+### A pinentry dialog appears and breaks the TUI
+
+When decrypting via the `gpg-agent` fallback, the agent asks for the card PIN
+with a `pinentry` program, whose dialog corrupts the terminal UI.
+
+Matcha avoids this by pre-caching your PIN in `gpg-agent`, which requires
+`allow-preset-passphrase` in `~/.gnupg/gpg-agent.conf`. Matcha adds this line
+automatically, but if you have a restricted or read-only GnuPG home, add it
+yourself and reload the agent:
+
+```bash
+echo "allow-preset-passphrase" >> ~/.gnupg/gpg-agent.conf
+gpg-connect-agent reloadagent /bye
+```
 
 ### "PIN verification failed"
 

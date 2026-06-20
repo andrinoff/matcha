@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"log"
 	"os/exec"
 	"time"
 
 	cardhl "github.com/floatpane/go-openpgp-card-hl"
 
 	"github.com/floatpane/matcha/config"
+	"github.com/floatpane/matcha/internal/loglevel"
 )
 
 // releaseSCDaemon asks gpg to drop its scdaemon, which otherwise holds the
@@ -20,7 +20,7 @@ import (
 // gpg-agent fallback path still works afterward.
 func releaseSCDaemon() {
 	if err := exec.Command("gpgconf", "--kill", "scdaemon").Run(); err != nil {
-		log.Printf("[pgp-debug] smartcard: kill scdaemon: %v", err)
+		loglevel.Debugf("pgp smartcard: kill scdaemon: %v", err)
 	}
 }
 
@@ -71,10 +71,8 @@ func (p *SmartcardProvider) Decrypt(payload []byte) ([]byte, error) {
 		return plain, nil
 	}
 	if errors.Is(err, cardhl.ErrUnsupportedKey) || errors.Is(err, errCardTimeout) {
-		log.Printf("[pgp-debug] smartcard: %v, falling back to gpg-agent", err)
-		result, gpgErr := gpgAgentDecryptMIME(payload, p.account.PGPPIN)
-		log.Printf("[pgp-debug] smartcard: gpg-agent returned len=%d err=%v", len(result), gpgErr)
-		return result, gpgErr
+		loglevel.Debugf("pgp smartcard: %v, falling back to gpg-agent", err)
+		return gpgAgentDecryptMIME(payload, p.account.PGPPIN)
 	}
 	return nil, err
 }
@@ -99,18 +97,18 @@ func (p *SmartcardProvider) cardDecrypt(payload []byte) ([]byte, error) {
 	ch := make(chan result, 1)
 
 	go func() {
-		log.Printf("[pgp-debug] smartcard: opening card")
+		loglevel.Debugf("pgp smartcard: opening card")
 		card, err := cardhl.Open()
-		log.Printf("[pgp-debug] smartcard: Open returned err=%v", err)
+		loglevel.Debugf("pgp smartcard: Open returned err=%v", err)
 		if err != nil {
 			ch <- result{nil, err}
 			return
 		}
 		defer card.Close() //nolint:errcheck
 
-		log.Printf("[pgp-debug] smartcard: calling DecryptMIME")
+		loglevel.Debugf("pgp smartcard: calling DecryptMIME")
 		plain, err := card.DecryptMIME(payload, p.account.PGPPIN, pubEntity)
-		log.Printf("[pgp-debug] smartcard: DecryptMIME returned len=%d err=%v", len(plain), err)
+		loglevel.Debugf("pgp smartcard: DecryptMIME returned len=%d err=%v", len(plain), err)
 		ch <- result{plain, err}
 	}()
 
@@ -118,7 +116,7 @@ func (p *SmartcardProvider) cardDecrypt(payload []byte) ([]byte, error) {
 	case r := <-ch:
 		return r.plain, r.err
 	case <-time.After(20 * time.Second):
-		log.Printf("[pgp-debug] smartcard: direct PC/SC session timed out")
+		loglevel.Debugf("pgp smartcard: direct PC/SC session timed out")
 		return nil, errCardTimeout
 	}
 }

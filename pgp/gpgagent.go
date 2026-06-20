@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"log"
 	"mime"
 	"mime/multipart"
 	"os"
@@ -14,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/floatpane/matcha/internal/loglevel"
 )
 
 // gpgAgentDecryptMIME decrypts a multipart/encrypted MIME message (RFC 3156)
@@ -49,9 +50,9 @@ func gpgAgentDecryptMIME(payload []byte, pin string) ([]byte, error) {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	log.Printf("[pgp-debug] gpg-agent: running gpg --decrypt")
+	loglevel.Debugf("pgp gpg-agent: running gpg --decrypt")
 	runErr := cmd.Run()
-	log.Printf("[pgp-debug] gpg-agent: gpg exited err=%v stderr=%q", runErr, strings.TrimSpace(stderr.String()))
+	loglevel.Debugf("pgp gpg-agent: gpg exited err=%v stderr=%q", runErr, strings.TrimSpace(stderr.String()))
 	if runErr != nil {
 		if ctx.Err() != nil {
 			return nil, fmt.Errorf("gpg-agent decrypt: timed out after 90s — touch your YubiKey if the LED is flashing")
@@ -75,17 +76,14 @@ func presetSmartcardPIN(pin string) {
 	ensureAllowPresetPassphrase()
 	grip, err := decryptKeygrip()
 	if err != nil {
-		log.Printf("[pgp-debug] preset PIN: %v", err)
+		loglevel.Debugf("pgp: preset PIN keygrip lookup: %v", err)
 		return
 	}
 	hexPIN := hex.EncodeToString([]byte(pin))
 	// -1 means the cached passphrase does not expire.
 	asuCmd := fmt.Sprintf("PRESET_PASSPHRASE %s -1 %s", grip, hexPIN)
-	out, err := exec.Command("gpg-connect-agent", asuCmd, "/bye").CombinedOutput()
-	if err != nil {
-		log.Printf("[pgp-debug] preset PIN failed (grip=%s): %v: %s", grip, err, strings.TrimSpace(string(out)))
-	} else {
-		log.Printf("[pgp-debug] preset PIN ok (grip=%s)", grip)
+	if out, err := exec.Command("gpg-connect-agent", asuCmd, "/bye").CombinedOutput(); err != nil {
+		loglevel.Debugf("pgp: preset PIN failed: %v: %s", err, strings.TrimSpace(string(out)))
 	}
 }
 
@@ -98,7 +96,7 @@ func ensureAllowPresetPassphrase() {
 	confPath := gpgAgentConfPath()
 	data, err := os.ReadFile(confPath)
 	if err != nil && !os.IsNotExist(err) {
-		log.Printf("[pgp-debug] read gpg-agent.conf: %v", err)
+		loglevel.Debugf("pgp: read gpg-agent.conf: %v", err)
 		return
 	}
 	for _, line := range strings.Split(string(data), "\n") {
@@ -108,7 +106,7 @@ func ensureAllowPresetPassphrase() {
 	}
 
 	if err := os.MkdirAll(filepath.Dir(confPath), 0o700); err != nil {
-		log.Printf("[pgp-debug] mkdir gnupg home: %v", err)
+		loglevel.Debugf("pgp: create gnupg home: %v", err)
 		return
 	}
 	content := string(data)
@@ -117,13 +115,12 @@ func ensureAllowPresetPassphrase() {
 	}
 	content += "allow-preset-passphrase\n"
 	if err := os.WriteFile(confPath, []byte(content), 0o600); err != nil {
-		log.Printf("[pgp-debug] write gpg-agent.conf: %v", err)
+		loglevel.Debugf("pgp: write gpg-agent.conf: %v", err)
 		return
 	}
 
-	log.Printf("[pgp-debug] enabled allow-preset-passphrase in %s, reloading agent", confPath)
 	if out, err := exec.Command("gpg-connect-agent", "reloadagent", "/bye").CombinedOutput(); err != nil {
-		log.Printf("[pgp-debug] reload agent: %v: %s", err, strings.TrimSpace(string(out)))
+		loglevel.Debugf("pgp: reload gpg-agent: %v: %s", err, strings.TrimSpace(string(out)))
 	}
 }
 
