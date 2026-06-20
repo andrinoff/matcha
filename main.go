@@ -2103,6 +2103,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 		acctSnap := slices.Clone(m.emailsByAcct[msg.AccountID])
 		folderSnap := slices.Clone(m.folderEmails[folderName])
 
+		m.decrementFolderUnreadForRemoved(folderName, msg.AccountID, []uint32{msg.UID})
 		m.removeEmailFromStores(msg.UID, msg.AccountID)
 
 		if emails, ok := m.folderEmails[folderName]; ok {
@@ -2153,6 +2154,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 		acctSnap := slices.Clone(m.emailsByAcct[msg.AccountID])
 		folderSnap := slices.Clone(m.folderEmails[folderName])
 
+		m.decrementFolderUnreadForRemoved(folderName, msg.AccountID, []uint32{msg.UID})
 		m.removeEmailFromStores(msg.UID, msg.AccountID)
 
 		if emails, ok := m.folderEmails[folderName]; ok {
@@ -2224,6 +2226,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 		acctSnap := slices.Clone(m.emailsByAcct[msg.AccountID])
 		folderSnap := slices.Clone(m.folderEmails[folderName])
 
+		m.decrementFolderUnreadForRemoved(folderName, msg.AccountID, msg.UIDs)
 		for _, uid := range msg.UIDs {
 			m.removeEmailFromStores(uid, msg.AccountID)
 		}
@@ -2278,6 +2281,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 		acctSnap := slices.Clone(m.emailsByAcct[msg.AccountID])
 		folderSnap := slices.Clone(m.folderEmails[folderName])
 
+		m.decrementFolderUnreadForRemoved(folderName, msg.AccountID, msg.UIDs)
 		for _, uid := range msg.UIDs {
 			m.removeEmailFromStores(uid, msg.AccountID)
 		}
@@ -2676,6 +2680,23 @@ func (m *mainModel) restorePendingAction() {
 
 	if m.folderInbox != nil {
 		m.folderInbox.SetEmails(pa.folderSnap, m.config.Accounts)
+		// Restore the folder unread counter that was decremented when the action
+		// was applied, so the sidebar count is correct again after undo.
+		restored := false
+		for _, uid := range pa.uids {
+			for _, e := range pa.folderSnap {
+				if e.UID == uid && e.AccountID == pa.accountID {
+					if !e.IsRead {
+						m.folderInbox.IncrementUnreadCount(pa.folderName)
+						restored = true
+					}
+					break
+				}
+			}
+		}
+		if restored {
+			config.SaveAccountFolders(pa.accountID, m.folderInbox.GetFolders(), m.folderInbox.GetUnreadCountsCopy()) //nolint:errcheck,gosec
+		}
 	}
 	go saveFolderEmailsToCache(pa.folderName, pa.folderSnap)
 }
@@ -2870,6 +2891,42 @@ func (m *mainModel) removeEmailFromStores(uid uint32, accountID string) {
 			}
 		}
 		m.emailsByAcct[accountID] = filteredAcct
+	}
+}
+
+// decrementFolderUnreadForRemoved updates the sidebar folder unread counter when
+// emails are removed from a folder (delete/archive). It mirrors the read-path in
+// markEmailAsReadInStores: each removed email that is currently unread decrements
+// the folder's counter, so the count shown in the folder list updates immediately
+// instead of only on the next fetch (issue #1404).
+//
+// It must be called before the email is removed from the stores, since it reads
+// the email's unread status from folderEmails.
+func (m *mainModel) decrementFolderUnreadForRemoved(folderName, accountID string, uids []uint32) {
+	if m.folderInbox == nil || len(uids) == 0 {
+		return
+	}
+
+	emails, ok := m.folderEmails[folderName]
+	if !ok {
+		return
+	}
+
+	decremented := false
+	for _, uid := range uids {
+		for _, e := range emails {
+			if e.UID == uid && e.AccountID == accountID {
+				if !e.IsRead {
+					m.folderInbox.DecrementUnreadCount(folderName)
+					decremented = true
+				}
+				break
+			}
+		}
+	}
+
+	if decremented {
+		config.SaveAccountFolders(accountID, m.folderInbox.GetFolders(), m.folderInbox.GetUnreadCountsCopy()) //nolint:errcheck,gosec
 	}
 }
 
