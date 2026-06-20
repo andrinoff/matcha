@@ -694,8 +694,10 @@ func buildEmailMsg(account *config.Account, to, cc, bcc []string, subject, plain
 func deliverSMTP(account *config.Account, smtpServer string, smtpPort int, allRecipients []string, rawMsg []byte) error { //nolint:gocyclo
 	addr := fmt.Sprintf("%s:%d", smtpServer, smtpPort)
 
-	plainAuth := smtp.PlainAuth("", account.Email, account.Password, smtpServer)
-	loginAuthFallback := &loginAuth{username: account.Email, password: account.Password}
+	smtpUser := account.GetSMTPUsername()
+	smtpPass := account.GetSMTPPassword()
+	plainAuth := smtp.PlainAuth("", smtpUser, smtpPass, smtpServer)
+	loginAuthFallback := &loginAuth{username: smtpUser, password: smtpPass}
 
 	tlsConfig := &tls.Config{
 		ServerName:         smtpServer,
@@ -796,8 +798,10 @@ func SendCalendarReply(account *config.Account, to []string, subject, plainBody 
 		return nil, fmt.Errorf("unsupported or missing service_provider: %s", account.ServiceProvider)
 	}
 
-	plainAuth := smtp.PlainAuth("", account.Email, account.Password, smtpServer)
-	loginAuthFallback := &loginAuth{username: account.Email, password: account.Password}
+	smtpUser := account.GetSMTPUsername()
+	smtpPass := account.GetSMTPPassword()
+	plainAuth := smtp.PlainAuth("", smtpUser, smtpPass, smtpServer)
+	loginAuthFallback := &loginAuth{username: smtpUser, password: smtpPass}
 
 	fromHeader := account.FormatFromHeader()
 
