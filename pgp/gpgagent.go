@@ -2,59 +2,187 @@ package pgp
 
 import (
 	"bytes"
+	"context"
+	"encoding/hex"
 	"fmt"
 	"io"
+	"log"
 	"mime"
 	"mime/multipart"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
+	"time"
 )
 
 // gpgAgentDecryptMIME decrypts a multipart/encrypted MIME message (RFC 3156)
 // by piping the OpenPGP ciphertext to the local gpg binary, which delegates
 // to gpg-agent. Supports all key types including ECDH/Curve25519 YubiKey slots.
 //
-// pin is the YubiKey User PIN (or software key passphrase). It is forwarded to
-// gpg-agent via --pinentry-mode loopback so no Pinentry GUI is required.
+// pin is the YubiKey User PIN. It is pre-cached in gpg-agent via
+// PRESET_PASSPHRASE so the agent can authorize the card without launching a
+// graphical pinentry (which would hang in a TUI context).
 func gpgAgentDecryptMIME(payload []byte, pin string) ([]byte, error) {
 	armored, err := extractArmoredFromMIME(payload)
 	if err != nil {
 		return nil, fmt.Errorf("gpg-agent: %w", err)
 	}
 
-	// Pipe the PIN to gpg on fd 3 so stdin stays free for the ciphertext.
-	pinR, pinW, err := os.Pipe()
-	if err != nil {
-		return nil, fmt.Errorf("gpg-agent: pin pipe: %w", err)
-	}
-	if _, err := io.WriteString(pinW, pin+"\n"); err != nil {
-		pinR.Close()
-		pinW.Close()
-		return nil, fmt.Errorf("gpg-agent: write pin: %w", err)
-	}
-	pinW.Close()
+	// Pre-cache the PIN in gpg-agent under the decryption subkey's grip.
+	// Without this, gpg-agent would try to launch a pinentry GUI for the
+	// smartcard PIN, which blocks forever in a terminal context.
+	presetSmartcardPIN(pin)
 
-	cmd := exec.Command("gpg",
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "gpg",
 		"--decrypt",
 		"--batch",
 		"--yes",
 		"--quiet",
-		"--pinentry-mode", "loopback",
-		"--passphrase-fd", "3",
+		"--no-tty",
 	)
 	cmd.Stdin = bytes.NewReader(armored)
-	cmd.ExtraFiles = []*os.File{pinR} // becomes fd 3
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
+	log.Printf("[pgp-debug] gpg-agent: running gpg --decrypt")
 	runErr := cmd.Run()
-	pinR.Close()
+	log.Printf("[pgp-debug] gpg-agent: gpg exited err=%v stderr=%q", runErr, strings.TrimSpace(stderr.String()))
 	if runErr != nil {
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("gpg-agent decrypt: timed out after 90s — touch your YubiKey if the LED is flashing")
+		}
 		return nil, fmt.Errorf("gpg-agent decrypt: %w: %s", runErr, strings.TrimSpace(stderr.String()))
 	}
 	return stdout.Bytes(), nil
+}
+
+// presetSmartcardPIN pre-caches the smartcard PIN in gpg-agent via the
+// PRESET_PASSPHRASE assuan command. The keygrip of the encryption subkey is
+// looked up from `gpg --card-status`. gpg-agent will use the cached PIN when
+// scdaemon requests it, bypassing any pinentry dialog.
+func presetSmartcardPIN(pin string) {
+	if pin == "" {
+		return
+	}
+	// PRESET_PASSPHRASE is silently ignored unless gpg-agent.conf opts in with
+	// allow-preset-passphrase; without it gpg-agent falls back to pinentry,
+	// which clashes with the TUI. Make sure the option is enabled first.
+	ensureAllowPresetPassphrase()
+	grip, err := decryptKeygrip()
+	if err != nil {
+		log.Printf("[pgp-debug] preset PIN: %v", err)
+		return
+	}
+	hexPIN := hex.EncodeToString([]byte(pin))
+	// -1 means the cached passphrase does not expire.
+	asuCmd := fmt.Sprintf("PRESET_PASSPHRASE %s -1 %s", grip, hexPIN)
+	out, err := exec.Command("gpg-connect-agent", asuCmd, "/bye").CombinedOutput()
+	if err != nil {
+		log.Printf("[pgp-debug] preset PIN failed (grip=%s): %v: %s", grip, err, strings.TrimSpace(string(out)))
+	} else {
+		log.Printf("[pgp-debug] preset PIN ok (grip=%s)", grip)
+	}
+}
+
+// ensureAllowPresetPassphrase guarantees gpg-agent.conf contains
+// allow-preset-passphrase, the option that lets PRESET_PASSPHRASE (and thus
+// presetSmartcardPIN) suppress the pinentry dialog. If the line is added, the
+// running agent is reloaded so it takes effect immediately. Best-effort: every
+// error is logged and ignored so decryption still proceeds (with pinentry).
+func ensureAllowPresetPassphrase() {
+	confPath := gpgAgentConfPath()
+	data, err := os.ReadFile(confPath)
+	if err != nil && !os.IsNotExist(err) {
+		log.Printf("[pgp-debug] read gpg-agent.conf: %v", err)
+		return
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "allow-preset-passphrase") {
+			return // already enabled
+		}
+	}
+
+	if err := os.MkdirAll(filepath.Dir(confPath), 0o700); err != nil {
+		log.Printf("[pgp-debug] mkdir gnupg home: %v", err)
+		return
+	}
+	content := string(data)
+	if len(content) > 0 && !strings.HasSuffix(content, "\n") {
+		content += "\n"
+	}
+	content += "allow-preset-passphrase\n"
+	if err := os.WriteFile(confPath, []byte(content), 0o600); err != nil {
+		log.Printf("[pgp-debug] write gpg-agent.conf: %v", err)
+		return
+	}
+
+	log.Printf("[pgp-debug] enabled allow-preset-passphrase in %s, reloading agent", confPath)
+	if out, err := exec.Command("gpg-connect-agent", "reloadagent", "/bye").CombinedOutput(); err != nil {
+		log.Printf("[pgp-debug] reload agent: %v: %s", err, strings.TrimSpace(string(out)))
+	}
+}
+
+// gpgAgentConfPath resolves the gpg-agent.conf location, honoring GNUPGHOME and
+// falling back to ~/.gnupg.
+func gpgAgentConfPath() string {
+	if h := os.Getenv("GNUPGHOME"); h != "" {
+		return filepath.Join(h, "gpg-agent.conf")
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return filepath.Join(".gnupg", "gpg-agent.conf")
+	}
+	return filepath.Join(home, ".gnupg", "gpg-agent.conf")
+}
+
+// decryptKeygrip returns the keygrip of the encryption subkey on the connected
+// OpenPGP card by parsing `gpg --with-keygrip --with-colons --card-status`.
+func decryptKeygrip() (string, error) {
+	out, err := exec.Command("gpg", "--with-keygrip", "--with-colons", "--card-status").Output()
+	if err != nil {
+		// Fallback: list-secret-keys also shows card stubs with their grips.
+		out, err = exec.Command("gpg", "--with-keygrip", "--with-colons", "--list-secret-keys").Output()
+		if err != nil {
+			return "", fmt.Errorf("gpg keygrip lookup: %w", err)
+		}
+	}
+
+	// The colon-delimited output has "sub" or "ssb" lines for subkeys followed
+	// immediately by "grp" lines containing the keygrip. Field index 11
+	// (1-based: 12) of the sub/ssb line holds the key capabilities; "e" means
+	// encryption.
+	lines := strings.Split(string(out), "\n")
+	isEncryptSub := false
+	for _, line := range lines {
+		fields := strings.Split(line, ":")
+		if len(fields) < 2 {
+			isEncryptSub = false
+			continue
+		}
+		switch fields[0] {
+		case "sub", "ssb":
+			if len(fields) > 11 && strings.Contains(fields[11], "e") {
+				isEncryptSub = true
+			} else {
+				isEncryptSub = false
+			}
+		case "grp":
+			if isEncryptSub && len(fields) > 9 {
+				if grip := strings.TrimSpace(fields[9]); grip != "" {
+					return grip, nil
+				}
+			}
+			isEncryptSub = false
+		default:
+			isEncryptSub = false
+		}
+	}
+	return "", fmt.Errorf("no encryption subkey keygrip in card status output")
 }
 
 // extractArmoredFromMIME returns the ASCII-armored OpenPGP ciphertext from

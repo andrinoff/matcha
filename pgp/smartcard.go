@@ -4,11 +4,25 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"log"
+	"os/exec"
+	"time"
 
 	cardhl "github.com/floatpane/go-openpgp-card-hl"
 
 	"github.com/floatpane/matcha/config"
 )
+
+// releaseSCDaemon asks gpg to drop its scdaemon, which otherwise holds the
+// OpenPGP card inside a PC/SC transaction. Without this, a direct shared PC/SC
+// session connects but blocks indefinitely on the first APDU transmit because
+// scdaemon never releases the card. gpg re-spawns scdaemon on demand, so the
+// gpg-agent fallback path still works afterward.
+func releaseSCDaemon() {
+	if err := exec.Command("gpgconf", "--kill", "scdaemon").Run(); err != nil {
+		log.Printf("[pgp-debug] smartcard: kill scdaemon: %v", err)
+	}
+}
 
 // SmartcardProvider implements PGPProvider using a hardware OpenPGP token
 // (e.g. YubiKey). The device's private key never leaves the hardware.
@@ -48,25 +62,65 @@ func (p *SmartcardProvider) Decrypt(payload []byte) ([]byte, error) {
 		return nil, errors.New("pgp smartcard: public key path not configured")
 	}
 
+	// gpg's scdaemon keeps the card locked in a PC/SC transaction; drop it so
+	// the direct session below can talk to the card instead of blocking.
+	releaseSCDaemon()
+
+	plain, err := p.cardDecrypt(payload)
+	if err == nil {
+		return plain, nil
+	}
+	if errors.Is(err, cardhl.ErrUnsupportedKey) || errors.Is(err, errCardTimeout) {
+		log.Printf("[pgp-debug] smartcard: %v, falling back to gpg-agent", err)
+		result, gpgErr := gpgAgentDecryptMIME(payload, p.account.PGPPIN)
+		log.Printf("[pgp-debug] smartcard: gpg-agent returned len=%d err=%v", len(result), gpgErr)
+		return result, gpgErr
+	}
+	return nil, err
+}
+
+// errCardTimeout signals the direct PC/SC session hung (typically still-present
+// scdaemon contention), so the caller should fall back to the gpg-agent path.
+var errCardTimeout = errors.New("pgp smartcard: card session timed out")
+
+// cardDecrypt runs the direct PC/SC open + decrypt under a deadline. PC/SC
+// transmits have no native timeout, so a hung card (e.g. held by scdaemon)
+// would otherwise block forever; the deadline turns that into errCardTimeout.
+func (p *SmartcardProvider) cardDecrypt(payload []byte) ([]byte, error) {
 	pubEntity, err := cardhl.LoadEntity(p.account.PGPPublicKey)
 	if err != nil {
 		return nil, fmt.Errorf("pgp smartcard: load public key: %w", err)
 	}
 
-	card, err := cardhl.Open()
-	if err != nil {
-		return nil, err
+	type result struct {
+		plain []byte
+		err   error
 	}
-	defer card.Close() //nolint:errcheck
+	ch := make(chan result, 1)
 
-	plain, err := card.DecryptMIME(payload, p.account.PGPPIN, pubEntity)
-	if err == nil {
-		return plain, nil
+	go func() {
+		log.Printf("[pgp-debug] smartcard: opening card")
+		card, err := cardhl.Open()
+		log.Printf("[pgp-debug] smartcard: Open returned err=%v", err)
+		if err != nil {
+			ch <- result{nil, err}
+			return
+		}
+		defer card.Close() //nolint:errcheck
+
+		log.Printf("[pgp-debug] smartcard: calling DecryptMIME")
+		plain, err := card.DecryptMIME(payload, p.account.PGPPIN, pubEntity)
+		log.Printf("[pgp-debug] smartcard: DecryptMIME returned len=%d err=%v", len(plain), err)
+		ch <- result{plain, err}
+	}()
+
+	select {
+	case r := <-ch:
+		return r.plain, r.err
+	case <-time.After(20 * time.Second):
+		log.Printf("[pgp-debug] smartcard: direct PC/SC session timed out")
+		return nil, errCardTimeout
 	}
-	if errors.Is(err, cardhl.ErrUnsupportedKey) {
-		return gpgAgentDecryptMIME(payload, p.account.PGPPIN)
-	}
-	return nil, err
 }
 
 // DecryptBare wraps a bare ASCII-armored OpenPGP ciphertext block in a minimal

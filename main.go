@@ -1742,6 +1742,17 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 			cmds = append(cmds, markReadCmd)
 		}
 		cmds = append(cmds, m.pluginFlagCmds()...)
+
+		// Popup notification when YubiKey decryption was used.
+		if acct := m.config.GetAccountByID(msg.AccountID); acct != nil && acct.PGPKeySource == "yubikey" {
+			for _, att := range msg.Attachments {
+				if att.Filename == "pgp-status.internal" && att.IsPGPEncrypted {
+					cmds = append(cmds, m.showErrorCmd("Email decrypted with YubiKey"))
+					break
+				}
+			}
+		}
+
 		return m, tea.Batch(cmds...)
 
 	case tui.ReplyToEmailMsg:

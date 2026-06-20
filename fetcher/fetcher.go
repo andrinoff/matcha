@@ -1045,12 +1045,17 @@ func FetchEmailBodyFromMailbox(account *config.Account, mailbox string, uid uint
 			(mimeType == "application/octet-stream" && filename == "")
 		if isPossiblePGPData {
 			// This might be PGP encrypted data
+			log.Printf("[pgp-debug] fetching part %s (encoding=%s, mime=%s)", partID, part.Encoding, mimeType)
 			data, err := fetchInlinePart(partID, part.Encoding)
+			log.Printf("[pgp-debug] fetchInlinePart returned len=%d err=%v", len(data), err)
 			if err == nil && bytes.Contains(data, []byte("-----BEGIN PGP MESSAGE-----")) {
 				// This is PGP encrypted content
 				pgpProvider, provErr := pgp.NewProvider(account)
+				log.Printf("[pgp-debug] NewProvider returned provErr=%v", provErr)
 				if provErr == nil {
+					log.Printf("[pgp-debug] calling DecryptBare")
 					decrypted, decErr := pgpProvider.DecryptBare(data)
+					log.Printf("[pgp-debug] DecryptBare returned len=%d decErr=%v", len(decrypted), decErr)
 					if decErr == nil {
 						// Parse the decrypted MIME content.
 						// mail.CreateReader can return (reader, non-nil-error) for
