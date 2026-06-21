@@ -77,6 +77,8 @@ var (
 
 const (
 	goosDarwin        = "darwin"
+	goosLinux         = "linux"
+	goosWindows       = "windows"
 	folderInbox       = "INBOX"
 	actionKindDelete  = "delete"
 	actionKindArchive = "archive"
@@ -3574,9 +3576,9 @@ func downloadAttachmentCmd(account *config.Account, uid uint32, msg tui.Download
 			switch runtime.GOOS {
 			case goosDarwin:
 				cmd = exec.Command("open", p) //nolint:noctx
-			case "linux":
+			case goosLinux:
 				cmd = exec.Command("xdg-open", p) //nolint:noctx
-			case "windows":
+			case goosWindows:
 				// 'start' is a cmd builtin; provide an empty title argument to avoid interpreting the path as the title.
 				cmd = exec.Command("cmd", "/c", "start", "", p) //nolint:noctx
 			default:
@@ -3620,7 +3622,7 @@ func detectInstalledVersion() string {
 	}
 
 	// Try WinGet (Windows)
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == goosWindows {
 		if _, err := exec.LookPath("winget"); err == nil {
 			if out, err := exec.Command("winget", "list", "--id", "floatpane.matcha", "--disable-interactivity").Output(); err == nil { //nolint:noctx
 				lines := strings.Split(strings.TrimSpace(string(out)), "\n")
@@ -3639,7 +3641,7 @@ func detectInstalledVersion() string {
 	}
 
 	// Try snap (Linux)
-	if runtime.GOOS == "linux" {
+	if runtime.GOOS == goosLinux {
 		if _, err := exec.LookPath("snap"); err == nil {
 			if out, err := exec.Command("snap", "list", "matcha").Output(); err == nil { //nolint:noctx
 				lines := strings.Split(strings.TrimSpace(string(out)), "\n")
@@ -3923,7 +3925,7 @@ func isFlagSet(fs *flag.FlagSet, name string) bool {
 	return found
 }
 
-func runUpdateCLI() (err error) { //nolint:gocyclo
+func runUpdateCLI() (err error) {
 	const api = "https://api.github.com/repos/floatpane/matcha/releases/latest"
 	resp, err := httpClient.Get(api)
 	if err != nil {
@@ -3952,14 +3954,14 @@ func runUpdateCLI() (err error) { //nolint:gocyclo
 	osName := runtime.GOOS
 
 	switch osName {
-	case "darwin": // macOS
+	case goosDarwin: // macOS
 		// Priority: Homebrew > Manual binary update
 		if tryHomebrewUpgrade() {
 			return nil
 		}
 		// Fall through to manual binary download
 
-	case "linux": // Linux
+	case goosLinux: // Linux
 		// Priority: Snap > Flatpak > AUR (yay) > Nix > Manual binary update
 		if trySnapRefresh() {
 			return nil
@@ -3975,7 +3977,7 @@ func runUpdateCLI() (err error) { //nolint:gocyclo
 		}
 		// Fall through to manual binary download
 
-	case "windows": // Windows
+	case goosWindows: // Windows
 		// Priority: WinGet > Scoop > Manual binary update
 		if tryWinGetUpgrade() {
 			return nil
@@ -4161,6 +4163,155 @@ func tryScoopUpdate() bool {
 	return false
 }
 
+// extractBinaryFromArchive extracts the matcha binary from a tar.gz, tgz, or zip archive
+func extractBinaryFromArchive(assetPath, assetName, tmpDir string) (string, error) {
+	// Determine the expected binary name based on the OS.
+	binaryName := "matcha"
+	if runtime.GOOS == goosWindows {
+		binaryName = "matcha.exe"
+	}
+
+	// Extract the binary from the archive.
+	var binPath string
+	if strings.HasSuffix(assetName, ".tar.gz") || strings.HasSuffix(assetName, ".tgz") { //nolint:gocritic
+		f, err := os.Open(assetPath)
+		if err != nil {
+			return "", fmt.Errorf("could not open archive: %w", err)
+		}
+		defer f.Close() //nolint:errcheck
+		gzr, err := gzip.NewReader(f)
+		if err != nil {
+			return "", fmt.Errorf("could not create gzip reader: %w", err)
+		}
+		tr := tar.NewReader(gzr)
+		for {
+			hdr, err := tr.Next()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return "", fmt.Errorf("error reading tar: %w", err)
+			}
+			name := filepath.Base(hdr.Name)
+			if name == binaryName || strings.Contains(strings.ToLower(name), "matcha") && (hdr.Typeflag == tar.TypeReg) {
+				binPath = filepath.Join(tmpDir, binaryName)
+				out, err := os.Create(binPath)
+				if err != nil {
+					return "", fmt.Errorf("could not create binary file: %w", err)
+				}
+				if _, err := io.Copy(out, tr); err != nil { //nolint:gosec
+					_ = out.Close()
+					return "", fmt.Errorf("could not extract binary: %w", err)
+				}
+				if err := out.Close(); err != nil {
+					return "", fmt.Errorf("could not finalize extracted binary: %w", err)
+				}
+				if err := os.Chmod(binPath, 0755); err != nil { //nolint:gosec
+					return "", fmt.Errorf("could not make binary executable: %w", err)
+				}
+				break
+			}
+		}
+	} else if strings.HasSuffix(assetName, ".zip") {
+		zr, err := zip.OpenReader(assetPath)
+		if err != nil {
+			return "", fmt.Errorf("could not open zip archive: %w", err)
+		}
+		defer zr.Close() //nolint:errcheck
+		for _, zf := range zr.File {
+			name := filepath.Base(zf.Name)
+			if name == binaryName || strings.Contains(strings.ToLower(name), "matcha") && !zf.FileInfo().IsDir() {
+				rc, err := zf.Open()
+				if err != nil {
+					return "", fmt.Errorf("could not open file in zip: %w", err)
+				}
+				binPath = filepath.Join(tmpDir, binaryName)
+				out, err := os.Create(binPath)
+				if err != nil {
+					rc.Close() //nolint:errcheck,gosec
+					return "", fmt.Errorf("could not create binary file: %w", err)
+				}
+				if _, err := io.Copy(out, rc); err != nil { //nolint:gosec
+					_ = out.Close()
+					_ = rc.Close()
+					return "", fmt.Errorf("could not extract binary: %w", err)
+				}
+				if err := out.Close(); err != nil {
+					_ = rc.Close()
+					return "", fmt.Errorf("could not finalize extracted binary: %w", err)
+				}
+				if err := rc.Close(); err != nil {
+					return "", fmt.Errorf("could not close zip entry: %w", err)
+				}
+				if err := os.Chmod(binPath, 0755); err != nil { //nolint:gosec
+					return "", fmt.Errorf("could not make binary executable: %w", err)
+				}
+				break
+			}
+		}
+	} else {
+		// For non-archive assets, assume the asset is the binary itself.
+		binPath = assetPath
+		if err := os.Chmod(binPath, 0755); err != nil { //nolint:gosec
+			// ignore chmod errors but warn
+			fmt.Printf("warning: could not chmod downloaded binary: %v\n", err)
+		}
+	}
+
+	if binPath == "" {
+		return "", fmt.Errorf("could not locate matcha binary inside the release artifact")
+	}
+
+	return binPath, nil
+}
+
+// replaceExecutable atomically replaces the current executable with a new binary
+func replaceExecutable(binPath, execDir string) error {
+	execPath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("could not determine executable path: %w", err)
+	}
+
+	// Write the new binary to a temp file in same dir, then rename for atomic replacement.
+	tmpNew := filepath.Join(execDir, fmt.Sprintf("matcha.new.%d", time.Now().Unix()))
+	in, err := os.Open(binPath)
+	if err != nil {
+		return fmt.Errorf("could not open new binary: %w", err)
+	}
+	defer in.Close()                                                          //nolint:errcheck
+	out, err := os.OpenFile(tmpNew, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755) //nolint:gosec
+	if err != nil {
+		return fmt.Errorf("could not create temp binary in target dir: %w", err)
+	}
+
+	defer func() {
+		cerr := out.Close()
+		if err == nil && cerr != nil {
+			err = fmt.Errorf("could not flush new binary to disk: %w", cerr)
+		}
+	}()
+
+	if _, err = io.Copy(out, in); err != nil {
+		return fmt.Errorf("could not write new binary to disk: %w", err)
+	}
+
+	// On Windows, a running executable cannot be overwritten directly.
+	// Move the old binary out of the way first, then rename the new one in.
+	if runtime.GOOS == goosWindows {
+		oldPath := execPath + ".old"
+		_ = os.Remove(oldPath) // clean up any previous leftover
+		if err := os.Rename(execPath, oldPath); err != nil {
+			return fmt.Errorf("could not move old executable out of the way: %w", err)
+		}
+	}
+
+	if err = os.Rename(tmpNew, execPath); err != nil {
+		return fmt.Errorf("could not replace executable: %w", err)
+	}
+
+	return nil
+}
+
 // runUpdateCLIManual handles manual binary download and replacement
 func runUpdateCLIManual(latestTag string, rel githubRelease) error {
 	// Otherwise attempt to download the proper release asset and replace the binary.
@@ -4246,138 +4397,15 @@ func runUpdateCLIManual(latestTag string, rel githubRelease) error {
 		return fmt.Errorf("could not finalize asset file: %w", err)
 	}
 
-	// Determine the expected binary name based on the OS.
-	binaryName := "matcha"
-	if runtime.GOOS == "windows" {
-		binaryName = "matcha.exe"
-	}
-
-	// Extract the binary from the archive.
-	var binPath string
-	if strings.HasSuffix(assetName, ".tar.gz") || strings.HasSuffix(assetName, ".tgz") { //nolint:gocritic
-		f, err := os.Open(assetPath)
-		if err != nil {
-			return fmt.Errorf("could not open archive: %w", err)
-		}
-		defer f.Close() //nolint:errcheck
-		gzr, err := gzip.NewReader(f)
-		if err != nil {
-			return fmt.Errorf("could not create gzip reader: %w", err)
-		}
-		tr := tar.NewReader(gzr)
-		for {
-			hdr, err := tr.Next()
-			if err == io.EOF {
-				break
-			}
-			if err != nil {
-				return fmt.Errorf("error reading tar: %w", err)
-			}
-			name := filepath.Base(hdr.Name)
-			if name == binaryName || strings.Contains(strings.ToLower(name), "matcha") && (hdr.Typeflag == tar.TypeReg) {
-				binPath = filepath.Join(tmpDir, binaryName)
-				out, err := os.Create(binPath)
-				if err != nil {
-					return fmt.Errorf("could not create binary file: %w", err)
-				}
-				if _, err := io.Copy(out, tr); err != nil { //nolint:gosec
-					_ = out.Close()
-					return fmt.Errorf("could not extract binary: %w", err)
-				}
-				if err := out.Close(); err != nil {
-					return fmt.Errorf("could not finalize extracted binary: %w", err)
-				}
-				if err := os.Chmod(binPath, 0755); err != nil { //nolint:gosec
-					return fmt.Errorf("could not make binary executable: %w", err)
-				}
-				break
-			}
-		}
-	} else if strings.HasSuffix(assetName, ".zip") {
-		zr, err := zip.OpenReader(assetPath)
-		if err != nil {
-			return fmt.Errorf("could not open zip archive: %w", err)
-		}
-		defer zr.Close() //nolint:errcheck
-		for _, zf := range zr.File {
-			name := filepath.Base(zf.Name)
-			if name == binaryName || strings.Contains(strings.ToLower(name), "matcha") && !zf.FileInfo().IsDir() {
-				rc, err := zf.Open()
-				if err != nil {
-					return fmt.Errorf("could not open file in zip: %w", err)
-				}
-				binPath = filepath.Join(tmpDir, binaryName)
-				out, err := os.Create(binPath)
-				if err != nil {
-					rc.Close() //nolint:errcheck,gosec
-					return fmt.Errorf("could not create binary file: %w", err)
-				}
-				if _, err := io.Copy(out, rc); err != nil { //nolint:gosec
-					_ = out.Close()
-					_ = rc.Close()
-					return fmt.Errorf("could not extract binary: %w", err)
-				}
-				if err := out.Close(); err != nil {
-					_ = rc.Close()
-					return fmt.Errorf("could not finalize extracted binary: %w", err)
-				}
-				if err := rc.Close(); err != nil {
-					return fmt.Errorf("could not close zip entry: %w", err)
-				}
-				if err := os.Chmod(binPath, 0755); err != nil { //nolint:gosec
-					return fmt.Errorf("could not make binary executable: %w", err)
-				}
-				break
-			}
-		}
-	} else {
-		// For non-archive assets, assume the asset is the binary itself.
-		binPath = assetPath
-		if err := os.Chmod(binPath, 0755); err != nil { //nolint:gosec
-			// ignore chmod errors but warn
-			fmt.Printf("warning: could not chmod downloaded binary: %v\n", err)
-		}
-	}
-
-	if binPath == "" {
-		return fmt.Errorf("could not locate matcha binary inside the release artifact")
-	}
-
-	// Write the new binary to a temp file in same dir, then rename for atomic replacement.
-	tmpNew := filepath.Join(execDir, fmt.Sprintf("matcha.new.%d", time.Now().Unix()))
-	in, err := os.Open(binPath)
+	// Extract binary from archive
+	binPath, err := extractBinaryFromArchive(assetPath, assetName, tmpDir)
 	if err != nil {
-		return fmt.Errorf("could not open new binary: %w", err)
-	}
-	defer in.Close()                                                          //nolint:errcheck
-	out, err := os.OpenFile(tmpNew, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755) //nolint:gosec
-	if err != nil {
-		return fmt.Errorf("could not create temp binary in target dir: %w", err)
+		return err
 	}
 
-	defer func() {
-		cerr := out.Close()
-		if err == nil && cerr != nil {
-			err = fmt.Errorf("could not flush new binary to disk: %w", cerr)
-		}
-	}()
-
-	if _, err = io.Copy(out, in); err != nil {
-		return fmt.Errorf("could not write new binary to disk: %w", err)
-	}
-
-	// On Windows, a running executable cannot be overwritten directly.
-	// Move the old binary out of the way first, then rename the new one in.
-	if runtime.GOOS == "windows" {
-		oldPath := execPath + ".old"
-		_ = os.Remove(oldPath) // clean up any previous leftover
-		if err := os.Rename(execPath, oldPath); err != nil {
-			return fmt.Errorf("could not move old executable out of the way: %w", err)
-		}
-	}
-
-	if err = os.Rename(tmpNew, execPath); err != nil {
-		return fmt.Errorf("could not replace executable: %w", err)
+	// Replace the executable
+	if err := replaceExecutable(binPath, execDir); err != nil {
+		return err
 	}
 
 	fmt.Println("Successfully updated matcha to", latestTag)
