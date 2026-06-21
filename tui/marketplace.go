@@ -265,14 +265,14 @@ func (m Marketplace) footerHeight() int {
 	h := 0
 	// scroll position indicator (shown whenever there are entries)
 	if m.state == marketplaceReady && len(m.entries) > 0 {
-		h += 1
+		h++
 	}
 	// transient status line
 	if m.status != "" {
-		h += 1
+		h++
 	}
 	// keybind help line (always present)
-	h += 1
+	h++
 	return h
 }
 
