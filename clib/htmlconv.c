@@ -181,11 +181,12 @@ typedef struct {
     int name_len;
     int is_closing;
     int is_self_closing;
-    // Attributes (we parse href, src, alt, cite)
+    // Attributes (we parse href, src, alt, cite, class)
     char href[2048];
     char src[2048];
     char alt[512];
     char cite[2048];
+    char klass[256];
 } Tag;
 
 // Case-insensitive compare for tag names.
@@ -269,6 +270,8 @@ static const char* parse_tag(const char* p, const char* end, Tag* tag) {
                 p = parse_attr_value(p, end, tag->alt, sizeof(tag->alt));
             } else if (strcmp(attr_name, "cite") == 0) {
                 p = parse_attr_value(p, end, tag->cite, sizeof(tag->cite));
+            } else if (strcmp(attr_name, "class") == 0) {
+                p = parse_attr_value(p, end, tag->klass, sizeof(tag->klass));
             } else {
                 // Skip unknown attribute value
                 char discard[4096];
@@ -289,6 +292,31 @@ static const char* parse_tag(const char* p, const char* end, Tag* tag) {
 
 // --- Main parser ---
 
+// extract_language parses a class attribute like "language-go" or
+// "prettyprint language-python" and writes the language token (e.g. "go")
+// into out. out_size is the capacity of out including the NUL terminator.
+static void extract_language(const char* klass, char* out, size_t out_size) {
+    out[0] = '\0';
+    if (!klass || klass[0] == '\0') return;
+    const char* p = klass;
+    while (*p) {
+        // Skip non-matching tokens
+        const char* tok = p;
+        while (*p && *p != ' ') p++;
+        size_t tok_len = (size_t)(p - tok);
+        const char* prefix = "language-";
+        size_t prefix_len = strlen(prefix);
+        if (tok_len > prefix_len && strncmp(tok, prefix, prefix_len) == 0) {
+            size_t lang_len = tok_len - prefix_len;
+            if (lang_len >= out_size) lang_len = out_size - 1;
+            memcpy(out, tok + prefix_len, lang_len);
+            out[lang_len] = '\0';
+            return;
+        }
+        while (*p == ' ') p++;
+    }
+}
+
 // Tag stack for nesting tracking.
 #define MAX_STACK 128
 
@@ -296,6 +324,9 @@ typedef struct {
     int in_style;      // Inside <style>
     int in_script;     // Inside <script>
     int in_pre;        // Inside <pre>
+    int pre_depth;     // <pre> nesting depth (normally 0 or 1)
+    Buffer pre_buf;    // Captured <pre> content for HELEM_CODE
+    char pre_lang[128]; // Language hint extracted from class="language-XXX"
     int in_a;          // Inside <a>
     char a_href[2048]; // Current link href
     Buffer a_text;     // Current link text accumulator
@@ -338,6 +369,7 @@ HTMLConvertResult html_to_elements(const char* html, size_t len) {
     buf_init(&state.bq_prev);
     buf_init(&state.cell_text);
     buf_init(&state.table_data);
+    buf_init(&state.pre_buf);
 
     Buffer text_buf;
     buf_init(&text_buf);
@@ -387,7 +419,9 @@ HTMLConvertResult html_to_elements(const char* html, size_t len) {
 
             // <br> -> newline
             if (tag_eq(tag.name, tag.name_len, "br")) {
-                if (state.in_td) {
+                if (state.pre_depth > 0) {
+                    buf_append_char(&state.pre_buf, '\n');
+                } else if (state.in_td) {
                     buf_append_char(&state.cell_text, ' ');
                 } else if (state.in_a) {
                     buf_append_char(&state.a_text, '\n');
@@ -402,9 +436,49 @@ HTMLConvertResult html_to_elements(const char* html, size_t len) {
                 continue;
             }
 
-            // <pre>
+            // <pre> — capture into pre_buf and emit HELEM_CODE on close.
             if (tag_eq(tag.name, tag.name_len, "pre")) {
-                state.in_pre = !tag.is_closing;
+                if (!tag.is_closing) {
+                    if (state.pre_depth == 0) {
+                        flush_text(&result, &text_buf);
+                        buf_free(&state.pre_buf);
+                        buf_init(&state.pre_buf);
+                        state.pre_lang[0] = '\0';
+                        // md4c emits <pre> without class; language is on <code>.
+                        // Still check for class here for hand-written HTML.
+                        extract_language(tag.klass, state.pre_lang, sizeof(state.pre_lang));
+                    }
+                    state.pre_depth++;
+                    state.in_pre = 1;
+                } else if (state.pre_depth > 0) {
+                    state.pre_depth--;
+                    if (state.pre_depth == 0) {
+                        state.in_pre = 0;
+                        flush_text(&result, &text_buf);
+                        HTMLElement* e = result_add(&result);
+                        e->type = HELEM_CODE;
+                        e->text = buf_finish(&state.pre_buf);
+                        buf_init(&state.pre_buf);
+                        if (state.pre_lang[0]) {
+                            e->attr1 = strdup(state.pre_lang);
+                        }
+                        state.pre_lang[0] = '\0';
+                        // Add block spacing after the code block
+                        HTMLElement* sp = result_add(&result);
+                        sp->type = HELEM_TEXT;
+                        sp->text = strdup("\n\n");
+                    }
+                }
+                p = after;
+                continue;
+            }
+
+            // <code> inside <pre> — capture language hint from class attribute.
+            // md4c emits <pre><code class="language-XXX">; the opening <pre> has
+            // no class, so we grab the language when <code> opens.
+            if (tag_eq(tag.name, tag.name_len, "code") && !tag.is_closing &&
+                state.pre_depth > 0 && state.pre_lang[0] == '\0') {
+                extract_language(tag.klass, state.pre_lang, sizeof(state.pre_lang));
                 p = after;
                 continue;
             }
@@ -671,7 +745,10 @@ HTMLConvertResult html_to_elements(const char* html, size_t len) {
                 tag_eq(tag.name, tag.name_len, "li") ||
                 tag_eq(tag.name, tag.name_len, "hr")) {
                 if (tag.is_closing || tag_eq(tag.name, tag.name_len, "hr")) {
-                    if (state.bq_depth > 0) {
+                    if (state.pre_depth > 0) {
+                        // Preserve whitespace inside <pre>
+                        buf_append_char(&state.pre_buf, '\n');
+                    } else if (state.bq_depth > 0) {
                         buf_append(&state.bq_text, "\n\n", 2);
                     } else if (state.in_td) {
                         buf_append_char(&state.cell_text, ' ');
@@ -698,7 +775,8 @@ HTMLConvertResult html_to_elements(const char* html, size_t len) {
         // Handle entities
         if (*p == '&') {
             Buffer* target;
-            if (state.in_td) target = &state.cell_text;
+            if (state.pre_depth > 0) target = &state.pre_buf;
+            else if (state.in_td) target = &state.cell_text;
             else if (state.in_a) target = &state.a_text;
             else if (state.in_h1 || state.in_h2) target = &state.h_text;
             else if (state.bq_depth > 0) target = &state.bq_text;
@@ -711,7 +789,10 @@ HTMLConvertResult html_to_elements(const char* html, size_t len) {
 
         // Regular character — collapse whitespace like HTML (unless in <pre>)
         char c = *p++;
-        if (state.in_td) {
+        if (state.pre_depth > 0) {
+            // Inside <pre>: preserve whitespace exactly.
+            buf_append_char(&state.pre_buf, c);
+        } else if (state.in_td) {
             buf_append_html_char(&state.cell_text, c, state.in_pre);
         } else if (state.in_a) {
             buf_append_html_char(&state.a_text, c, state.in_pre);
@@ -769,6 +850,18 @@ HTMLConvertResult html_to_elements(const char* html, size_t len) {
         buf_free(&state.table_data);
     }
     buf_free(&state.cell_text);
+
+    // Flush unclosed <pre> as a code block
+    if (state.pre_depth > 0 && state.pre_buf.len > 0) {
+        HTMLElement* e = result_add(&result);
+        e->type = HELEM_CODE;
+        e->text = buf_finish(&state.pre_buf);
+        if (state.pre_lang[0]) {
+            e->attr1 = strdup(state.pre_lang);
+        }
+    } else {
+        buf_free(&state.pre_buf);
+    }
 
     result.ok = 1;
     return result;

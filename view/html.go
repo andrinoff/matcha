@@ -608,6 +608,9 @@ func renderHTMLToText(htmlBody []byte, inline map[string]string, h1Style, h2Styl
 			}
 
 			text.WriteString(renderQuoteBox(from, date, strings.Split(elem.Text, "\n")))
+
+		case clib.HElemCode:
+			text.WriteString(renderCodeBlock(elem.Text, elem.Attr1))
 		}
 	}
 
@@ -789,6 +792,48 @@ func quoteBoxStyle() lipgloss.Style {
 func quoteHeaderStyle() lipgloss.Style {
 	return lipgloss.NewStyle().
 		Foreground(theme.ActiveTheme.Secondary)
+}
+
+func codeBoxStyle() lipgloss.Style {
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(theme.ActiveTheme.Secondary).
+		Padding(0, 1)
+}
+
+func codeLangStyle() lipgloss.Style {
+	return lipgloss.NewStyle().
+		Foreground(theme.ActiveTheme.AccentText).
+		Background(theme.ActiveTheme.AccentDark).
+		Padding(0, 1)
+}
+
+// renderCodeBlock renders a <pre> code block as a styled terminal box with
+// optional language label and syntax highlighting. lang is the language hint
+// extracted from a class="language-XXX" attribute (may be empty).
+func renderCodeBlock(code, lang string) string {
+	// Trim leading/trailing blank lines while preserving internal indentation.
+	code = strings.TrimRight(code, "\n")
+	code = strings.TrimLeft(code, "\n")
+	if code == "" {
+		return ""
+	}
+
+	highlighted := highlightCode(code, lang)
+
+	var label string
+	if lang != "" {
+		label = codeLangStyle().Render(" " + strings.ToUpper(lang) + " ")
+	}
+
+	var content string
+	if label != "" {
+		content = label + "\n" + highlighted
+	} else {
+		content = highlighted
+	}
+
+	return "\n" + codeBoxStyle().Render(content) + "\n"
 }
 
 // styleQuotedReplies detects quoted reply sections and styles them in a box

@@ -103,6 +103,12 @@ export default defineConfig({
         ],
       },
       {
+        text: "For Developers",
+        items: [
+          { text: "Code Blocks", link: "/for-developers/code-blocks" },
+        ],
+      },
+      {
         text: "Community",
         items: [
           { text: "Marketplace", link: "/marketplace" },

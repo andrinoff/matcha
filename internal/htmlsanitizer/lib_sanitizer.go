@@ -25,6 +25,7 @@ func newPolicy() *bluemonday.Policy {
 	linkURLPattern := regexp.MustCompile(`(?i)^(https?://|mailto:|tel:)`)
 	imageURLPattern := regexp.MustCompile(`(?i)^(https?://|cid:|data:image/)`)
 	dataImagePrefixPattern := regexp.MustCompile(`(?i)^image/(gif|jpe?g|png|webp);base64,`)
+	langClassPattern := regexp.MustCompile(`(?i)^language-[a-z0-9+#.]+$`)
 	p.AllowElements(
 		"a", "b", "blockquote", "br", "code", "div", "em", "h1", "h2",
 		"i", "img", "li", "ol", "p", "pre", "span", "strong", "table",
@@ -34,6 +35,7 @@ func newPolicy() *bluemonday.Policy {
 	p.AllowAttrs("src").Matching(imageURLPattern).OnElements("img")
 	p.AllowAttrs("alt").OnElements("img")
 	p.AllowAttrs("cite").OnElements("blockquote")
+	p.AllowAttrs("class").Matching(langClassPattern).OnElements("pre", "code")
 	p.RequireParseableURLs(true)
 	p.AllowURLSchemes("http", "https", "mailto", "tel")
 	p.AllowURLSchemeWithCustomPolicy("cid", func(u *url.URL) bool {
