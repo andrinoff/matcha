@@ -240,7 +240,8 @@
       "installed": "Zainstalowane",
       "install": "Instaluj",
       "error": "Instalacja nieudana",
-      "help": "j/k: nawigacja • enter: instaluj • esc: wstecz"
+      "delete_confirm": "Usunąć wtyczkę?",
+      "help": "j/k: nawigacja • enter: instaluj • d: usuń • esc: wstecz"
     },
     "time": {
       "just_now": "właśnie teraz",

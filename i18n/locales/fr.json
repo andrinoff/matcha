@@ -236,7 +236,8 @@
       "installed": "Installé",
       "install": "Installer",
       "error": "Échec de l'installation",
-      "help": "j/k: naviguer • entrée: installer • esc: retour"
+      "delete_confirm": "Supprimer le plugin ?",
+      "help": "j/k: naviguer • entrée: installer • d: supprimer • esc: retour"
     },
     "time": {
       "just_now": "à l'instant",
