@@ -234,7 +234,8 @@
       "installed": "インストール済み",
       "install": "インストール",
       "error": "インストール失敗",
-      "help": "j/k: 移動 • enter: インストール • esc: 戻る"
+      "delete_confirm": "プラグインを削除しますか？",
+      "help": "j/k: 移動 • enter: インストール • d: 削除 • esc: 戻る"
     },
     "time": {
       "just_now": "たった今",

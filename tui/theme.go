@@ -113,6 +113,32 @@ func RebuildStyles() {
 	filePickerSelectedItemStyle = lipgloss.NewStyle().PaddingLeft(2).Foreground(t.Accent)
 	directoryStyle = lipgloss.NewStyle().Foreground(t.Directory)
 	fileSizeStyle = lipgloss.NewStyle().Foreground(t.Secondary)
+
+	// marketplace.go
+	mpTitleStyle = lipgloss.NewStyle().
+		Foreground(t.AccentText).
+		Background(t.AccentDark).
+		Padding(0, 1)
+	mpItemNameStyle = lipgloss.NewStyle().
+		Foreground(t.Secondary).
+		Bold(true)
+	mpItemDescStyle = lipgloss.NewStyle().
+		Foreground(t.SubtleText)
+	mpInstalledStyle = lipgloss.NewStyle().
+		Foreground(t.AccentDark).
+		Background(t.Accent).
+		Padding(0, 1)
+	mpSelectedStyle = lipgloss.NewStyle().
+		Foreground(t.Accent).
+		Bold(true)
+	mpCursorStyle = lipgloss.NewStyle().
+		Foreground(t.Accent)
+	mpStatusStyle = lipgloss.NewStyle().
+		Foreground(t.Tip)
+	mpErrorStyle = lipgloss.NewStyle().
+		Foreground(t.Danger)
+	mpFooterStyle = lipgloss.NewStyle().
+		Foreground(t.SubtleText)
 }
 
 // ThemedTextInputStyles returns textinput.Styles using the active theme colors.

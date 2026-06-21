@@ -240,7 +240,8 @@
       "installed": "مثبت",
       "install": "تثبيت",
       "error": "فشل التثبيت",
-      "help": "j/k: التنقل • enter: تثبيت • esc: رجوع"
+      "delete_confirm": "حذف الإضافة؟",
+      "help": "j/k: التنقل • enter: تثبيت • d: حذف • esc: رجوع"
     },
     "time": {
       "just_now": "الآن",

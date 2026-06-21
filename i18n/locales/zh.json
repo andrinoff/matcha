@@ -234,7 +234,8 @@
       "installed": "已安装",
       "install": "安装",
       "error": "安装失败",
-      "help": "j/k: 导航 • enter: 安装 • esc: 返回"
+      "delete_confirm": "删除插件？",
+      "help": "j/k: 导航 • enter: 安装 • d: 删除 • esc: 返回"
     },
     "time": {
       "just_now": "刚刚",

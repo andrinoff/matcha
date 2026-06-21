@@ -236,7 +236,8 @@
       "installed": "Installiert",
       "install": "Installieren",
       "error": "Installation fehlgeschlagen",
-      "help": "j/k: navigieren • enter: installieren • esc: zurück"
+      "delete_confirm": "Plugin löschen?",
+      "help": "j/k: navigieren • enter: installieren • d: löschen • esc: zurück"
     },
     "time": {
       "just_now": "gerade eben",

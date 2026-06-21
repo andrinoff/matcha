@@ -11,34 +11,18 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/floatpane/matcha/config"
 	"github.com/floatpane/matcha/plugins"
-	"github.com/floatpane/matcha/theme"
 )
 
 var (
-	mpTitleStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#FFFDF5")).
-			Background(lipgloss.Color("#25A065")).
-			Padding(0, 1)
-
-	mpItemNameStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("42")).
-			Bold(true)
-
-	mpItemDescStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("245"))
-
-	mpInstalledStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("35"))
-
-	mpSelectedStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("42")).
-			Bold(true)
-
-	mpCursorStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("42"))
-
-	mpStatusStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("214"))
+	mpTitleStyle     lipgloss.Style
+	mpItemNameStyle  lipgloss.Style
+	mpItemDescStyle  lipgloss.Style
+	mpInstalledStyle lipgloss.Style
+	mpSelectedStyle  lipgloss.Style
+	mpCursorStyle    lipgloss.Style
+	mpStatusStyle    lipgloss.Style
+	mpErrorStyle     lipgloss.Style
+	mpFooterStyle    lipgloss.Style
 )
 
 type marketplaceState int
@@ -61,18 +45,26 @@ type PluginInstalledMsg struct {
 	Err  error
 }
 
+// PluginDeletedMsg signals that a plugin was deleted from the marketplace.
+type PluginDeletedMsg struct {
+	Name string
+	Err  error
+}
+
 type Marketplace struct {
-	entries       []plugins.PluginEntry
-	installed     map[string]bool
-	cursor        int
-	offset        int // scroll offset
-	width         int
-	height        int
-	state         marketplaceState
-	status        string // transient status message
-	standalone    bool   // true when launched via `matcha marketplace` (not from main menu)
-	lastClickTime time.Time
-	lastClickY    int
+	entries          []plugins.PluginEntry
+	installed        map[string]bool
+	cursor           int
+	offset           int // scroll offset
+	width            int
+	height           int
+	state            marketplaceState
+	status           string // transient status message
+	standalone       bool   // true when launched via `matcha marketplace` (not from main menu)
+	lastClickTime    time.Time
+	lastClickY       int
+	confirmingDelete bool   // true when prompting the user to confirm plugin removal
+	deleteTarget     string // name of the plugin pending deletion
 }
 
 func NewMarketplace(standalone bool) Marketplace {
@@ -87,7 +79,7 @@ func (m Marketplace) Init() tea.Cmd {
 }
 
 func (m Marketplace) itemsStartY() int {
-	// DocStyle top margin (1) + choiceLogo blank+5 lines (6) + explicit \n (1) = 8
+	// docStyle top margin (1) + choiceLogo blank+5 lines (6) + explicit \n (1) = 8
 	// mpTitleStyle title (1) + \n\n (2) = 3
 	return 8 + 3
 }
@@ -172,6 +164,16 @@ func (m Marketplace) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.installed[msg.Name] = true
 		return m, nil
 
+	case PluginDeletedMsg:
+		if msg.Err != nil {
+			return m, func() tea.Msg {
+				return NotifyMsg{Message: fmt.Sprintf("Failed to delete %s: %v", msg.Name, msg.Err)}
+			}
+		}
+		m.status = fmt.Sprintf("Deleted %s", msg.Name)
+		delete(m.installed, msg.Name)
+		return m, nil
+
 	case tea.KeyPressMsg:
 		return m.handleKeyPress(msg)
 	}
@@ -180,6 +182,24 @@ func (m Marketplace) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Marketplace) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	kb := config.Keybinds
+
+	// Confirmation dialog takes over input regardless of state.
+	if m.confirmingDelete {
+		switch msg.String() {
+		case "y", "Y":
+			target := m.deleteTarget
+			m.confirmingDelete = false
+			m.deleteTarget = ""
+			m.status = fmt.Sprintf("Deleting %s...", target)
+			return m, deletePlugin(target)
+		case "n", "N", kb.Global.Cancel:
+			m.confirmingDelete = false
+			m.deleteTarget = ""
+			return m, nil
+		}
+		return m, nil
+	}
+
 	if m.state != marketplaceReady {
 		if msg.String() == "q" || msg.String() == kb.Global.Cancel || msg.String() == kb.Global.Quit {
 			if m.standalone {
@@ -223,16 +243,47 @@ func (m Marketplace) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.status = fmt.Sprintf("Installing %s...", entry.Name)
 			return m, installPlugin(entry)
 		}
+	case kb.Inbox.Delete:
+		if m.cursor < len(m.entries) {
+			entry := m.entries[m.cursor]
+			if m.installed[entry.Name] {
+				m.confirmingDelete = true
+				m.deleteTarget = entry.Name
+				return m, nil
+			}
+		}
 	}
 	return m, nil
 }
 
+func (m Marketplace) headerHeight() int {
+	// logoStyle.Render(choiceLogo) + \n + mpTitleStyle(1) + \n\n
+	return lipgloss.Height(logoStyle.Render(choiceLogo)) + 1 + 1 + 1
+}
+
+func (m Marketplace) footerHeight() int {
+	h := 0
+	// scroll position indicator (shown whenever there are entries)
+	if m.state == marketplaceReady && len(m.entries) > 0 {
+		h++
+	}
+	// transient status line
+	if m.status != "" {
+		h++
+	}
+	// keybind help line (always present)
+	h++
+	return h
+}
+
 func (m Marketplace) visibleRows() int {
-	// Each entry takes 2 lines (name + description), plus header/footer
-	available := m.height - 8 // header + footer + padding
+	// docStyle margin (1 top + 1 bottom) + header + footer
+	reserved := 2 + m.headerHeight() + m.footerHeight()
+	available := m.height - reserved
 	if available < 1 {
 		return 1
 	}
+	// Each entry takes 2 lines (name + description)
 	return available / 2
 }
 
@@ -262,6 +313,22 @@ func installPlugin(entry plugins.PluginEntry) tea.Cmd {
 	}
 }
 
+func deletePlugin(name string) tea.Cmd {
+	return func() tea.Msg {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return PluginDeletedMsg{Name: name, Err: err}
+		}
+
+		dest := filepath.Join(home, ".config", "matcha", "plugins", name+".lua")
+		if err := os.Remove(dest); err != nil {
+			return PluginDeletedMsg{Name: name, Err: err}
+		}
+
+		return PluginDeletedMsg{Name: name}
+	}
+}
+
 func installedPlugins() map[string]bool {
 	installed := make(map[string]bool)
 	home, err := os.UserHomeDir()
@@ -283,19 +350,20 @@ func installedPlugins() map[string]bool {
 }
 
 func (m Marketplace) View() tea.View {
-	var b strings.Builder
+	var body strings.Builder
 
-	accentStyle := lipgloss.NewStyle().Foreground(theme.ActiveTheme.Accent)
-	b.WriteString(accentStyle.Render(choiceLogo))
-	b.WriteString("\n")
-	b.WriteString(mpTitleStyle.Render(" Plugin Marketplace "))
-	b.WriteString("\n\n")
+	body.WriteString(logoStyle.Render(choiceLogo))
+	body.WriteString("\n")
+	body.WriteString(mpTitleStyle.Render(" " + t("marketplace.title") + " "))
+	body.WriteString("\n\n")
 
 	switch m.state {
 	case marketplaceLoading:
-		b.WriteString("  Fetching plugins...\n")
+		body.WriteString(itemStyle.Render(t("common.loading")))
+		body.WriteString("\n")
 	case marketplaceError:
-		b.WriteString("  Failed to load plugins.\n")
+		body.WriteString(itemStyle.Render(mpErrorStyle.Render(t("common.error"))))
+		body.WriteString("\n")
 	case marketplaceReady:
 		visible := m.visibleRows()
 		end := m.offset + visible
@@ -314,37 +382,62 @@ func (m Marketplace) View() tea.View {
 
 			name := nameStyle.Render(entry.Title)
 			if m.installed[entry.Name] {
-				name += " " + mpInstalledStyle.Render("[installed]")
+				name += " " + mpInstalledStyle.Render(" "+t("marketplace.installed")+" ")
 			}
 
-			fmt.Fprintf(&b, "%s%s\n", cursor, name)
-			fmt.Fprintf(&b, "    %s\n", mpItemDescStyle.Render(entry.Description))
-		}
-
-		if len(m.entries) > visible {
-			fmt.Fprintf(&b, "\n  %d/%d plugins", m.cursor+1, len(m.entries))
+			fmt.Fprintf(&body, "%s%s\n", cursor, name)
+			fmt.Fprintf(&body, "    %s\n", mpItemDescStyle.Render(entry.Description))
 		}
 	}
 
+	// Footer bar: scroll position + transient status, always pinned to the bottom
+	// so the keybind help line stays visible regardless of list length.
+	var footer strings.Builder
+	if m.state == marketplaceReady && len(m.entries) > 0 {
+		fmt.Fprintf(&footer, "%s\n", mpFooterStyle.Render(fmt.Sprintf("  %d/%d", m.cursor+1, len(m.entries))))
+	}
 	if m.status != "" {
-		b.WriteString("\n")
-		b.WriteString(mpStatusStyle.Render("  " + m.status))
+		footer.WriteString(mpStatusStyle.Render("  " + m.status))
+		footer.WriteString("\n")
 	}
+	footer.WriteString(helpStyle.Render(t("marketplace.help")))
 
-	mainContent := b.String()
-	help := helpStyle.Render("↑/↓ navigate • enter install • q back")
+	content := body.String()
+	help := footer.String()
 
+	// Pin the footer to the bottom: pad the body so it fills the available
+	// height, leaving the footer as the last visible rows.
 	if m.height > 0 {
-		currentHeight := lipgloss.Height(DocStyle.Render(mainContent + "\n" + help))
-		gap := m.height - currentHeight
+		usable := m.height - 2 // docStyle top + bottom margin
+		bodyHeight := lipgloss.Height(content)
+		footerHeight := lipgloss.Height(help)
+		gap := usable - bodyHeight - footerHeight
 		if gap > 0 {
-			mainContent += strings.Repeat("\n", gap)
+			content += strings.Repeat("\n", gap)
 		}
 	} else {
-		mainContent += "\n\n"
+		content += "\n\n"
 	}
 
-	v := tea.NewView(DocStyle.Render(mainContent + "\n" + help))
+	rendered := docStyle.Render(content + help)
+
+	// Confirmation overlay: prompt the user before deleting an installed plugin.
+	if m.confirmingDelete {
+		dialog := DialogBoxStyle.Render(
+			lipgloss.JoinVertical(lipgloss.Center,
+				dangerStyle.Render(t("marketplace.delete_confirm")),
+				accountEmailStyle.Render(m.deleteTarget),
+				helpStyle.Render("(y/n)"),
+			),
+		)
+		if m.width > 0 && m.height > 0 {
+			rendered = lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, dialog, lipgloss.WithWhitespaceChars(" "))
+		} else {
+			rendered = "\n\n" + dialog
+		}
+	}
+
+	v := tea.NewView(rendered)
 	if config.MouseEnabled != nil && *config.MouseEnabled {
 		v.MouseMode = tea.MouseModeCellMotion
 	}

@@ -236,7 +236,8 @@
       "installed": "Instalado",
       "install": "Instalar",
       "error": "Falló la instalación",
-      "help": "j/k: navegar • enter: instalar • esc: atrás"
+      "delete_confirm": "¿Eliminar plugin?",
+      "help": "j/k: navegar • enter: instalar • d: eliminar • esc: atrás"
     },
     "time": {
       "just_now": "justo ahora",
