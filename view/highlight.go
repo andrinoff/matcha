@@ -23,6 +23,12 @@ const (
 	tokConstant              // ALL_CAPS constants / boolean / nil literals
 )
 
+const (
+	langPython     = "python"
+	langJavaScript = "javascript"
+	langRust       = "rust"
+)
+
 // highlightStyles builds a fresh set of lipgloss styles from the active theme.
 // Colors are chosen so highlighted code stays readable on both light and dark
 // backgrounds and harmonize with the rest of the email rendering.
@@ -55,15 +61,15 @@ func mustRule(pattern string, kind TokenKind) rule {
 	return rule{re: regexp.MustCompile(pattern), kind: kind}
 }
 
-func mustGroupRule(pattern string, group int, kind TokenKind) rule {
-	return rule{re: regexp.MustCompile(pattern), kind: kind, group: group}
+func mustGroupRule(pattern string, kind TokenKind) rule {
+	return rule{re: regexp.MustCompile(pattern), kind: kind, group: 1}
 }
 
 // funcRule matches an identifier followed by '(' and highlights only the
 // identifier (group 1), avoiding unsupported lookahead. A leading word
 // boundary prevents matching inside other identifiers.
 func funcRule() rule {
-	return mustGroupRule(`\b([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\(`, 1, tokFunction)
+	return mustGroupRule(`\b([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\(`, tokFunction)
 }
 
 // goStringRule matches Go's three string forms: backtick raw strings,
@@ -101,7 +107,7 @@ func languageRules(lang string) []rule {
 			funcRule(),
 			mustRule(`[{}()\[\];,.<>=:+\-*/%&|^!?]`, tokPunctuation),
 		}
-	case "python", "py":
+	case langPython:
 		return []rule{
 			mustRule(`#[^\n]*`, tokComment),
 			pyStringRule(),
@@ -112,7 +118,7 @@ func languageRules(lang string) []rule {
 			funcRule(),
 			mustRule(`[{}()\[\];,:.<>=+\-*/%&|^!~@]`, tokPunctuation),
 		}
-	case "javascript", "js", "typescript", "ts", "jsx", "tsx":
+	case langJavaScript, "typescript":
 		return []rule{
 			mustRule(`\/\/[^\n]*|\/\*[\s\S]*?\*\/`, tokComment),
 			jsStringRule(),
@@ -125,7 +131,7 @@ func languageRules(lang string) []rule {
 			funcRule(),
 			mustRule(`[{}()\[\];,:.<>=+\-*/%&|^!~?]`, tokPunctuation),
 		}
-	case "rust", "rs":
+	case langRust:
 		return []rule{
 			mustRule(`\/\/[^\n]*|\/\*[\s\S]*?\*\/`, tokComment),
 			mustRule(`"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'`, tokString),
@@ -178,7 +184,7 @@ func languageRules(lang string) []rule {
 			mustRule(`\b(if|then|else|elif|fi|for|do|done|while|until|case|esac|in|function|return|local|export|readonly|declare|typeset|unset|shift|break|continue|exit)\b`, tokKeyword),
 			mustRule(`\b(true|false|null)\b`, tokConstant),
 			mustRule(`\b[0-9]+\b`, tokNumber),
-			mustGroupRule(`\b([a-zA-Z_][a-zA-Z0-9_-]*)\s*\(`, 1, tokFunction),
+			mustGroupRule(`\b([a-zA-Z_][a-zA-Z0-9_-]*)\s*\(`, tokFunction),
 			mustRule(`[$]\{?[A-Za-z_][A-Za-z0-9_]*\}?`, tokConstant),
 			mustRule(`[{}()\[\];,:.<>=+\-*/%&|^!]`, tokPunctuation),
 		}
@@ -188,7 +194,7 @@ func languageRules(lang string) []rule {
 			mustRule(`"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'`, tokString),
 			mustRule(`<\/?[a-zA-Z][a-zA-Z0-9:-]*`, tokKeyword),
 			mustRule(`\/?>`, tokPunctuation),
-			mustGroupRule(`([a-zA-Z_:][a-zA-Z0-9_:.-]*)\s*=`, 1, tokType),
+			mustGroupRule(`([a-zA-Z_:][a-zA-Z0-9_:.-]*)\s*=`, tokType),
 			mustRule(`[{}()\[\];,:.<>=+\-*/%&|^!?]`, tokPunctuation),
 		}
 	case "css", "scss", "less":
@@ -199,12 +205,12 @@ func languageRules(lang string) []rule {
 			mustRule(`#[0-9a-fA-F]{3,8}\b`, tokNumber),
 			mustRule(`\b[0-9]+(\.[0-9]+)?(px|em|rem|vh|vw|%|s|ms|deg|fr)?\b`, tokNumber),
 			mustRule(`[.#][a-zA-Z_][a-zA-Z0-9_-]*`, tokType),
-			mustGroupRule(`([a-zA-Z-]+)\s*:`, 1, tokFunction),
+			mustGroupRule(`([a-zA-Z-]+)\s*:`, tokFunction),
 			mustRule(`[{}()\[\];,:.<>=+\-*/%&|!]`, tokPunctuation),
 		}
 	case "json":
 		return []rule{
-			mustGroupRule(`("(?:\\.|[^"\\])*")\s*:`, 1, tokType),
+			mustGroupRule(`("(?:\\.|[^"\\])*")\s*:`, tokType),
 			mustRule(`"(?:\\.|[^"\\])*"`, tokString),
 			mustRule(`\b(true|false|null)\b`, tokConstant),
 			mustRule(`-?\b[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?\b`, tokNumber),
@@ -216,7 +222,7 @@ func languageRules(lang string) []rule {
 			mustRule(`"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'`, tokString),
 			mustRule(`\b(true|false|null|yes|no|on|off)\b`, tokConstant),
 			mustRule(`-?\b[0-9]+(\.[0-9]+)?\b`, tokNumber),
-			mustGroupRule(`\b([a-zA-Z_][a-zA-Z0-9_.-]*)\s*:`, 1, tokType),
+			mustGroupRule(`\b([a-zA-Z_][a-zA-Z0-9_.-]*)\s*:`, tokType),
 			mustRule(`[:{}\[\],\-]`, tokPunctuation),
 		}
 	case "sql":
@@ -248,13 +254,13 @@ func normalizeLang(lang string) string {
 	l := strings.ToLower(strings.TrimSpace(lang))
 	switch l {
 	case "py":
-		return "python"
+		return langPython
 	case "js", "jsx":
-		return "javascript"
+		return langJavaScript
 	case "ts", "tsx":
 		return "typescript"
 	case "rs":
-		return "rust"
+		return langRust
 	case "rb":
 		return "ruby"
 	case "sh", "zsh":

@@ -128,9 +128,6 @@ func TestRenderCodeBlockWithoutLang(t *testing.T) {
 	theme.ActiveTheme = theme.Matcha
 	out := renderCodeBlock("plain text code", "")
 	stripped := stripANSI(out)
-	if strings.Contains(strings.ToUpper(stripped), "PLAIN TEXT CODE"+strings.ToUpper("")) {
-		// just ensure no crash and code is present
-	}
 	if !strings.Contains(stripped, "plain text code") {
 		t.Errorf("code block without lang should still contain code, got: %q", stripped)
 	}
