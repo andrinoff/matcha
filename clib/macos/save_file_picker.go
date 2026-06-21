@@ -16,7 +16,7 @@ var saveFilePickerSwift string
 // SaveFilePicker launches the native macOS save panel (NSSavePanel).
 // It returns the selected save path, or empty string if the user cancelled.
 func SaveFilePicker(initialPath string, suggestedFilename string) (string, error) {
-	if runtime.GOOS != "darwin" {
+	if runtime.GOOS != goosDarwin {
 		return "", fmt.Errorf("SaveFilePicker is only supported on macOS")
 	}
 

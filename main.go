@@ -2574,7 +2574,7 @@ func (m *mainModel) buildPaletteCommands() []tui.PaletteCommand {
 	kb := config.Keybinds
 	var cmds []tui.PaletteCommand
 
-	switch m.current.(type) {
+	switch v := m.current.(type) {
 	case *tui.EmailView:
 		cmds = append(cmds,
 			tui.PaletteCommand{Title: "Reply", Hint: kb.Email.Reply, Keywords: "respond answer", Action: keyAction(kb.Email.Reply)},
@@ -2584,10 +2584,7 @@ func (m *mainModel) buildPaletteCommands() []tui.PaletteCommand {
 			tui.PaletteCommand{Title: "Toggle images", Hint: kb.Email.ToggleImages, Keywords: "pictures show hide", Action: keyAction(kb.Email.ToggleImages)},
 		)
 
-		// Email export and open-in-browser commands.
-		if ev, ok := m.current.(*tui.EmailView); ok {
-			cmds = append(cmds, m.emailExportCommands(ev)...)
-		}
+		cmds = append(cmds, m.emailExportCommands(v)...)
 	case *tui.Inbox, *tui.FolderInbox:
 		cmds = append(cmds,
 			tui.PaletteCommand{Title: "Refresh", Hint: kb.Inbox.Refresh, Keywords: "reload sync fetch", Action: keyAction(kb.Inbox.Refresh)},
@@ -4142,12 +4139,13 @@ func openEmailInBrowserCmd(cfg *config.Config, email fetcher.Email, accountID, f
 		if err != nil {
 			return tui.EmailOpenedInBrowserMsg{Err: fmt.Errorf("failed to create temp file: %w", err)}
 		}
-		defer tmpFile.Close() //nolint:errcheck
-
 		if _, err := tmpFile.Write(htmlData); err != nil {
+			tmpFile.Close() //nolint:errcheck,gosec
 			return tui.EmailOpenedInBrowserMsg{Err: fmt.Errorf("failed to write temp file: %w", err)}
 		}
-		tmpFile.Close() //nolint:errcheck
+		if err := tmpFile.Close(); err != nil {
+			return tui.EmailOpenedInBrowserMsg{Err: fmt.Errorf("failed to close temp file: %w", err)}
+		}
 
 		tmpPath := tmpFile.Name()
 		loglevel.Debugf("email saved to temp file %s for browser viewing", tmpPath)

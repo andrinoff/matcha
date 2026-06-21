@@ -20,7 +20,7 @@ type MacOSContact struct {
 
 // FetchContacts calls the macOS Contacts framework via a compiled Swift helper.
 func FetchContacts() ([]MacOSContact, error) {
-	if runtime.GOOS != "darwin" {
+	if runtime.GOOS != goosDarwin {
 		return nil, fmt.Errorf("FetchContacts is only supported on macOS")
 	}
 

@@ -19,6 +19,8 @@ import (
 	"github.com/floatpane/matcha/fetcher"
 )
 
+const extHTML = "html"
+
 // EmailMetadata holds all parsed header fields from a raw RFC822 message.
 type EmailMetadata struct {
 	From        string
@@ -87,7 +89,7 @@ func ParseMetadata(rawMsg []byte) (*EmailMetadata, error) {
 	meta.RawHeaders = extractRawHeaders(rawMsg)
 
 	// Close the reader to release resources
-	mr.Close() //nolint:errcheck
+	mr.Close() //nolint:errcheck,gosec
 
 	return meta, nil
 }
@@ -591,7 +593,7 @@ func formatSize(bytes int) string {
 // SuggestFilename generates a safe filename suggestion from an email subject
 // and the desired format extension.
 func SuggestFilename(subject, format string) string {
-	ext := "html"
+	ext := extHTML
 	if format == "markdown" || format == "md" {
 		ext = "md"
 	}
@@ -633,5 +635,5 @@ func WriteToFile(path string, data []byte) error {
 			return err
 		}
 	}
-	return os.WriteFile(path, data, 0644) //nolint:gosec
+	return os.WriteFile(path, data, 0644)
 }

@@ -15,7 +15,7 @@ var badgeSwift string
 
 // SetBadge updates the macOS Dock badge count.
 func SetBadge(count int) error {
-	if runtime.GOOS != "darwin" {
+	if runtime.GOOS != goosDarwin {
 		return nil
 	}
 

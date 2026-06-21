@@ -13,6 +13,8 @@ import (
 //go:embed appearance.swift
 var appearanceSwift string
 
+const goosDarwin = "darwin"
+
 type MacOSAppearance struct {
 	DarkMode    bool
 	AccentColor string
@@ -20,7 +22,7 @@ type MacOSAppearance struct {
 
 // GetAppearance fetches the current macOS appearance (dark mode and accent color).
 func GetAppearance() (*MacOSAppearance, error) {
-	if runtime.GOOS != "darwin" {
+	if runtime.GOOS != goosDarwin {
 		return nil, fmt.Errorf("GetAppearance is only supported on macOS")
 	}
 
