@@ -266,6 +266,47 @@ type AttachmentDownloadedMsg struct {
 	Err  error
 }
 
+// ExportEmailMsg requests exporting the current email to a file.
+// Format is "html" or "markdown".
+type ExportEmailMsg struct {
+	Email    fetcher.Email
+	Account  string
+	Folder   string
+	Mailbox  MailboxKind
+	Format   string // "html" or "markdown"
+	SavePath string // empty means show a file picker first
+}
+
+// EmailExportedMsg signals that an email export completed.
+type EmailExportedMsg struct {
+	Path string
+	Err  error
+}
+
+// OpenEmailInBrowserMsg requests saving the raw email to a temp file
+// and opening it in the system browser.
+type OpenEmailInBrowserMsg struct {
+	Email   fetcher.Email
+	Account string
+	Folder  string
+}
+
+// EmailOpenedInBrowserMsg signals that the email was opened in a browser.
+type EmailOpenedInBrowserMsg struct {
+	Err error
+}
+
+// GoToSaveFilePickerMsg signals navigation to the save file picker for
+// email export.
+type GoToSaveFilePickerMsg struct {
+	Email         fetcher.Email
+	Account       string
+	Folder        string
+	Mailbox       MailboxKind
+	Format        string
+	SuggestedName string
+}
+
 type RestoreViewMsg struct{}
 
 type BackToInboxMsg struct{}

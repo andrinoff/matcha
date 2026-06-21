@@ -271,6 +271,21 @@ func (p *Provider) FetchAttachment(_ context.Context, folder string, uid uint32,
 	return findAttachmentData(rc, partID)
 }
 
+// FetchRawMessage returns the full raw RFC822 message bytes.
+func (p *Provider) FetchRawMessage(_ context.Context, folder string, uid uint32) ([]byte, error) {
+	msg, err := p.findMessageByUID(folder, uid)
+	if err != nil {
+		return nil, err
+	}
+	rc, err := msg.Open()
+	if err != nil {
+		return nil, fmt.Errorf("maildir open: %w", err)
+	}
+	defer rc.Close() //nolint:errcheck
+
+	return io.ReadAll(rc)
+}
+
 // MarkAsRead sets the Seen flag while preserving the others.
 func (p *Provider) MarkAsRead(_ context.Context, folder string, uid uint32) error {
 	msg, err := p.findMessageByUID(folder, uid)

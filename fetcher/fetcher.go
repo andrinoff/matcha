@@ -2036,6 +2036,47 @@ func FetchFolderAttachment(account *config.Account, folder string, uid uint32, p
 	return FetchAttachmentFromMailbox(account, folder, uid, partID, encoding)
 }
 
+// FetchRawMessageFromMailbox fetches the full raw RFC822 message bytes for the
+// given UID in the given mailbox. This is used for exporting emails and opening
+// them in a browser. It supports both backend-provider accounts (maildir, JMAP)
+// and direct IMAP connections.
+func FetchRawMessageFromMailbox(account *config.Account, mailbox string, uid uint32) ([]byte, error) {
+	if hasBackendProvider(account) {
+		p, err := newBackendProvider(account)
+		if err != nil {
+			return nil, err
+		}
+		defer p.Close() //nolint:errcheck
+		return p.FetchRawMessage(context.Background(), mailbox, uid)
+	}
+
+	c, err := connect(account)
+	if err != nil {
+		return nil, err
+	}
+	defer c.Close() //nolint:errcheck
+
+	if _, err := c.Select(mailbox, nil).Wait(); err != nil {
+		return nil, err
+	}
+
+	uidSet := imap.UIDSetNum(imap.UID(uid))
+	wholeSection := &imap.FetchItemBodySection{Peek: true}
+	fetchCmd := c.Fetch(uidSet, &imap.FetchOptions{
+		BodySection: []*imap.FetchItemBodySection{wholeSection},
+	})
+	msgs, err := fetchCmd.Collect()
+	if err != nil {
+		return nil, err
+	}
+	if len(msgs) > 0 {
+		if data := msgs[0].FindBodySection(wholeSection); data != nil {
+			return data, nil
+		}
+	}
+	return nil, fmt.Errorf("could not fetch raw message")
+}
+
 // DeleteFolderEmail deletes an email from an arbitrary folder.
 func DeleteFolderEmail(account *config.Account, folder string, uid uint32) error {
 	return DeleteEmailFromMailbox(account, folder, uid)
@@ -2044,6 +2085,21 @@ func DeleteFolderEmail(account *config.Account, folder string, uid uint32) error
 // ArchiveFolderEmail archives an email from an arbitrary folder.
 func ArchiveFolderEmail(account *config.Account, folder string, uid uint32) error {
 	return ArchiveEmailFromMailbox(account, folder, uid)
+}
+
+// GetSentMailbox returns the sent mailbox name for the account.
+func GetSentMailbox(account *config.Account) string {
+	return getSentMailbox(account)
+}
+
+// GetTrashMailbox returns the trash mailbox name for the account.
+func GetTrashMailbox(account *config.Account) string {
+	return getTrashMailbox(account)
+}
+
+// GetArchiveMailbox returns the archive mailbox name for the account.
+func GetArchiveMailbox(account *config.Account) string {
+	return getArchiveMailbox(account)
 }
 
 // loadPGPKeyring builds an openpgp.EntityList from the account's public key

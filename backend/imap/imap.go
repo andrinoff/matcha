@@ -48,6 +48,10 @@ func (p *Provider) FetchAttachment(_ context.Context, folder string, uid uint32,
 	return fetcher.FetchAttachmentFromMailbox(p.account, folder, uid, partID, encoding)
 }
 
+func (p *Provider) FetchRawMessage(_ context.Context, folder string, uid uint32) ([]byte, error) {
+	return fetcher.FetchRawMessageFromMailbox(p.account, folder, uid)
+}
+
 func (p *Provider) Search(_ context.Context, folder string, query backend.SearchQuery) ([]backend.Email, error) {
 	emails, err := fetcher.SearchMailbox(p.account, folder, query)
 	if err != nil {

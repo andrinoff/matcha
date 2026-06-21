@@ -175,6 +175,27 @@ func (p *Provider) FetchAttachment(_ context.Context, _ string, uid uint32, part
 	return findAttachmentData(raw, partID)
 }
 
+// FetchRawMessage returns the full raw RFC822 message bytes.
+func (p *Provider) FetchRawMessage(_ context.Context, _ string, uid uint32) ([]byte, error) {
+	conn, err := p.connect()
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Quit() //nolint:errcheck
+
+	msgID, err := p.findMessageByUID(conn, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	raw, err := conn.RetrRaw(msgID)
+	if err != nil {
+		return nil, fmt.Errorf("pop3 retr: %w", err)
+	}
+
+	return io.ReadAll(raw)
+}
+
 func (p *Provider) Search(_ context.Context, _ string, _ backend.SearchQuery) ([]backend.Email, error) {
 	return nil, backend.ErrNotSupported
 }
