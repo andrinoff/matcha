@@ -3950,7 +3950,7 @@ func runUpdateCLI() (err error) { //nolint:gocyclo
 
 	// Determine OS and try package managers in priority order
 	osName := runtime.GOOS
-	
+
 	switch osName {
 	case "darwin": // macOS
 		// Priority: Homebrew > Manual binary update
@@ -3958,7 +3958,7 @@ func runUpdateCLI() (err error) { //nolint:gocyclo
 			return nil
 		}
 		// Fall through to manual binary download
-		
+
 	case "linux": // Linux
 		// Priority: Snap > Flatpak > AUR (yay) > Nix > Manual binary update
 		if trySnapRefresh() {
@@ -3974,7 +3974,7 @@ func runUpdateCLI() (err error) { //nolint:gocyclo
 			return nil
 		}
 		// Fall through to manual binary download
-		
+
 	case "windows": // Windows
 		// Priority: WinGet > Scoop > Manual binary update
 		if tryWinGetUpgrade() {
@@ -3985,7 +3985,7 @@ func runUpdateCLI() (err error) { //nolint:gocyclo
 		}
 		// Fall through to manual binary download
 	}
-	
+
 	// If no package manager succeeded, fall back to manual binary download
 	return runUpdateCLIManual(latestTag, rel)
 }
@@ -3995,7 +3995,7 @@ func tryHomebrewUpgrade() bool {
 	if _, err := exec.LookPath("brew"); err != nil {
 		return false
 	}
-	
+
 	fmt.Println("Detected Homebrew — updating taps and attempting to upgrade via brew.")
 
 	updateCmd := exec.Command("brew", "update") //nolint:noctx
@@ -4022,13 +4022,13 @@ func trySnapRefresh() bool {
 	if _, err := exec.LookPath("snap"); err != nil {
 		return false
 	}
-	
+
 	// Check if matcha is installed as a snap
 	cmdCheck := exec.Command("snap", "list", "matcha") //nolint:noctx
 	if err := cmdCheck.Run(); err != nil {
 		return false
 	}
-	
+
 	fmt.Println("Detected Snap package — attempting to refresh.")
 	cmd := exec.Command("snap", "refresh", "matcha") //nolint:noctx
 	cmd.Stdout = os.Stdout
@@ -4046,13 +4046,13 @@ func tryFlatpakUpdate() bool {
 	if _, err := exec.LookPath("flatpak"); err != nil {
 		return false
 	}
-	
+
 	// Check if matcha is installed as a flatpak
 	cmdCheck := exec.Command("flatpak", "info", "com.floatpane.matcha") //nolint:noctx
 	if err := cmdCheck.Run(); err != nil {
 		return false
 	}
-	
+
 	fmt.Println("Detected Flatpak package — attempting to update.")
 	cmd := exec.Command("flatpak", "update", "-y", "com.floatpane.matcha") //nolint:noctx
 	cmd.Stdout = os.Stdout
@@ -4070,13 +4070,13 @@ func tryAURUpdate() bool {
 	if _, err := exec.LookPath("yay"); err != nil {
 		return false
 	}
-	
+
 	// Check if matcha-client-bin is installed
 	cmdCheck := exec.Command("yay", "-Q", "matcha-client-bin") //nolint:noctx
 	if err := cmdCheck.Run(); err != nil {
 		return false
 	}
-	
+
 	fmt.Println("Detected AUR package (matcha-client-bin) — attempting to update via yay.")
 	cmd := exec.Command("yay", "-Syu", "--noconfirm", "matcha-client-bin") //nolint:noctx
 	cmd.Stdout = os.Stdout
@@ -4094,14 +4094,14 @@ func tryNixUpdate() bool {
 	if _, err := exec.LookPath("nix"); err != nil {
 		return false
 	}
-	
+
 	// Check if matcha is in the user's profile
 	cmdCheck := exec.Command("nix", "profile", "list") //nolint:noctx
 	output, err := cmdCheck.Output()
 	if err != nil || !strings.Contains(string(output), "matcha") {
 		return false
 	}
-	
+
 	fmt.Println("Detected Nix package — attempting to update via nix profile upgrade.")
 	cmd := exec.Command("nix", "profile", "upgrade", "github:floatpane/matcha") //nolint:noctx
 	cmd.Stdout = os.Stdout
@@ -4119,12 +4119,12 @@ func tryWinGetUpgrade() bool {
 	if _, err := exec.LookPath("winget"); err != nil {
 		return false
 	}
-	
+
 	cmdCheck := exec.Command("winget", "list", "--id", "floatpane.matcha", "--disable-interactivity") //nolint:noctx
 	if err := cmdCheck.Run(); err != nil {
 		return false
 	}
-	
+
 	fmt.Println("Detected WinGet package — attempting to upgrade.")
 	cmd := exec.Command("winget", "upgrade", "--id", "floatpane.matcha", "--disable-interactivity") //nolint:noctx
 	cmd.Stdout = os.Stdout
@@ -4142,13 +4142,13 @@ func tryScoopUpdate() bool {
 	if _, err := exec.LookPath("scoop"); err != nil {
 		return false
 	}
-	
+
 	// Check if matcha is installed via scoop
 	cmdCheck := exec.Command("scoop", "list", "matcha") //nolint:noctx
 	if err := cmdCheck.Run(); err != nil {
 		return false
 	}
-	
+
 	fmt.Println("Detected Scoop package — attempting to update.")
 	cmd := exec.Command("scoop", "update", "matcha") //nolint:noctx
 	cmd.Stdout = os.Stdout
@@ -4173,7 +4173,7 @@ func runUpdateCLIManual(latestTag string, rel githubRelease) error {
 		return fmt.Errorf("could not determine executable path: %w", err)
 	}
 	execDir := filepath.Dir(execPath)
-	
+
 	// Test if we can write to the directory
 	testFile := filepath.Join(execDir, ".matcha_update_test")
 	if _, err := os.Create(testFile); err != nil {
