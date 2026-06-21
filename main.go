@@ -3948,84 +3948,246 @@ func runUpdateCLI() (err error) { //nolint:gocyclo
 		return nil
 	}
 
-	// Detect Homebrew
-	if _, err := exec.LookPath("brew"); err == nil {
-		fmt.Println("Detected Homebrew — updating taps and attempting to upgrade via brew.")
-
-		updateCmd := exec.Command("brew", "update") //nolint:noctx
-		updateCmd.Stdout = os.Stdout
-		updateCmd.Stderr = os.Stderr
-		if err := updateCmd.Run(); err != nil {
-			fmt.Printf("Homebrew update failed: %v\n", err)
-			// continue to attempt upgrade even if update failed
-		}
-
-		upgradeCmd := exec.Command("brew", "upgrade", "floatpane/matcha/matcha") //nolint:noctx
-		upgradeCmd.Stdout = os.Stdout
-		upgradeCmd.Stderr = os.Stderr
-		if err := upgradeCmd.Run(); err == nil {
-			fmt.Println("Successfully upgraded via Homebrew.")
+	// Determine OS and try package managers in priority order
+	osName := runtime.GOOS
+	
+	switch osName {
+	case "darwin": // macOS
+		// Priority: Homebrew > Manual binary update
+		if tryHomebrewUpgrade() {
 			return nil
 		}
-		fmt.Printf("Homebrew upgrade failed: %v\n", err)
-		// fallthrough to other methods
+		// Fall through to manual binary download
+		
+	case "linux": // Linux
+		// Priority: Snap > Flatpak > AUR (yay) > Nix > Manual binary update
+		if trySnapRefresh() {
+			return nil
+		}
+		if tryFlatpakUpdate() {
+			return nil
+		}
+		if tryAURUpdate() {
+			return nil
+		}
+		if tryNixUpdate() {
+			return nil
+		}
+		// Fall through to manual binary download
+		
+	case "windows": // Windows
+		// Priority: WinGet > Scoop > Manual binary update
+		if tryWinGetUpgrade() {
+			return nil
+		}
+		if tryScoopUpdate() {
+			return nil
+		}
+		// Fall through to manual binary download
+	}
+	
+	// If no package manager succeeded, fall back to manual binary download
+	return runUpdateCLIManual(latestTag, rel)
+}
+
+// tryHomebrewUpgrade attempts to upgrade via Homebrew
+func tryHomebrewUpgrade() bool {
+	if _, err := exec.LookPath("brew"); err != nil {
+		return false
+	}
+	
+	fmt.Println("Detected Homebrew — updating taps and attempting to upgrade via brew.")
+
+	updateCmd := exec.Command("brew", "update") //nolint:noctx
+	updateCmd.Stdout = os.Stdout
+	updateCmd.Stderr = os.Stderr
+	if err := updateCmd.Run(); err != nil {
+		fmt.Printf("Homebrew update failed: %v\n", err)
+		// continue to attempt upgrade even if update failed
 	}
 
-	// Detect snap
-	if _, err := exec.LookPath("snap"); err == nil {
-		// Check if matcha is installed as a snap
-		cmdCheck := exec.Command("snap", "list", "matcha") //nolint:noctx
-		if err := cmdCheck.Run(); err == nil {
-			fmt.Println("Detected Snap package — attempting to refresh.")
-			cmd := exec.Command("snap", "refresh", "matcha") //nolint:noctx
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			if err := cmd.Run(); err == nil {
-				fmt.Println("Successfully refreshed snap.")
-				return nil
-			}
-			fmt.Printf("Snap refresh failed: %v\n", err)
-			// fallthrough
-		}
+	upgradeCmd := exec.Command("brew", "upgrade", "floatpane/matcha/matcha") //nolint:noctx
+	upgradeCmd.Stdout = os.Stdout
+	upgradeCmd.Stderr = os.Stderr
+	if err := upgradeCmd.Run(); err == nil {
+		fmt.Println("Successfully upgraded via Homebrew.")
+		return true
 	}
-	// Detect flatpak
-	if _, err := exec.LookPath("flatpak"); err == nil {
-		// Check if matcha is installed as a flatpak
-		cmdCheck := exec.Command("flatpak", "info", "com.floatpane.matcha") //nolint:noctx
-		if err := cmdCheck.Run(); err == nil {
-			fmt.Println("Detected Flatpak package — attempting to update.")
-			cmd := exec.Command("flatpak", "update", "-y", "com.floatpane.matcha") //nolint:noctx
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			if err := cmd.Run(); err == nil {
-				fmt.Println("Successfully updated flatpak.")
-				return nil
-			}
-			fmt.Printf("Flatpak update failed: %v\n", err)
-			// fallthrough
-		}
-	}
+	fmt.Printf("Homebrew upgrade failed\n")
+	return false
+}
 
-	// Detect WinGet
-	if _, err := exec.LookPath("winget"); err == nil {
-		cmdCheck := exec.Command("winget", "list", "--id", "floatpane.matcha", "--disable-interactivity") //nolint:noctx
-		if err := cmdCheck.Run(); err == nil {
-			fmt.Println("Detected WinGet package — attempting to upgrade.")
-			cmd := exec.Command("winget", "upgrade", "--id", "floatpane.matcha", "--disable-interactivity") //nolint:noctx
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			if err := cmd.Run(); err == nil {
-				fmt.Println("Successfully upgraded via WinGet.")
-				return nil
-			}
-			fmt.Printf("WinGet upgrade failed: %v\n", err)
-			// fallthrough
-		}
+// trySnapRefresh attempts to refresh via Snap
+func trySnapRefresh() bool {
+	if _, err := exec.LookPath("snap"); err != nil {
+		return false
 	}
+	
+	// Check if matcha is installed as a snap
+	cmdCheck := exec.Command("snap", "list", "matcha") //nolint:noctx
+	if err := cmdCheck.Run(); err != nil {
+		return false
+	}
+	
+	fmt.Println("Detected Snap package — attempting to refresh.")
+	cmd := exec.Command("snap", "refresh", "matcha") //nolint:noctx
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err == nil {
+		fmt.Println("Successfully refreshed snap.")
+		return true
+	}
+	fmt.Printf("Snap refresh failed\n")
+	return false
+}
 
+// tryFlatpakUpdate attempts to update via Flatpak
+func tryFlatpakUpdate() bool {
+	if _, err := exec.LookPath("flatpak"); err != nil {
+		return false
+	}
+	
+	// Check if matcha is installed as a flatpak
+	cmdCheck := exec.Command("flatpak", "info", "com.floatpane.matcha") //nolint:noctx
+	if err := cmdCheck.Run(); err != nil {
+		return false
+	}
+	
+	fmt.Println("Detected Flatpak package — attempting to update.")
+	cmd := exec.Command("flatpak", "update", "-y", "com.floatpane.matcha") //nolint:noctx
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err == nil {
+		fmt.Println("Successfully updated flatpak.")
+		return true
+	}
+	fmt.Printf("Flatpak update failed\n")
+	return false
+}
+
+// tryAURUpdate attempts to update via AUR (using yay)
+func tryAURUpdate() bool {
+	if _, err := exec.LookPath("yay"); err != nil {
+		return false
+	}
+	
+	// Check if matcha-client-bin is installed
+	cmdCheck := exec.Command("yay", "-Q", "matcha-client-bin") //nolint:noctx
+	if err := cmdCheck.Run(); err != nil {
+		return false
+	}
+	
+	fmt.Println("Detected AUR package (matcha-client-bin) — attempting to update via yay.")
+	cmd := exec.Command("yay", "-Syu", "--noconfirm", "matcha-client-bin") //nolint:noctx
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err == nil {
+		fmt.Println("Successfully updated via AUR.")
+		return true
+	}
+	fmt.Printf("AUR update failed\n")
+	return false
+}
+
+// tryNixUpdate attempts to update via Nix
+func tryNixUpdate() bool {
+	if _, err := exec.LookPath("nix"); err != nil {
+		return false
+	}
+	
+	// Check if matcha is in the user's profile
+	cmdCheck := exec.Command("nix", "profile", "list") //nolint:noctx
+	output, err := cmdCheck.Output()
+	if err != nil || !strings.Contains(string(output), "matcha") {
+		return false
+	}
+	
+	fmt.Println("Detected Nix package — attempting to update via nix profile upgrade.")
+	cmd := exec.Command("nix", "profile", "upgrade", "github:floatpane/matcha") //nolint:noctx
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err == nil {
+		fmt.Println("Successfully updated via Nix.")
+		return true
+	}
+	fmt.Printf("Nix update failed\n")
+	return false
+}
+
+// tryWinGetUpgrade attempts to upgrade via WinGet
+func tryWinGetUpgrade() bool {
+	if _, err := exec.LookPath("winget"); err != nil {
+		return false
+	}
+	
+	cmdCheck := exec.Command("winget", "list", "--id", "floatpane.matcha", "--disable-interactivity") //nolint:noctx
+	if err := cmdCheck.Run(); err != nil {
+		return false
+	}
+	
+	fmt.Println("Detected WinGet package — attempting to upgrade.")
+	cmd := exec.Command("winget", "upgrade", "--id", "floatpane.matcha", "--disable-interactivity") //nolint:noctx
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err == nil {
+		fmt.Println("Successfully upgraded via WinGet.")
+		return true
+	}
+	fmt.Printf("WinGet upgrade failed\n")
+	return false
+}
+
+// tryScoopUpdate attempts to update via Scoop
+func tryScoopUpdate() bool {
+	if _, err := exec.LookPath("scoop"); err != nil {
+		return false
+	}
+	
+	// Check if matcha is installed via scoop
+	cmdCheck := exec.Command("scoop", "list", "matcha") //nolint:noctx
+	if err := cmdCheck.Run(); err != nil {
+		return false
+	}
+	
+	fmt.Println("Detected Scoop package — attempting to update.")
+	cmd := exec.Command("scoop", "update", "matcha") //nolint:noctx
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err == nil {
+		fmt.Println("Successfully updated via Scoop.")
+		return true
+	}
+	fmt.Printf("Scoop update failed\n")
+	return false
+}
+
+// runUpdateCLIManual handles manual binary download and replacement
+func runUpdateCLIManual(latestTag string, rel githubRelease) error {
 	// Otherwise attempt to download the proper release asset and replace the binary.
 	osName := runtime.GOOS
 	arch := runtime.GOARCH
+
+	// Check if we have write permissions to the executable directory
+	execPath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("could not determine executable path: %w", err)
+	}
+	execDir := filepath.Dir(execPath)
+	
+	// Test if we can write to the directory
+	testFile := filepath.Join(execDir, ".matcha_update_test")
+	if _, err := os.Create(testFile); err != nil {
+		// Cannot write - check if running with sudo or suggest it
+		if os.Geteuid() != 0 {
+			fmt.Println("\n⚠️  Permission denied: Cannot write to installation directory.")
+			fmt.Println("   Try running with sudo: sudo matcha update")
+			fmt.Println("   Or reinstall using your package manager.")
+			return fmt.Errorf("permission denied: cannot write to %s", execDir)
+		}
+		// Running as root but still can't write - actual permission issue
+		return fmt.Errorf("cannot write to installation directory %s: %w", execDir, err)
+	}
+	_ = os.Remove(testFile) // Clean up test file
 
 	// Try to find a matching asset
 	var assetURL, assetName string
@@ -4181,14 +4343,7 @@ func runUpdateCLI() (err error) { //nolint:gocyclo
 		return fmt.Errorf("could not locate matcha binary inside the release artifact")
 	}
 
-	// Replace the running executable with the new binary
-	execPath, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("could not determine executable path: %w", err)
-	}
-
 	// Write the new binary to a temp file in same dir, then rename for atomic replacement.
-	execDir := filepath.Dir(execPath)
 	tmpNew := filepath.Join(execDir, fmt.Sprintf("matcha.new.%d", time.Now().Unix()))
 	in, err := os.Open(binPath)
 	if err != nil {
