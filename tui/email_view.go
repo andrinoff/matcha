@@ -482,6 +482,11 @@ func (m *EmailView) GetAccountID() string {
 	return m.accountID
 }
 
+// GetMailbox returns the mailbox kind for this email view
+func (m *EmailView) GetMailbox() MailboxKind {
+	return m.mailbox
+}
+
 // SetPluginStatus sets a persistent status string from plugins, shown in the help bar.
 func (m *EmailView) SetPluginStatus(status string) {
 	m.pluginStatus = status

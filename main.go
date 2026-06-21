@@ -42,6 +42,7 @@ import (
 	matchaDaemon "github.com/floatpane/matcha/daemon"
 	"github.com/floatpane/matcha/daemonclient"
 	"github.com/floatpane/matcha/daemonrpc"
+	"github.com/floatpane/matcha/export"
 	"github.com/floatpane/matcha/fetcher"
 	"github.com/floatpane/matcha/i18n"
 	_ "github.com/floatpane/matcha/i18n/languages"
@@ -114,6 +115,16 @@ type githubRelease struct {
 	} `json:"assets"`
 }
 
+// pendingExport holds context for an in-progress email export while the
+// save file picker is open (non-macOS platforms).
+type pendingExport struct {
+	email   fetcher.Email
+	account string
+	folder  string
+	mailbox tui.MailboxKind
+	format  string
+}
+
 type mainModel struct {
 	current       tea.Model
 	previousModel tea.Model
@@ -153,6 +164,7 @@ type mainModel struct {
 	actionNotice      string
 	errorNotification overlay.Notification
 	showErrorNotif    bool
+	pendingExport     *pendingExport
 }
 
 type logEntryMsg struct {
@@ -1920,12 +1932,83 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 		return m, m.current.Init()
 
 	case tui.FileSelectedMsg, tui.CancelFilePickerMsg:
+		// If a pending export was in progress (save file picker was open),
+		// clear it and just restore the previous view.
+		if m.pendingExport != nil {
+			m.pendingExport = nil
+		}
 		if m.previousModel != nil {
 			m.current = m.previousModel
 			m.previousModel = nil
 		}
 		m.current, cmd = m.current.Update(msg)
 		cmds = append(cmds, cmd)
+
+	case tui.GoToSaveFilePickerMsg:
+		if runtime.GOOS == goosDarwin {
+			// Use native NSSavePanel on macOS
+			suggestedName := msg.SuggestedName
+			return m, func() tea.Msg {
+				home, _ := os.UserHomeDir()
+				savePath, err := macos.SaveFilePicker(home, suggestedName)
+				if err != nil || savePath == "" {
+					return tui.CancelFilePickerMsg{}
+				}
+				return tui.ExportEmailMsg{
+					Email:    msg.Email,
+					Account:  msg.Account,
+					Folder:   msg.Folder,
+					Mailbox:  msg.Mailbox,
+					Format:   msg.Format,
+					SavePath: savePath,
+				}
+			}
+		}
+		// Use TUI save file picker on other platforms
+		m.previousModel = m.current
+		home, _ := os.UserHomeDir()
+		m.current = tui.NewSaveFilePicker(home, msg.SuggestedName)
+		m.current, _ = m.current.Update(m.currentWindowSize())
+		// Stash export context on the model for use when SaveFileSelectedMsg arrives
+		m.pendingExport = &pendingExport{
+			email:   msg.Email,
+			account: msg.Account,
+			folder:  msg.Folder,
+			mailbox: msg.Mailbox,
+			format:  msg.Format,
+		}
+		return m, m.current.Init()
+
+	case tui.SaveFileSelectedMsg:
+		// User confirmed a save path in the TUI save file picker
+		pe := m.pendingExport
+		m.pendingExport = nil
+		if m.previousModel != nil {
+			m.current = m.previousModel
+			m.previousModel = nil
+		}
+		if pe == nil {
+			return m, nil
+		}
+		return m, exportEmailCmd(m.config, pe.email, pe.account, pe.folder, pe.format, msg.Path)
+
+	case tui.ExportEmailMsg:
+		return m, exportEmailCmd(m.config, msg.Email, msg.Account, msg.Folder, msg.Format, msg.SavePath)
+
+	case tui.EmailExportedMsg:
+		if msg.Err != nil {
+			return m, m.showErrorCmd(fmt.Sprintf("Export failed: %v", msg.Err))
+		}
+		return m, m.showInfoCmd(fmt.Sprintf("Exported to %s", msg.Path))
+
+	case tui.OpenEmailInBrowserMsg:
+		return m, openEmailInBrowserCmd(m.config, msg.Email, msg.Account, msg.Folder)
+
+	case tui.EmailOpenedInBrowserMsg:
+		if msg.Err != nil {
+			return m, m.showErrorCmd(fmt.Sprintf("Failed to open in browser: %v", msg.Err))
+		}
+		return m, m.showInfoCmd("Opened in browser")
 
 	case tui.SendEmailMsg:
 		if m.plugins != nil {
@@ -2472,7 +2555,7 @@ func (m *mainModel) closePalette() {
 func (m *mainModel) paletteAllowed() bool {
 	switch v := m.current.(type) {
 	case *tui.Composer, *tui.Login, *tui.SignatureEditor, *tui.MailingListEditor, *tui.ContactEditor,
-		*tui.PasswordPrompt, *tui.FilePicker, *tui.Status:
+		*tui.PasswordPrompt, *tui.FilePicker, *tui.SaveFilePicker, *tui.Status:
 		return false
 	case *tui.Inbox:
 		return !v.IsSearchActive() && !v.IsFilterActive()
@@ -2491,7 +2574,7 @@ func (m *mainModel) buildPaletteCommands() []tui.PaletteCommand {
 	kb := config.Keybinds
 	var cmds []tui.PaletteCommand
 
-	switch m.current.(type) {
+	switch v := m.current.(type) {
 	case *tui.EmailView:
 		cmds = append(cmds,
 			tui.PaletteCommand{Title: "Reply", Hint: kb.Email.Reply, Keywords: "respond answer", Action: keyAction(kb.Email.Reply)},
@@ -2500,6 +2583,8 @@ func (m *mainModel) buildPaletteCommands() []tui.PaletteCommand {
 			tui.PaletteCommand{Title: "Delete email", Hint: kb.Email.Delete, Keywords: "trash remove", Action: keyAction(kb.Email.Delete)},
 			tui.PaletteCommand{Title: "Toggle images", Hint: kb.Email.ToggleImages, Keywords: "pictures show hide", Action: keyAction(kb.Email.ToggleImages)},
 		)
+
+		cmds = append(cmds, m.emailExportCommands(v)...)
 	case *tui.Inbox, *tui.FolderInbox:
 		cmds = append(cmds,
 			tui.PaletteCommand{Title: "Refresh", Hint: kb.Inbox.Refresh, Keywords: "reload sync fetch", Action: keyAction(kb.Inbox.Refresh)},
@@ -2511,6 +2596,14 @@ func (m *mainModel) buildPaletteCommands() []tui.PaletteCommand {
 			tui.PaletteCommand{Title: "Delete selected", Hint: kb.Inbox.Delete, Keywords: "trash remove", Action: keyAction(kb.Inbox.Delete)},
 			tui.PaletteCommand{Title: "Move to folder", Hint: kb.Folder.Move, Keywords: "file relocate", Action: keyAction(kb.Folder.Move)},
 		)
+
+		// When a split preview is open, expose export/open-in-browser for the
+		// previewed email too.
+		if fi, ok := m.current.(*tui.FolderInbox); ok && fi.HasSplitPreview() {
+			if ev := fi.GetPreviewPane(); ev != nil {
+				cmds = append(cmds, m.emailExportCommands(ev)...)
+			}
+		}
 	}
 
 	cmds = append(cmds,
@@ -2523,6 +2616,43 @@ func (m *mainModel) buildPaletteCommands() []tui.PaletteCommand {
 		tui.PaletteCommand{Title: "Quit Matcha", Keywords: "exit close", Action: tea.Quit},
 	)
 	return cmds
+}
+
+// emailExportCommands builds the export/open-in-browser palette commands for a
+// given email view, used both for the full EmailView and the split preview pane.
+func (m *mainModel) emailExportCommands(ev *tui.EmailView) []tui.PaletteCommand {
+	email := ev.GetEmail()
+	accountID := ev.GetAccountID()
+	folderName := folderInbox
+	if m.folderInbox != nil {
+		folderName = m.folderInbox.GetCurrentFolder()
+	}
+
+	exportAction := func(format string) func() tea.Msg {
+		return func() tea.Msg {
+			return tui.GoToSaveFilePickerMsg{
+				Email:         email,
+				Account:       accountID,
+				Folder:        folderName,
+				Mailbox:       ev.GetMailbox(),
+				Format:        format,
+				SuggestedName: export.SuggestFilename(email.Subject, format),
+			}
+		}
+	}
+	openInBrowserAction := func() tea.Msg {
+		return tui.OpenEmailInBrowserMsg{
+			Email:   email,
+			Account: accountID,
+			Folder:  folderName,
+		}
+	}
+
+	return []tui.PaletteCommand{
+		{Title: "Export as HTML", Keywords: "export save html file", Action: exportAction("html")},
+		{Title: "Export as Markdown", Keywords: "export save markdown md file", Action: exportAction("markdown")},
+		{Title: "Open in browser", Keywords: "open browser web view original", Action: openInBrowserAction},
+	}
 }
 
 // keyAction returns a palette action that replays a keybinding to the active
@@ -2608,6 +2738,21 @@ func (m *mainModel) showErrorCmd(msg string) tea.Cmd {
 	)
 	m.showErrorNotif = true
 	return tea.Tick(8*time.Second, func(time.Time) tea.Msg {
+		return clearErrorNotifMsg{}
+	})
+}
+
+// showInfoCmd displays a non-blocking informational overlay notification that
+// auto-dismisses, without replacing the current view.
+func (m *mainModel) showInfoCmd(msg string) tea.Cmd {
+	col := max(0, m.width-44)
+	m.errorNotification = overlay.NewInfo(
+		overlay.WithMessage(msg),
+		overlay.WithKey(config.Keybinds.Global.DismissNotification),
+		overlay.WithPosition(0, col),
+	)
+	m.showErrorNotif = true
+	return tea.Tick(4*time.Second, func(time.Time) tea.Msg {
 		return clearErrorNotifMsg{}
 	})
 }
@@ -3933,6 +4078,95 @@ func downloadAttachmentCmd(account *config.Account, uid uint32, msg tui.Download
 		}(filePath)
 
 		return tui.AttachmentDownloadedMsg{Path: filePath, Err: nil}
+	}
+}
+
+// exportEmailCmd fetches the raw RFC822 message, converts it to the desired
+// format (HTML or Markdown) with full metadata, and writes it to savePath.
+func exportEmailCmd(cfg *config.Config, email fetcher.Email, accountID, folderName, format, savePath string) tea.Cmd {
+	return func() tea.Msg {
+		account := cfg.GetAccountByID(accountID)
+		if account == nil {
+			return tui.EmailExportedMsg{Err: fmt.Errorf("account not found")}
+		}
+
+		rawMsg, err := fetcher.FetchRawMessageFromMailbox(account, folderName, email.UID)
+		if err != nil {
+			return tui.EmailExportedMsg{Err: fmt.Errorf("failed to fetch raw message: %w", err)}
+		}
+
+		var data []byte
+		switch format {
+		case "markdown", "md":
+			data, err = export.EmailToMarkdown(rawMsg, email)
+		default:
+			data, err = export.EmailToHTML(rawMsg, email)
+		}
+		if err != nil {
+			return tui.EmailExportedMsg{Err: fmt.Errorf("failed to convert email: %w", err)}
+		}
+
+		if err := export.WriteToFile(savePath, data); err != nil {
+			return tui.EmailExportedMsg{Err: fmt.Errorf("failed to write file: %w", err)}
+		}
+
+		loglevel.Infof("email exported to %s", savePath)
+		return tui.EmailExportedMsg{Path: savePath, Err: nil}
+	}
+}
+
+// openEmailInBrowserCmd saves the raw email HTML to a temp file and opens it
+// in the system's default browser.
+func openEmailInBrowserCmd(cfg *config.Config, email fetcher.Email, accountID, folderName string) tea.Cmd {
+	return func() tea.Msg {
+		account := cfg.GetAccountByID(accountID)
+		if account == nil {
+			return tui.EmailOpenedInBrowserMsg{Err: fmt.Errorf("account not found")}
+		}
+
+		rawMsg, err := fetcher.FetchRawMessageFromMailbox(account, folderName, email.UID)
+		if err != nil {
+			return tui.EmailOpenedInBrowserMsg{Err: fmt.Errorf("failed to fetch raw message: %w", err)}
+		}
+
+		htmlData, err := export.EmailToHTML(rawMsg, email)
+		if err != nil {
+			return tui.EmailOpenedInBrowserMsg{Err: fmt.Errorf("failed to convert email: %w", err)}
+		}
+
+		// Write to a temp file
+		tmpFile, err := os.CreateTemp("", "matcha-email-*.html")
+		if err != nil {
+			return tui.EmailOpenedInBrowserMsg{Err: fmt.Errorf("failed to create temp file: %w", err)}
+		}
+		if _, err := tmpFile.Write(htmlData); err != nil {
+			tmpFile.Close() //nolint:errcheck,gosec
+			return tui.EmailOpenedInBrowserMsg{Err: fmt.Errorf("failed to write temp file: %w", err)}
+		}
+		if err := tmpFile.Close(); err != nil {
+			return tui.EmailOpenedInBrowserMsg{Err: fmt.Errorf("failed to close temp file: %w", err)}
+		}
+
+		tmpPath := tmpFile.Name()
+		loglevel.Debugf("email saved to temp file %s for browser viewing", tmpPath)
+
+		// Open with the system browser
+		var cmd *exec.Cmd
+		switch runtime.GOOS {
+		case goosDarwin:
+			cmd = exec.Command("open", tmpPath) //nolint:noctx
+		case goosLinux:
+			cmd = exec.Command("xdg-open", tmpPath) //nolint:noctx
+		case goosWindows:
+			cmd = exec.Command("cmd", "/c", "start", "", tmpPath) //nolint:noctx
+		default:
+			return tui.EmailOpenedInBrowserMsg{Err: fmt.Errorf("unsupported OS: %s", runtime.GOOS)}
+		}
+		if err := cmd.Start(); err != nil {
+			return tui.EmailOpenedInBrowserMsg{Err: fmt.Errorf("failed to open browser: %w", err)}
+		}
+
+		return tui.EmailOpenedInBrowserMsg{Err: nil}
 	}
 }
 

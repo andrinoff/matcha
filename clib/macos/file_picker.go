@@ -16,7 +16,7 @@ var filePickerSwift string
 // OpenFilePicker launches the native macOS file picker.
 // It returns a list of selected absolute file paths.
 func OpenFilePicker(initialPath string) ([]string, error) {
-	if runtime.GOOS != "darwin" {
+	if runtime.GOOS != goosDarwin {
 		return nil, fmt.Errorf("OpenFilePicker is only supported on macOS")
 	}
 

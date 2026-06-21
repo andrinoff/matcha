@@ -78,6 +78,16 @@ toggle threaded/delete/archive in the inbox). Each palette action simply replays
 its keybinding, so it always matches whatever you've configured — and you can
 rely on the palette for less-common actions instead of memorizing every key.
 
+When viewing an email, the palette also includes:
+
+- **Export as HTML** — exports the email (with full headers and metadata) as a
+  self-contained HTML file. Opens a system save dialog on macOS, or a TUI file
+  browser on other platforms.
+- **Export as Markdown** — exports the email (with full headers and metadata) as
+  a Markdown file.
+- **Open in browser** — saves the original email as HTML to a temporary file and
+  opens it in the system's default browser.
+
 The palette is suppressed while typing in the composer, login, and other
 text-entry views so the trigger key never interrupts editing.
 

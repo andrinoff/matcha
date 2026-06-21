@@ -31,6 +31,9 @@ type EmailReader interface {
 	// "text/plain"; empty when unknown), parsed attachments, and any error.
 	FetchEmailBody(ctx context.Context, folder string, uid uint32) (string, string, []Attachment, error)
 	FetchAttachment(ctx context.Context, folder string, uid uint32, partID, encoding string) ([]byte, error)
+	// FetchRawMessage returns the full raw RFC822 message bytes for the given
+	// UID in the given folder. Used for exporting and opening in a browser.
+	FetchRawMessage(ctx context.Context, folder string, uid uint32) ([]byte, error)
 }
 
 // EmailWriter modifies email state.

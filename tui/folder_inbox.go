@@ -804,6 +804,12 @@ func (m *FolderInbox) HasSplitPreview() bool {
 	return m.previewPane != nil
 }
 
+// GetPreviewPane returns the split preview EmailView, or nil when no preview
+// is open.
+func (m *FolderInbox) GetPreviewPane() *EmailView {
+	return m.previewPane
+}
+
 // GetInbox returns the embedded inbox.
 func (m *FolderInbox) GetInbox() *Inbox {
 	return m.inbox

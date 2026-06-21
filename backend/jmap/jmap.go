@@ -362,6 +362,44 @@ func (p *Provider) FetchAttachment(_ context.Context, _ string, _ uint32, partID
 	return io.ReadAll(reader)
 }
 
+// FetchRawMessage returns the full raw RFC822 message bytes by downloading
+// the email's top-level blob via the JMAP download endpoint.
+func (p *Provider) FetchRawMessage(_ context.Context, folder string, uid uint32) ([]byte, error) {
+	jmapID, err := p.resolveUID(folder, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	req := &jmapclient.Request{}
+	req.Invoke(&email.Get{
+		Account:    p.accountID,
+		IDs:        []jmapclient.ID{jmapID},
+		Properties: []string{"id", "blobId"},
+	})
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("jmap raw message: %w", err)
+	}
+
+	for _, inv := range resp.Responses {
+		if r, ok := inv.Args.(*email.GetResponse); ok && len(r.List) > 0 {
+			eml := r.List[0]
+			if eml.BlobID == "" {
+				return nil, fmt.Errorf("jmap: email has no blobId")
+			}
+			reader, err := p.client.Download(p.accountID, eml.BlobID)
+			if err != nil {
+				return nil, fmt.Errorf("jmap download raw: %w", err)
+			}
+			defer reader.Close() //nolint:errcheck
+			return io.ReadAll(reader)
+		}
+	}
+
+	return nil, fmt.Errorf("jmap: email not found")
+}
+
 func (p *Provider) MarkAsRead(_ context.Context, folder string, uid uint32) error {
 	jmapID, err := p.resolveUID(folder, uid)
 	if err != nil {
