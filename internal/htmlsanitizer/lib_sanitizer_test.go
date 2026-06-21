@@ -248,6 +248,38 @@ func TestLibSanitizerRejectsCIDWithQueryOrFragment(t *testing.T) {
 	}
 }
 
+func TestLibSanitizerAllowsLanguageClassOnPreAndCode(t *testing.T) {
+	sanitizer := NewLibSanitizer()
+	input := []byte(`
+		<pre><code class="language-go">func main() {}</code></pre>
+		<pre class="language-python">print("hi")</pre>
+		<p class="language-evil">text</p>
+		<code class="not-a-language">x</code>
+		<code class="language-javascript">let x = 1</code>
+	`)
+
+	got := string(sanitizer.SanitizeBytes(input))
+
+	for _, want := range []string{
+		`class="language-go"`,
+		`class="language-python"`,
+		`class="language-javascript"`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("sanitized HTML should keep %q:\n%s", want, got)
+		}
+	}
+
+	for _, forbidden := range []string{
+		`class="language-evil"`,
+		`class="not-a-language"`,
+	} {
+		if strings.Contains(got, forbidden) {
+			t.Errorf("sanitized HTML should remove %q:\n%s", forbidden, got)
+		}
+	}
+}
+
 func TestLibSanitizerRejectsInvalidDataImages(t *testing.T) {
 	sanitizer := NewLibSanitizer()
 	input := []byte(`

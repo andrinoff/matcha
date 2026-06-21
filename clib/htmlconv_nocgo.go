@@ -47,6 +47,29 @@ func HTMLToElements(html string) ([]HTMLElement, bool) {
 		s.ReplaceWithHtml("\n")
 	})
 
+	// Process <pre> blocks — emit HELEM_CODE with optional language hint.
+	// md4c renders fenced code blocks as <pre><code class="language-X">.
+	doc.Find("pre").Each(func(i int, s *goquery.Selection) {
+		var lang string
+		if code := s.Find("code"); code.Length() > 0 {
+			if class, ok := code.Attr("class"); ok {
+				lang = extractLanguageClass(class)
+			}
+		}
+		if lang == "" {
+			if class, ok := s.Attr("class"); ok {
+				lang = extractLanguageClass(class)
+			}
+		}
+		text := s.Text()
+		elem := HTMLElement{Type: HElemCode, Text: text}
+		if lang != "" {
+			elem.Attr1 = lang
+		}
+		elements = append(elements, elem)
+		s.ReplaceWithHtml("\n\n")
+	})
+
 	// Process blockquotes
 	onWroteRegex := regexp.MustCompile(`On\s+(.+?),\s+(.+?)\s+wrote:`)
 	doc.Find("blockquote").Each(func(i int, s *goquery.Selection) {
@@ -114,4 +137,15 @@ func HTMLToElements(html string) ([]HTMLElement, bool) {
 	}
 
 	return elements, true
+}
+
+// extractLanguageClass parses a class attribute value and returns the
+// language token from a "language-XXX" class, or "" if none is present.
+func extractLanguageClass(class string) string {
+	for _, c := range strings.Fields(class) {
+		if strings.HasPrefix(c, "language-") {
+			return strings.TrimPrefix(c, "language-")
+		}
+	}
+	return ""
 }

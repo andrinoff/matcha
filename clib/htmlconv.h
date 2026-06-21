@@ -11,6 +11,7 @@ enum {
     HELEM_IMAGE      = 4,
     HELEM_BLOCKQUOTE = 5,
     HELEM_TABLE      = 6,
+    HELEM_CODE       = 7,  // Pre-formatted code block; attr1 holds the language hint
 };
 
 typedef struct {

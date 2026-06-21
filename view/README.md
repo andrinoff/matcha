@@ -14,3 +14,4 @@ This package bridges raw email content (HTML/Markdown) and terminal output. It:
 - Detects quoted reply sections (`>` prefixed lines and `On DATE, EMAIL wrote:` patterns) and renders them in styled quote boxes
 - Manages image lifecycle: fetching remote images, resolving CID references, caching, uploading to terminal memory (Kitty IDs), and calculating terminal row placement
 - Converts Markdown to HTML via Goldmark before processing
+- Renders fenced code blocks (`<pre><code class="language-X">`) from Markdown or HTML emails as bordered terminal boxes with a language label and regex-based syntax highlighting (see `highlight.go`)

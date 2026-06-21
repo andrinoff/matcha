@@ -16,6 +16,7 @@ const (
 	HElemImage      = 4
 	HElemBlockquote = 5
 	HElemTable      = 6
+	HElemCode       = 7
 )
 
 // HTMLElement represents a parsed element from an HTML document.
