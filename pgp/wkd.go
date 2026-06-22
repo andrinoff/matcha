@@ -2,7 +2,8 @@ package pgp
 
 import (
 	"bytes"
-	"crypto/sha1"
+	"context"
+	crypto_sha1 "crypto/sha1" //nolint:gosec // SHA-1 is mandated by the WKD spec (draft-koch-openpgp-webkey-service)
 	"encoding/base32"
 	"fmt"
 	"io"
@@ -28,7 +29,7 @@ func wkdDirectURL(email string) (string, error) {
 		return "", fmt.Errorf("wkd: invalid email %q", email)
 	}
 
-	h := sha1.Sum([]byte(local))
+	h := crypto_sha1.Sum([]byte(local)) //nolint:gosec // SHA-1 is mandated by the WKD spec
 	hash := strings.ToLower(base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(h[:]))
 
 	return fmt.Sprintf("https://%s/.well-known/openpgpkey/hu/%s?l=%s", domain, hash, local), nil
@@ -45,11 +46,15 @@ func LookupWKD(email string) (*openpgp.Entity, error) {
 	}
 
 	client := httpclient.New(httpclient.WKDLookupTimeout)
-	resp, err := client.Get(url)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("wkd: build request: %w", err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("wkd: fetch %s: %w", url, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("wkd: %s returned status %d", url, resp.StatusCode)

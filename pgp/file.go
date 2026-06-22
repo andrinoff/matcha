@@ -155,7 +155,7 @@ func (p *FileBasedProvider) VerifyWithSender(signedContent, signatureData []byte
 
 	entity, wkdErr := LookupWKD(email)
 	if wkdErr != nil {
-		return PGPStatusUnverified, nil
+		return PGPStatusUnverified, wkdErr
 	}
 
 	if cacheErr := CacheWKDKey(p.pgpDir, email, entity); cacheErr != nil {

@@ -362,12 +362,13 @@ func (m *Composer) downloadWKDKeysCmd(recipients []string) tea.Cmd {
 		}
 
 		var msg string
-		if len(downloaded) > 0 && len(failed) > 0 {
+		switch {
+		case len(downloaded) > 0 && len(failed) > 0:
 			msg = fmt.Sprintf("WKD: downloaded keys for %s; failed for %s",
 				strings.Join(downloaded, ", "), strings.Join(failed, ", "))
-		} else if len(downloaded) > 0 {
+		case len(downloaded) > 0:
 			msg = fmt.Sprintf("WKD: downloaded keys for %s", strings.Join(downloaded, ", "))
-		} else {
+		default:
 			msg = fmt.Sprintf("WKD: no keys found for %s", strings.Join(failed, ", "))
 		}
 		return NotifyMsg{Message: msg}
@@ -1631,7 +1632,7 @@ func (m *Composer) View() tea.View { //nolint:gocyclo
 		var msg strings.Builder
 		msg.WriteString("Missing PGP keys for:\n\n")
 		for _, r := range m.wkdConfirmRecipients {
-			msg.WriteString(fmt.Sprintf("  • %s\n", r))
+			fmt.Fprintf(&msg, "  • %s\n", r)
 		}
 		msg.WriteString("\nDownload from WKD?")
 		dialog := DialogBoxStyle.Render(
