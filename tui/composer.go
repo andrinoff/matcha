@@ -420,6 +420,11 @@ func (m *Composer) updateSpellSuggestions() {
 		}
 		break
 	}
+	// If the word is preceded by a colon, the user is typing an emoji shortcode;
+	// skip spellcheck so the emoji picker can handle it.
+	if start > 0 && lineRunes[start-1] == ':' {
+		return
+	}
 	// Trim leading connectors so the word starts on a letter.
 	for start < end && !isLetter(lineRunes[start]) {
 		start++
