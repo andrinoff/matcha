@@ -1326,12 +1326,12 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 				return m, nil
 
 			case focusSignSMIME:
-			if msg.String() == keyEnter || msg.String() == " " {
-				m.signSMIME = !m.signSMIME
-			}
-			return m, nil
+				if msg.String() == keyEnter || msg.String() == " " {
+					m.signSMIME = !m.signSMIME
+				}
+				return m, nil
 
-		case focusSignPGP:
+			case focusSignPGP:
 				if msg.String() == keyEnter || msg.String() == " " {
 					m.signPGP = !m.signPGP
 				}
