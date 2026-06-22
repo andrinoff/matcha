@@ -3,7 +3,7 @@ package pgp
 import (
 	"bytes"
 	"context"
-	crypto_sha1 "crypto/sha1" //nolint:gosec // SHA-1 is mandated by the WKD spec (draft-koch-openpgp-webkey-service)
+	crypto_sha1 "crypto/sha1" // SHA-1 is mandated by the WKD spec (draft-koch-openpgp-webkey-service)
 	"encoding/base32"
 	"fmt"
 	"io"
@@ -29,7 +29,7 @@ func wkdDirectURL(email string) (string, error) {
 		return "", fmt.Errorf("wkd: invalid email %q", email)
 	}
 
-	h := crypto_sha1.Sum([]byte(local)) //nolint:gosec // SHA-1 is mandated by the WKD spec
+	h := crypto_sha1.Sum([]byte(local))
 	hash := strings.ToLower(base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(h[:]))
 
 	return fmt.Sprintf("https://%s/.well-known/openpgpkey/hu/%s?l=%s", domain, hash, local), nil
