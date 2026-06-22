@@ -13,7 +13,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	overlay "github.com/floatpane/bubble-overlay"
-	"github.com/floatpane/go-emoji-shortcode"
+	shortcode "github.com/floatpane/go-emoji-shortcode"
 	"github.com/floatpane/matcha/config"
 	"github.com/floatpane/matcha/spellcheck"
 	"github.com/google/uuid"
