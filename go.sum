@@ -80,6 +80,8 @@ github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f h1:Y/CXytFA4m6
 github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f/go.mod h1:vw97MGsxSvLiUE2X8qFplwetxpGLQrlU1Q9AUEIzCaM=
 github.com/floatpane/bubble-overlay v0.2.0 h1:v2b5cUAgsuOthcLpy59MTtksDcbl7yheH3OaEpUTQyA=
 github.com/floatpane/bubble-overlay v0.2.0/go.mod h1:nsjlKBtA48k4hYVT4qJIB/CNVl1m1ze0ja9gqZUvbhY=
+github.com/floatpane/go-emoji-shortcode v0.0.1 h1:XhGZ/4ETiQaIfOj8aVXaZ32SKBgnp8FdQU+/pzrt5CQ=
+github.com/floatpane/go-emoji-shortcode v0.0.1/go.mod h1:bGmpXZlXoaOzdixVV1Msm4w+yj3ynNIs9Q3nC4XIvTk=
 github.com/floatpane/go-icalendar v0.0.1 h1:lF9NhEI4TobX8valDakAFfCnBhM2GDITWMVymhXzD8c=
 github.com/floatpane/go-icalendar v0.0.1/go.mod h1:LSy9G+LwUZtfNIAjLlEVRXkuc2A+hq6+pVCIFOiEAyE=
 github.com/floatpane/go-keybind v0.0.1 h1:UrzPQ4ldR9sKQt/efpUfcs6gH8Mwy2NO5vwFTVf0dy0=
