@@ -432,6 +432,87 @@ func (m *Composer) installPGPKeyCmd(email string) tea.Cmd {
 	}
 }
 
+func (m *Composer) visibleCryptoToggles() []int {
+	selAcc := m.getSelectedAccount()
+	hasSMIME := pgp.HasSMIMESetup(selAcc)
+	hasPGP := pgp.HasPGPSetup(selAcc)
+
+	var toggles []int
+	if hasSMIME && m.hasSMIMECertForAnyRecipient() {
+		toggles = append(toggles, focusEncryptSMIME)
+	}
+	if hasSMIME {
+		toggles = append(toggles, focusSignSMIME)
+	}
+	if hasPGP {
+		toggles = append(toggles, focusSignPGP)
+	}
+	if hasPGP && m.hasPGPKeyAvailable() {
+		toggles = append(toggles, focusEncryptPGP)
+	}
+	return toggles
+}
+
+func (m *Composer) orderedFocusIndices() []int {
+	minFocus := focusFrom
+	// Skip From field if only one non-catch-all account (nothing to switch or edit)
+	if len(m.accounts) <= 1 && !m.isCatchAllAccount() {
+		minFocus = focusTo
+	}
+
+	indices := []int{
+		focusFrom,
+		focusTo,
+		focusCc,
+		focusBcc,
+		focusSubject,
+		focusBody,
+		focusSignature,
+		focusAttachment,
+	}
+	indices = append(indices, m.visibleCryptoToggles()...)
+	indices = append(indices, focusSend)
+
+	result := make([]int, 0, len(indices))
+	for _, idx := range indices {
+		if idx >= minFocus {
+			result = append(result, idx)
+		}
+	}
+	return result
+}
+
+func (m *Composer) advanceFocus(focusList []int) {
+	m.cycleFocus(focusList, 1)
+}
+
+func (m *Composer) retreatFocus(focusList []int) {
+	m.cycleFocus(focusList, -1)
+}
+
+func (m *Composer) cycleFocus(focusList []int, delta int) {
+	if len(focusList) == 0 {
+		return
+	}
+	pos := -1
+	for i, f := range focusList {
+		if f == m.focusIndex {
+			pos = i
+			break
+		}
+	}
+	if pos == -1 {
+		if delta > 0 {
+			pos = -1
+		} else {
+			pos = len(focusList)
+		}
+	}
+	pos += delta
+	pos = ((pos % len(focusList)) + len(focusList)) % len(focusList)
+	m.focusIndex = focusList[pos]
+}
+
 // NewComposerWithAccounts initializes a composer with multiple account support.
 func NewComposerWithAccounts(accounts []config.Account, selectedAccountID string, to, subject, body string, hideTips bool) *Composer {
 	m := NewComposer("", to, subject, body, hideTips)
@@ -1182,82 +1263,11 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 
 		case kb.Composer.NextField, kb.Composer.PrevField:
 			previousFocus := m.focusIndex
+			focusList := m.orderedFocusIndices()
 			if msg.String() == kb.Composer.PrevField {
-				m.focusIndex--
+				m.retreatFocus(focusList)
 			} else {
-				m.focusIndex++
-			}
-
-			maxFocus := focusSend
-			minFocus := focusFrom
-			// Skip From field if only one non-catch-all account (nothing to switch or edit)
-			if len(m.accounts) <= 1 && !m.isCatchAllAccount() {
-				minFocus = focusTo
-			}
-
-			if m.focusIndex > maxFocus {
-				m.focusIndex = minFocus
-			} else if m.focusIndex < minFocus {
-				m.focusIndex = maxFocus
-			}
-
-			// Skip crypto toggles when not configured or not available.
-			selAcc := m.getSelectedAccount()
-			hasSMIME := pgp.HasSMIMESetup(selAcc)
-			hasPGP := pgp.HasPGPSetup(selAcc)
-			showPGPEnc := hasPGP && m.hasPGPKeyAvailable()
-			if !hasSMIME {
-				if m.focusIndex == focusEncryptSMIME || m.focusIndex == focusSignSMIME {
-					if msg.String() == kb.Composer.PrevField {
-						m.focusIndex = focusAttachment
-					} else {
-						m.focusIndex = focusSend
-					}
-				}
-			}
-			if !hasPGP {
-				if m.focusIndex == focusSignPGP || m.focusIndex == focusEncryptPGP {
-					if msg.String() == kb.Composer.PrevField {
-						m.focusIndex = focusSignSMIME
-					} else {
-						m.focusIndex = focusSend
-					}
-				}
-			} else if !showPGPEnc {
-				if m.focusIndex == focusEncryptPGP {
-					if msg.String() == kb.Composer.PrevField {
-						m.focusIndex = focusSignPGP
-					} else {
-						m.focusIndex = focusSend
-					}
-				}
-			}
-			if hasSMIME && !hasPGP {
-				if m.focusIndex == focusEncryptPGP || m.focusIndex == focusSignPGP {
-					if msg.String() == kb.Composer.PrevField {
-						m.focusIndex = focusSignSMIME
-					} else {
-						m.focusIndex = focusSend
-					}
-				}
-			}
-			if !hasSMIME && hasPGP {
-				if m.focusIndex == focusSignSMIME || m.focusIndex == focusEncryptSMIME {
-					if msg.String() == kb.Composer.PrevField {
-						m.focusIndex = focusAttachment
-					} else {
-						m.focusIndex = focusSignPGP
-					}
-				}
-			}
-			if hasSMIME && hasPGP {
-				if m.focusIndex == focusSignSMIME || m.focusIndex == focusEncryptSMIME || m.focusIndex == focusSignPGP || m.focusIndex == focusEncryptPGP {
-					if msg.String() == kb.Composer.PrevField {
-						m.focusIndex = focusAttachment
-					} else {
-						m.focusIndex = focusSend
-					}
-				}
+				m.advanceFocus(focusList)
 			}
 
 			if previousFocus == focusFrom {
