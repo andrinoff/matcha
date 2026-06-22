@@ -1947,6 +1947,22 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 		m.showErrorNotif = false
 		return m, nil
 
+	case tui.InfoNotifyMsg:
+		dur := time.Duration(msg.Duration * float64(time.Second))
+		if dur <= 0 {
+			dur = 2 * time.Second
+		}
+		col := max(0, m.width-44)
+		m.errorNotification = overlay.NewInfo(
+			overlay.WithMessage(msg.Message),
+			overlay.WithKey(config.Keybinds.Global.DismissNotification),
+			overlay.WithPosition(0, col),
+			overlay.WithDismissMode(overlay.DismissAfterTimer),
+			overlay.WithDuration(dur),
+		)
+		m.showErrorNotif = true
+		return m, tea.Tick(dur, func(time.Time) tea.Msg { return clearErrorNotifMsg{} })
+
 	case tui.NotifyMsg:
 		return m, m.showErrorCmd(msg.Message)
 
