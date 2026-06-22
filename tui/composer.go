@@ -13,6 +13,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	overlay "github.com/floatpane/bubble-overlay"
+	shortcode "github.com/floatpane/go-emoji-shortcode"
 	"github.com/floatpane/matcha/config"
 	"github.com/floatpane/matcha/spellcheck"
 	"github.com/google/uuid"
@@ -112,7 +113,15 @@ type Composer struct {
 	pluginPromptInput       textinput.Model
 	pluginPromptPlaceholder string
 
-	// Spellcheck (loaded asynchronously; nil until ready).
+	// Emoji shortcode suggestions (e.g. :smile: -> 😄).
+	emojiSuggestions    []string
+	emojiSelected       int
+	emojiShow           bool
+	emojiShortcode      string
+	emojiShortcodeStart int // byte offset of the leading ':' in the current line
+	emojiShortcodeEnd   int // byte offset of the end of the shortcode in the current line
+	emojiShortcodeLine  int // index of the logical line containing the shortcode
+
 	spellChecker            *spellcheck.Checker
 	spellSuggestions        []string
 	spellSelected           int
@@ -411,6 +420,11 @@ func (m *Composer) updateSpellSuggestions() {
 		}
 		break
 	}
+	// If the word is preceded by a colon, the user is typing an emoji shortcode;
+	// skip spellcheck so the emoji picker can handle it.
+	if start > 0 && lineRunes[start-1] == ':' {
+		return
+	}
 	// Trim leading connectors so the word starts on a letter.
 	for start < end && !isLetter(lineRunes[start]) {
 		start++
@@ -452,6 +466,120 @@ func (m *Composer) updateSpellSuggestions() {
 	m.spellLastBody = value
 	m.spellLastCursorRow = row
 	m.spellLastCursorCol = col
+}
+
+// updateEmojiSuggestions inspects the body cursor position and refreshes the
+// emoji shortcode suggestion popup. It triggers when the user has typed a ':'
+// followed by at least two word characters before the cursor on the same line.
+func (m *Composer) updateEmojiSuggestions() {
+	m.emojiShow = false
+	m.emojiSuggestions = nil
+	m.emojiShortcode = ""
+
+	if m.focusIndex != focusBody {
+		return
+	}
+
+	value := m.bodyInput.Value()
+	row := m.bodyInput.Line()
+	col := m.bodyInput.Column()
+	lines := strings.Split(value, "\n")
+	if row < 0 || row >= len(lines) {
+		return
+	}
+	line := lines[row]
+	lineRunes := []rune(line)
+	if col > len(lineRunes) {
+		col = len(lineRunes)
+	}
+
+	// Walk back from cursor while we have valid shortcode characters.
+	end := col
+	start := col
+	for start > 0 {
+		r := lineRunes[start-1]
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' || r == '-' {
+			start--
+			continue
+		}
+		break
+	}
+	if start == 0 || start > len(lineRunes) || lineRunes[start-1] != ':' {
+		return
+	}
+	if end-start < 2 {
+		return
+	}
+	code := string(lineRunes[start:end])
+	if code == "" {
+		return
+	}
+
+	matches := shortcode.Suggest(code)
+	if len(matches) == 0 {
+		return
+	}
+
+	// Render each suggestion as "shortcode :emoji".
+	suggestions := make([]string, 0, len(matches))
+	for _, match := range matches {
+		suggestions = append(suggestions, match.Code+" "+match.Emoji)
+	}
+	m.emojiSuggestions = suggestions
+	m.emojiSelected = 0
+	m.emojiShow = true
+	m.emojiShortcode = code
+
+	m.emojiShortcodeLine = row
+	m.emojiShortcodeStart = len(string(lineRunes[:start-1])) // start of ':'
+	m.emojiShortcodeEnd = len(string(lineRunes[:end]))
+}
+
+// acceptEmojiSuggestion replaces the typed shortcode (including the leading
+// colon) with the selected emoji character.
+func (m *Composer) acceptEmojiSuggestion() {
+	if !m.emojiShow || len(m.emojiSuggestions) == 0 {
+		return
+	}
+	if m.emojiSelected < 0 || m.emojiSelected >= len(m.emojiSuggestions) {
+		return
+	}
+	// Only accept if the cursor is still right after the typed shortcode.
+	row := m.bodyInput.Line()
+	col := m.bodyInput.Column()
+	lines := strings.Split(m.bodyInput.Value(), "\n")
+	if row != m.emojiShortcodeLine || row >= len(lines) {
+		m.emojiShow = false
+		m.emojiSuggestions = nil
+		return
+	}
+	endRunes := len([]rune(lines[row][:m.emojiShortcodeEnd]))
+	if col != endRunes {
+		m.emojiShow = false
+		m.emojiSuggestions = nil
+		return
+	}
+
+	selected := m.emojiSuggestions[m.emojiSelected]
+	parts := strings.SplitN(selected, " ", 2)
+	if len(parts) != 2 {
+		return
+	}
+	emoji := strings.TrimSpace(parts[1])
+	if emoji == "" {
+		return
+	}
+
+	// Delete the colon plus the typed shortcode characters.
+	codeRuneLen := len([]rune(m.emojiShortcode)) + 1
+	for i := 0; i < codeRuneLen; i++ {
+		m.bodyInput, _ = m.bodyInput.Update(tea.KeyPressMsg{Code: tea.KeyBackspace})
+	}
+	m.bodyInput.InsertString(emoji)
+
+	m.emojiShow = false
+	m.emojiSuggestions = nil
+	m.emojiShortcode = ""
 }
 
 // acceptSpellSuggestion replaces the misspelled word currently under the
@@ -853,9 +981,33 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 			case sk.SpellAccept:
 				m.acceptSpellSuggestion()
 				return m, nil
-			case sk.SpellDismiss:
+			case sk.SpellDismiss, "esc":
 				m.spellShow = false
 				m.spellSuggestions = nil
+				return m, nil
+			}
+		}
+
+		// Emoji shortcode suggestion popup (only while body is focused).
+		if m.focusIndex == focusBody && m.emojiShow && len(m.emojiSuggestions) > 0 {
+			sk := config.Keybinds.Composer
+			switch msg.String() {
+			case sk.SpellPrev:
+				if m.emojiSelected > 0 {
+					m.emojiSelected--
+				}
+				return m, nil
+			case sk.SpellNext:
+				if m.emojiSelected < len(m.emojiSuggestions)-1 {
+					m.emojiSelected++
+				}
+				return m, nil
+			case sk.SpellAccept, "tab":
+				m.acceptEmojiSuggestion()
+				return m, nil
+			case sk.SpellDismiss, "esc":
+				m.emojiShow = false
+				m.emojiSuggestions = nil
 				return m, nil
 			}
 		}
@@ -945,6 +1097,8 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 				cmds = append(cmds, m.subjectInput.Focus())
 			case focusBody:
 				cmds = append(cmds, m.bodyInput.Focus())
+				m.updateSpellSuggestions()
+				m.updateEmojiSuggestions()
 			case focusSignature:
 				cmds = append(cmds, m.signatureInput.Focus())
 			}
@@ -1098,6 +1252,7 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 			m.bodyInput.Line() != prevRow ||
 			m.bodyInput.Column() != prevCol {
 			m.updateSpellSuggestions()
+			m.updateEmojiSuggestions()
 		}
 	case focusSignature:
 		m.signatureInput, cmd = m.signatureInput.Update(msg)
@@ -1392,6 +1547,9 @@ func (m *Composer) View() tea.View { //nolint:gocyclo
 	if m.spellShow && len(m.spellSuggestions) > 0 && m.focusIndex == focusBody {
 		out = m.overlaySpellPopup(out, composerViewElements)
 	}
+	if m.emojiShow && len(m.emojiSuggestions) > 0 && m.focusIndex == focusBody {
+		out = m.overlayEmojiPopup(out, composerViewElements)
+	}
 	v := tea.NewView(out)
 	if config.MouseEnabled != nil && *config.MouseEnabled {
 		v.MouseMode = tea.MouseModeCellMotion
@@ -1467,6 +1625,76 @@ func (m *Composer) renderSpellPopupLines() []string {
 		}
 		text += strings.Repeat(" ", pad)
 		if i == m.spellSelected {
+			rows = append(rows, selStyle.Render(text))
+		} else {
+			rows = append(rows, rowStyle.Render(text))
+		}
+	}
+	box := suggestionBoxStyle.Render(strings.Join(rows, "\n"))
+	return strings.Split(box, "\n")
+}
+
+// overlayEmojiPopup floats the emoji shortcode suggestion box at the body
+// cursor position. It mirrors overlaySpellPopup but renders emoji rows.
+func (m *Composer) overlayEmojiPopup(view string, elementsBeforeBody []string) string {
+	const bodyIdx = 6
+	if bodyIdx > len(elementsBeforeBody) {
+		return view
+	}
+	bodyStartRow := 0
+	for i := 0; i < bodyIdx; i++ {
+		bodyStartRow += lipgloss.Height(elementsBeforeBody[i])
+	}
+
+	li := m.bodyInput.LineInfo()
+	const promptWidth = 2 // "> "
+	cursorRow := bodyStartRow + li.RowOffset
+	cursorCol := li.CharOffset + promptWidth
+
+	popup := m.renderEmojiPopupLines()
+	if len(popup) == 0 {
+		return view
+	}
+
+	anchorRow := cursorRow + 1
+	if m.height > 0 && anchorRow+len(popup) > m.height-1 && cursorRow-len(popup) >= 0 {
+		anchorRow = cursorRow - len(popup)
+	}
+	anchorCol := cursorCol
+	popupWidth := lipgloss.Width(popup[0])
+	if m.width > 0 && anchorCol+popupWidth > m.width {
+		anchorCol = max(0, m.width-popupWidth)
+	}
+
+	return overlay.Block(view, popup, anchorRow, anchorCol)
+}
+
+// renderEmojiPopupLines builds the styled, bordered emoji suggestion box and
+// returns its rendered lines. Each row shows the shortcode and its preview.
+func (m *Composer) renderEmojiPopupLines() []string {
+	if !m.emojiShow || len(m.emojiSuggestions) == 0 {
+		return nil
+	}
+	maxWidth := 0
+	for _, s := range m.emojiSuggestions {
+		if w := lipgloss.Width(s); w > maxWidth {
+			maxWidth = w
+		}
+	}
+	rowWidth := maxWidth + 2
+
+	rowStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+	selStyle := lipgloss.NewStyle().Background(lipgloss.Color("24")).Foreground(lipgloss.Color("231"))
+
+	var rows []string
+	for i, s := range m.emojiSuggestions {
+		text := " " + s
+		pad := rowWidth - lipgloss.Width(text)
+		if pad < 0 {
+			pad = 0
+		}
+		text += strings.Repeat(" ", pad)
+		if i == m.emojiSelected {
 			rows = append(rows, selStyle.Render(text))
 		} else {
 			rows = append(rows, rowStyle.Render(text))

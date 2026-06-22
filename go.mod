@@ -16,6 +16,7 @@ require (
 	github.com/emersion/go-pgpmail v0.2.2
 	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6
 	github.com/floatpane/bubble-overlay v0.2.0
+	github.com/floatpane/go-emoji-shortcode v0.0.1
 	github.com/floatpane/go-icalendar v0.0.1
 	github.com/floatpane/go-keybind v0.0.1
 	github.com/floatpane/go-mailpatch v0.0.2
