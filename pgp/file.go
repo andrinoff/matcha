@@ -134,7 +134,43 @@ func (p *FileBasedProvider) Verify(signedContent, signatureData []byte) (PGPStat
 		return PGPStatusUnverified, nil
 	}
 
-	// Reconstruct a minimal multipart/signed message for pgpmail.Read.
+	return verifyWithKeyring(signedContent, signatureData, keyring)
+}
+
+// VerifyWithSender attempts to verify a PGP signature, falling back to WKD
+// lookup for the sender's key when the local keyring doesn't contain it.
+// If WKD succeeds, the key is cached locally for future use.
+func (p *FileBasedProvider) VerifyWithSender(signedContent, signatureData []byte, senderEmail string) (PGPStatus, error) {
+	keyring := p.loadPublicKeyring()
+
+	status, err := verifyWithKeyring(signedContent, signatureData, keyring)
+	if status == PGPStatusVerified {
+		return status, err
+	}
+
+	email := extractEmail(senderEmail)
+	if email == "" {
+		return PGPStatusUnverified, nil
+	}
+
+	entity, wkdErr := LookupWKD(email)
+	if wkdErr != nil {
+		return PGPStatusUnverified, wkdErr
+	}
+
+	if cacheErr := CacheWKDKey(p.pgpDir, email, entity); cacheErr != nil {
+		_ = cacheErr
+	}
+
+	keyring = append(keyring, entity)
+	return verifyWithKeyring(signedContent, signatureData, keyring)
+}
+
+func verifyWithKeyring(signedContent, signatureData []byte, keyring openpgp.EntityList) (PGPStatus, error) {
+	if len(keyring) == 0 {
+		return PGPStatusUnverified, nil
+	}
+
 	const boundary = "pgp-verify-boundary"
 	var msg bytes.Buffer
 	msg.WriteString("Content-Type: multipart/signed; boundary=\"" + boundary + "\"; " +
@@ -150,7 +186,6 @@ func (p *FileBasedProvider) Verify(signedContent, signatureData []byte) (PGPStat
 	if mr == nil || mr.MessageDetails == nil || mr.MessageDetails.UnverifiedBody == nil {
 		return PGPStatusUnverified, nil
 	}
-	// Must drain UnverifiedBody to EOF to trigger signature verification.
 	_, _ = io.ReadAll(mr.MessageDetails.UnverifiedBody)
 	if mr.MessageDetails.SignatureError != nil {
 		return PGPStatusUnverified, mr.MessageDetails.SignatureError
@@ -221,7 +256,17 @@ func (p *FileBasedProvider) loadPublicKeyForEmail(email string) (*openpgp.Entity
 			return entity, nil
 		}
 	}
-	return nil, fmt.Errorf("no key file found in %s for %s", p.pgpDir, email)
+
+	entity, err := LookupWKD(email)
+	if err != nil {
+		return nil, fmt.Errorf("no key file found in %s for %s and WKD lookup failed: %w", p.pgpDir, email, err)
+	}
+
+	if cacheErr := CacheWKDKey(p.pgpDir, email, entity); cacheErr != nil {
+		// Non-fatal: we have the key even if caching fails.
+		_ = cacheErr
+	}
+	return entity, nil
 }
 
 func (p *FileBasedProvider) loadPublicKeyring() openpgp.EntityList {

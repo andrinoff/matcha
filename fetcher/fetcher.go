@@ -737,6 +737,7 @@ func FetchEmailBodyFromMailbox(account *config.Account, mailbox string, uid uint
 
 	fetchCmd := c.Fetch(uidSet, &imap.FetchOptions{
 		BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
+		Envelope:      true,
 	})
 	bsMsgs, err := fetchCmd.Collect()
 	if err != nil {
@@ -748,6 +749,11 @@ func FetchEmailBodyFromMailbox(account *config.Account, mailbox string, uid uint
 	}
 
 	msg := bsMsgs[0]
+
+	var senderEmail string
+	if msg.Envelope != nil && len(msg.Envelope.From) > 0 {
+		senderEmail = msg.Envelope.From[0].Addr()
+	}
 
 	var plainPartID, plainPartEncoding string
 	var htmlPartID, htmlPartEncoding string
@@ -1160,7 +1166,7 @@ func FetchEmailBodyFromMailbox(account *config.Account, mailbox string, uid uint
 								signedData := rawEmail[startIdx:endIdx]
 
 								// Verify PGP signature
-								verified := verifyPGPSignature(signedData, data, account)
+								verified := verifyPGPSignature(signedData, data, account, senderEmail)
 								att.PGPVerified = verified
 							}
 						}
@@ -2149,13 +2155,41 @@ func loadPGPKeyring(account *config.Account) openpgp.EntityList {
 }
 
 // verifyPGPSignature verifies a PGP detached signature against signed content.
-func verifyPGPSignature(signedContent, signatureData []byte, account *config.Account) bool {
+// When local keyring verification fails and senderEmail is non-empty, it
+// attempts a WKD lookup for the sender's key and retries.
+func verifyPGPSignature(signedContent, signatureData []byte, account *config.Account, senderEmail string) bool {
 	keyring := loadPGPKeyring(account)
+	if len(keyring) == 0 && senderEmail == "" {
+		return false
+	}
+
+	if verifyWithKeyringLocal(signedContent, signatureData, keyring) {
+		return true
+	}
+
+	if senderEmail == "" {
+		return false
+	}
+
+	entity, err := pgp.LookupWKD(senderEmail)
+	if err != nil {
+		return false
+	}
+
+	cfgDir, err := config.GetConfigDir()
+	if err == nil {
+		_ = pgp.CacheWKDKey(cfgDir+"/pgp", senderEmail, entity)
+	}
+
+	keyring = append(keyring, entity)
+	return verifyWithKeyringLocal(signedContent, signatureData, keyring)
+}
+
+func verifyWithKeyringLocal(signedContent, signatureData []byte, keyring openpgp.EntityList) bool {
 	if len(keyring) == 0 {
 		return false
 	}
 
-	// Build a complete multipart/signed message for go-pgpmail
 	boundary := "pgp-verify-boundary"
 	var msg bytes.Buffer
 	msg.WriteString("Content-Type: multipart/signed; boundary=\"" + boundary + "\"; micalg=pgp-sha256; protocol=\"application/pgp-signature\"\r\n\r\n")
@@ -2175,7 +2209,6 @@ func verifyPGPSignature(signedContent, signatureData []byte, account *config.Acc
 		return false
 	}
 
-	// Must read UnverifiedBody to EOF to trigger signature verification
 	_, _ = io.ReadAll(mr.MessageDetails.UnverifiedBody)
 
 	return mr.MessageDetails.SignatureError == nil

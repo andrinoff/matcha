@@ -15,6 +15,7 @@ import (
 	overlay "github.com/floatpane/bubble-overlay"
 	shortcode "github.com/floatpane/go-emoji-shortcode"
 	"github.com/floatpane/matcha/config"
+	"github.com/floatpane/matcha/pgp"
 	"github.com/floatpane/matcha/spellcheck"
 	"github.com/google/uuid"
 )
@@ -135,6 +136,9 @@ type Composer struct {
 	spellLastCursorCol      int
 	disableSpellcheck       bool
 	disableSpellSuggestions bool
+
+	// WKD key download confirmation
+	wkdConfirmRecipients []string // recipients missing local keys, awaiting confirmation
 }
 
 // NewComposer initializes a new composer model.
@@ -309,6 +313,65 @@ func (m *Composer) updateSignature() {
 func (m *Composer) updatePGPDefaults() {
 	if acc := m.getSelectedAccount(); acc != nil {
 		m.signPGP = acc.PGPSignByDefault
+	}
+}
+
+func (m *Composer) missingRecipientKeys() []string {
+	cfgDir, err := config.GetConfigDir()
+	if err != nil {
+		return nil
+	}
+	pgpDir := cfgDir + "/pgp"
+
+	var allRecipients []string
+	for _, s := range []string{m.toInput.Value(), m.ccInput.Value(), m.bccInput.Value()} {
+		for _, r := range strings.Split(s, ",") {
+			if trimmed := strings.TrimSpace(r); trimmed != "" {
+				allRecipients = append(allRecipients, trimmed)
+			}
+		}
+	}
+	return pgp.MissingLocalKeys(pgpDir, allRecipients)
+}
+
+func (m *Composer) downloadWKDKeysCmd(recipients []string) tea.Cmd {
+	return func() tea.Msg {
+		cfgDir, err := config.GetConfigDir()
+		if err != nil {
+			return NotifyMsg{Message: "WKD: could not determine config directory"}
+		}
+		pgpDir := cfgDir + "/pgp"
+
+		var downloaded []string
+		var failed []string
+		for _, email := range recipients {
+			entity, err := pgp.LookupWKD(email)
+			if err != nil {
+				failed = append(failed, email)
+				continue
+			}
+			if err := pgp.CacheWKDKey(pgpDir, email, entity); err != nil {
+				failed = append(failed, email)
+				continue
+			}
+			downloaded = append(downloaded, email)
+		}
+
+		if len(downloaded) > 0 {
+			m.encryptPGP = true
+		}
+
+		var msg string
+		switch {
+		case len(downloaded) > 0 && len(failed) > 0:
+			msg = fmt.Sprintf("WKD: downloaded keys for %s; failed for %s",
+				strings.Join(downloaded, ", "), strings.Join(failed, ", "))
+		case len(downloaded) > 0:
+			msg = fmt.Sprintf("WKD: downloaded keys for %s", strings.Join(downloaded, ", "))
+		default:
+			msg = fmt.Sprintf("WKD: no keys found for %s", strings.Join(failed, ", "))
+		}
+		return NotifyMsg{Message: msg}
 	}
 }
 
@@ -964,6 +1027,20 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 			}
 		}
 
+		if len(m.wkdConfirmRecipients) > 0 {
+			switch msg.String() {
+			case "y", "Y":
+				recipients := m.wkdConfirmRecipients
+				m.wkdConfirmRecipients = nil
+				return m, m.downloadWKDKeysCmd(recipients)
+			case "n", "N", "esc":
+				m.wkdConfirmRecipients = nil
+				return m, nil
+			default:
+				return m, nil
+			}
+		}
+
 		// Spellcheck suggestion popup (only while body is focused).
 		if m.focusIndex == focusBody && m.spellShow && len(m.spellSuggestions) > 0 {
 			sk := config.Keybinds.Composer
@@ -1139,6 +1216,14 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 
 			case focusEncryptPGP:
 				if msg.String() == keyEnter || msg.String() == " " {
+					if !m.encryptPGP {
+						// Turning encryption ON — check for missing recipient keys
+						missing := m.missingRecipientKeys()
+						if len(missing) > 0 {
+							m.wkdConfirmRecipients = missing
+							return m, nil
+						}
+					}
 					m.encryptPGP = !m.encryptPGP
 				}
 				return m, nil
@@ -1537,6 +1622,22 @@ func (m *Composer) View() tea.View { //nolint:gocyclo
 		dialog := DialogBoxStyle.Render(
 			lipgloss.JoinVertical(lipgloss.Center,
 				t("composer.exit_confirm"),
+				HelpStyle.Render("\n(y/n)"),
+			),
+		)
+		return tea.NewView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, dialog))
+	}
+
+	if len(m.wkdConfirmRecipients) > 0 {
+		var msg strings.Builder
+		msg.WriteString("Missing PGP keys for:\n\n")
+		for _, r := range m.wkdConfirmRecipients {
+			fmt.Fprintf(&msg, "  • %s\n", r)
+		}
+		msg.WriteString("\nDownload from WKD?")
+		dialog := DialogBoxStyle.Render(
+			lipgloss.JoinVertical(lipgloss.Center,
+				msg.String(),
 				HelpStyle.Render("\n(y/n)"),
 			),
 		)
