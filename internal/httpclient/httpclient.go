@@ -26,6 +26,8 @@ const (
 	IMAPBatchActionTimeout = 60 * time.Second
 	// IMAPSearchTimeout bounds server-side IMAP search queries from main (main.go).
 	IMAPSearchTimeout = 60 * time.Second
+	// WKDLookupTimeout bounds Web Key Directory lookups for PGP public keys (pgp/wkd.go).
+	WKDLookupTimeout = 10 * time.Second
 )
 
 // New returns an http.Client preconfigured with the given timeout.

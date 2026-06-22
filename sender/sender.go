@@ -1152,7 +1152,15 @@ func encryptEmailPGP(payload []byte, recipients []string, account *config.Accoun
 			}
 		}
 		if readErr != nil {
-			return nil, fmt.Errorf("missing PGP key for %s (tried .asc, .gpg, .pem in %s): %w", email, pgpDir, readErr)
+			entity, wkdErr := pgp.LookupWKD(email)
+			if wkdErr != nil {
+				return nil, fmt.Errorf("missing PGP key for %s (tried .asc, .gpg, .pem in %s and WKD): %w", email, pgpDir, wkdErr)
+			}
+			if cacheErr := pgp.CacheWKDKey(pgpDir, email, entity); cacheErr != nil {
+				_ = cacheErr
+			}
+			entityList = append(entityList, entity)
+			continue
 		}
 
 		// Try armored format first

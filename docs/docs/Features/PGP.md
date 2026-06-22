@@ -8,6 +8,7 @@ Matcha supports PGP (Pretty Good Privacy) for signing and encrypting your emails
 - **Encryption**: Encrypt emails so only the intended recipients can read them.
 - **Signature Verification**: Automatically verify PGP signatures on incoming emails.
 - **Encrypted Email Decryption**: Decrypt incoming PGP-encrypted emails using your private key.
+- **WKD Key Discovery**: Automatically look up recipient and sender public keys via the Web Key Directory (WKD) protocol.
 - **Per-Account Configuration**: Configure separate keys for each email account.
 - **Sign by Default**: Optionally enable automatic signing for all outgoing emails.
 - **Encrypt by Default**: Optionally encrypt all outgoing emails when recipient keys are available.
@@ -95,11 +96,65 @@ For example, to encrypt an email to `alice@example.com`, place her public key at
 ```
 
 You can obtain someone's public key from:
+- **WKD (automatic)**: Matcha looks up keys via the Web Key Directory when encrypting or verifying (see below)
 - A keyserver: `gpg --recv-keys <key-id> && gpg --export --armor alice@example.com > ~/.config/matcha/pgp/alice@example.com.asc`
 - Their website or email signature
 - Direct exchange
 
 Matcha automatically includes your own public key when encrypting, so you can still read the email in your Sent folder.
+
+### Automatic Key Discovery (WKD)
+
+Matcha supports the [Web Key Directory (WKD)](https://datatracker.ietf.org/doc/draft-koch-openpgp-webkey-service/) protocol for automatic PGP public key discovery. WKD allows domains to publish their users' public keys at a well-known HTTPS endpoint.
+
+#### How It Works
+
+When Matcha needs a recipient's or sender's public key and no local key file exists, it:
+
+1. Constructs the WKD URL from the email address (e.g., `https://example.com/.well-known/openpgpkey/hu/<hash>?l=alice`)
+2. Fetches the public key over HTTPS
+3. Caches the key locally in `~/.config/matcha/pgp/<email>.asc` for future use
+
+#### Encryption
+
+When you enable PGP encryption in the composer, Matcha checks whether all recipient keys are available locally. If any are missing, a confirmation dialog lists the recipients and asks whether to download their keys via WKD:
+
+```
+Missing PGP keys for:
+
+  • alice@example.com
+  • bob@example.org
+
+Download from WKD?
+
+(y/n)
+```
+
+Press `y` to download and cache the keys, which also enables encryption. Press `n` to cancel. Keys that cannot be found via WKD will be reported in a notification.
+
+#### Signature Verification
+
+When viewing an incoming email with a PGP signature that could not be verified (the sender's key is not in your local keyring), Matcha automatically attempts a WKD lookup for the sender's domain. If the key is found, the signature is re-verified and the key is cached for future emails from that sender.
+
+This means the first time you open a signed email from a WKD-enabled domain, it may briefly show as "Unverified" before updating to "Verified" on subsequent views.
+
+#### Supported Domains
+
+WKD works with any domain that publishes keys at the standard well-known path. Major providers with WKD support include:
+
+- `proton.me` / `protonmail.com`
+- `posteo.de`
+- `mailbox.org`
+- Many corporate and university domains
+
+You can check if a domain supports WKD by visiting `https://<domain>/.well-known/openpgpkey/` in a browser.
+
+#### Privacy Considerations
+
+- WKD lookups are performed over HTTPS, so the key content is encrypted in transit
+- The lookup reveals to the domain operator that someone requested a specific user's key
+- Cached keys are stored locally and reused, minimizing repeat lookups
+- No third-party keyservers are contacted — only the recipient's own domain
 
 ### Supported Key Formats
 
@@ -247,7 +302,7 @@ Matcha supports both PGP and S/MIME. They are mutually exclusive per message: yo
 
 | | PGP | S/MIME |
 |---|-----|--------|
-| **Key management** | Manual (keyservers, direct exchange) | Certificate Authorities |
+| **Key management** | Automatic (WKD) or manual (keyservers, direct exchange) | Certificate Authorities |
 | **Trust model** | Web of Trust / TOFU | Hierarchical (CA-based) |
 | **Popular with** | Open-source, privacy communities | Enterprise, corporate |
 | **Hardware keys** | YubiKey, smartcards | Smart cards, USB tokens |
@@ -376,7 +431,7 @@ gpg --show-keys ~/.config/matcha/pgp/private.asc
 
 ### Signature shows as "Unverified"
 
-This happens when the sender's public key is not available to verify the signature. To verify signatures from a contact, store their public key at:
+This happens when the sender's public key is not available to verify the signature. Matcha will automatically attempt to fetch the key via WKD on first view. If the sender's domain does not support WKD, you can manually store their public key at:
 
 ```
 ~/.config/matcha/pgp/<sender-email>.asc

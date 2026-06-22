@@ -199,6 +199,17 @@ type FileSelectedMsg struct {
 	Paths []string
 }
 
+// WKDKeyFoundMsg is sent when a WKD lookup successfully finds a PGP key.
+type WKDKeyFoundMsg struct {
+	Email    string
+	Verified bool // true if re-verification succeeded
+}
+
+// WKDConfirmDownloadMsg requests user confirmation before downloading a key via WKD.
+type WKDConfirmDownloadMsg struct {
+	Recipients []string // recipients missing local keys
+}
+
 type CancelFilePickerMsg struct{}
 
 type DeleteEmailMsg struct {
