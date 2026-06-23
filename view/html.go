@@ -435,6 +435,118 @@ type ImagePlacement struct {
 	Encoded string // Cached terminal escape sequence from termimage (rendered once at layout time)
 }
 
+// MailtoLink describes a mailto: hyperlink in the rendered email body.
+// VisibleText is the user-facing text of the link (e.g. "contact@example.com")
+// which can be searched for in the final viewport content to locate the link
+// at click time.
+type MailtoLink struct {
+	URL         string // raw mailto URL (e.g. "mailto:user@example.com")
+	Address     string // email address extracted from the URL
+	VisibleText string // the link text as shown to the user (unstyled)
+}
+
+func isMailtoURL(s string) bool {
+	return strings.HasPrefix(strings.ToLower(s), "mailto:")
+}
+
+// extractMailtoAddress parses a mailto URL and returns the recipient address.
+func extractMailtoAddress(rawURL string) string {
+	s := rawURL
+	s = strings.TrimPrefix(s, "MAILTO:")
+	s = strings.TrimPrefix(s, "mailto:")
+	s = strings.TrimPrefix(s, "Mailto:")
+	if i := strings.IndexByte(s, '?'); i >= 0 {
+		s = s[:i]
+	}
+	return strings.TrimSpace(s)
+}
+
+// stripANSI removes all ANSI escape sequences (CSI, OSC, simple) from s and
+// returns the plain visible text.
+func stripANSI(s string) string {
+	var b strings.Builder
+	i := 0
+	for i < len(s) {
+		if s[i] == 0x1b {
+			consumed := escapeLen(s[i:])
+			if consumed <= 0 {
+				consumed = 1
+			}
+			i += consumed
+			continue
+		}
+		b.WriteByte(s[i])
+		i++
+	}
+	return b.String()
+}
+
+// escapeLen returns the byte length of the ANSI escape sequence starting at the
+// beginning of s. Supports CSI (ESC [ ... final byte), OSC (ESC ] ... BEL/ST),
+// and simple two-byte escapes (ESC + char). Returns 0 if s does not start
+// with ESC.
+func escapeLen(s string) int {
+	if len(s) == 0 || s[0] != 0x1b {
+		return 0
+	}
+	if len(s) < 2 {
+		return 1
+	}
+	switch s[1] {
+	case '[':
+		i := 2
+		for i < len(s) {
+			if s[i] >= 0x40 && s[i] <= 0x7e {
+				return i + 1
+			}
+			i++
+		}
+		return len(s)
+	case ']':
+		i := 2
+		for i < len(s) {
+			if s[i] == 0x07 {
+				return i + 1
+			}
+			if s[i] == 0x1b && i+1 < len(s) && s[i+1] == '\\' {
+				return i + 2
+			}
+			i++
+		}
+		return len(s)
+	default:
+		return 2
+	}
+}
+
+// FindMailtoAtPosition checks whether a visible column on a rendered line
+// falls within any of the given mailto links' visible text. It strips ANSI
+// styling from the line, finds occurrences of each link's VisibleText, and
+// returns the URL if the column is within one. This is called at click time
+// on the final viewport content (after all styling and wrapping).
+func FindMailtoAtPosition(line string, col int, links []MailtoLink) string {
+	plain := stripANSI(line)
+	for _, link := range links {
+		if link.VisibleText == "" {
+			continue
+		}
+		start := 0
+		for {
+			idx := strings.Index(plain[start:], link.VisibleText)
+			if idx < 0 {
+				break
+			}
+			absStart := start + idx
+			absEnd := absStart + len(link.VisibleText)
+			if col >= absStart && col < absEnd {
+				return link.URL
+			}
+			start = absEnd
+		}
+	}
+	return ""
+}
+
 // BodyMIMEType values understood by ProcessBody/ProcessBodyWithInline. Empty
 // string means "unknown" — the renderer falls back to running markdownToHTML
 // before HTML parsing, which is correct for plaintext-with-markdown bodies but
@@ -445,9 +557,10 @@ const (
 )
 
 // ProcessBodyWithInline renders the body and resolves CID inline images when provided.
-// Returns the rendered body text, image placements for out-of-band rendering, and any error.
+// Returns the rendered body text, image placements for out-of-band rendering, mailto links
+// for in-app click handling, and any error.
 // mimeType is "text/html", "text/plain", or "" (unknown — falls back to legacy markdown→HTML pre-pass).
-func ProcessBodyWithInline(rawBody, mimeType string, inline []InlineImage, h1Style, h2Style, bodyStyle lipgloss.Style, disableImages bool) (string, []ImagePlacement, error) {
+func ProcessBodyWithInline(rawBody, mimeType string, inline []InlineImage, h1Style, h2Style, bodyStyle lipgloss.Style, disableImages bool) (string, []ImagePlacement, []MailtoLink, error) {
 	inlineMap := make(map[string]string, len(inline))
 	for _, img := range inline {
 		cid := strings.TrimSpace(img.CID)
@@ -465,11 +578,11 @@ func ProcessBodyWithInline(rawBody, mimeType string, inline []InlineImage, h1Sty
 // ProcessBody takes a raw email body, decodes it, and formats it as plain
 // text with terminal hyperlinks.
 // mimeType is "text/html", "text/plain", or "" (unknown — falls back to legacy markdown→HTML pre-pass).
-func ProcessBody(rawBody, mimeType string, h1Style, h2Style, bodyStyle lipgloss.Style, disableImages bool) (string, []ImagePlacement, error) {
+func ProcessBody(rawBody, mimeType string, h1Style, h2Style, bodyStyle lipgloss.Style, disableImages bool) (string, []ImagePlacement, []MailtoLink, error) {
 	return processBody(rawBody, mimeType, nil, h1Style, h2Style, bodyStyle, disableImages)
 }
 
-func processBody(rawBody, mimeType string, inline map[string]string, h1Style, h2Style, bodyStyle lipgloss.Style, disableImages bool) (string, []ImagePlacement, error) {
+func processBody(rawBody, mimeType string, inline map[string]string, h1Style, h2Style, bodyStyle lipgloss.Style, disableImages bool) (string, []ImagePlacement, []MailtoLink, error) {
 	decodedBody, err := decodeQuotedPrintable(rawBody)
 	if err != nil {
 		decodedBody = rawBody
@@ -487,9 +600,9 @@ func processBody(rawBody, mimeType string, inline map[string]string, h1Style, h2
 	}
 	htmlBody = htmlSanitizer.SanitizeBytes(htmlBody)
 
-	result, placements, err := renderHTMLToText(htmlBody, inline, h1Style, h2Style, disableImages)
+	result, placements, mailtoLinks, err := renderHTMLToText(htmlBody, inline, h1Style, h2Style, disableImages)
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
 
 	// Some real-world HTML emails (newsletters with table-only layouts and no
@@ -499,26 +612,27 @@ func processBody(rawBody, mimeType string, inline map[string]string, h1Style, h2
 	// HTML path produces nothing.
 	if directHTML && strings.TrimSpace(result) == "" {
 		fallbackHTML := htmlSanitizer.SanitizeBytes(markdownToHTML([]byte(decodedBody)))
-		result, placements, err = renderHTMLToText(fallbackHTML, inline, h1Style, h2Style, disableImages)
+		result, placements, mailtoLinks, err = renderHTMLToText(fallbackHTML, inline, h1Style, h2Style, disableImages)
 		if err != nil {
-			return "", nil, err
+			return "", nil, nil, err
 		}
 	}
 
 	result = styleQuotedReplies(result)
-	return bodyStyle.Render(result), placements, nil
+	return bodyStyle.Render(result), placements, mailtoLinks, nil
 }
 
-func renderHTMLToText(htmlBody []byte, inline map[string]string, h1Style, h2Style lipgloss.Style, disableImages bool) (string, []ImagePlacement, error) {
+func renderHTMLToText(htmlBody []byte, inline map[string]string, h1Style, h2Style lipgloss.Style, disableImages bool) (string, []ImagePlacement, []MailtoLink, error) {
 	// Parse HTML into structured elements using C parser.
 	elements, ok := clib.HTMLToElements(string(htmlBody))
 	if !ok {
-		return "", nil, fmt.Errorf("could not parse email body")
+		return "", nil, nil, fmt.Errorf("could not parse email body")
 	}
 
 	// Process elements: apply styles and collect image placements.
 	var text strings.Builder
 	var imgIndex int
+	var mailtoLinks []MailtoLink
 	var pendingImages []struct {
 		index   int
 		encoded string
@@ -543,6 +657,16 @@ func renderHTMLToText(htmlBody []byte, inline map[string]string, h1Style, h2Styl
 		case clib.HElemLink:
 			if hasTerminalControls(elem.Attr1) {
 				text.WriteString(stripTerminalControls(elem.Text))
+			} else if isMailtoURL(elem.Attr1) {
+				// Render mailto links as styled text (not OSC 8) so the
+				// terminal doesn't intercept clicks. The URL and visible
+				// text are collected for in-app click handling.
+				mailtoLinks = append(mailtoLinks, MailtoLink{
+					URL:         elem.Attr1,
+					Address:     extractMailtoAddress(elem.Attr1),
+					VisibleText: elem.Text,
+				})
+				text.WriteString(linkStyle().Render(elem.Text))
 			} else {
 				text.WriteString(hyperlink(elem.Attr1, elem.Text))
 			}
@@ -649,7 +773,7 @@ func renderHTMLToText(htmlBody []byte, inline map[string]string, h1Style, h2Styl
 		result = imgMarkerRegex.ReplaceAllString(result, "")
 	}
 
-	return result, placements, nil
+	return result, placements, mailtoLinks, nil
 }
 
 func resolveImagePayload(src string, inline map[string]string) string {

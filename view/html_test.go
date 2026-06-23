@@ -650,7 +650,7 @@ func TestProcessBodyWithHyperlinkSupport(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.setupHyperlinks()
 
-			processed, _, err := ProcessBody(tc.input, "", h1Style, h2Style, bodyStyle, false)
+			processed, _, _, err := ProcessBody(tc.input, "", h1Style, h2Style, bodyStyle, false)
 			if err != nil {
 				t.Fatalf("ProcessBody() failed: %v", err)
 			}
@@ -752,7 +752,7 @@ func TestProcessBodySanitizesUnsafeHTMLLinks(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			processed, _, err := ProcessBody(tt.input, BodyMIMETypeHTML, h1Style, h2Style, bodyStyle, false)
+			processed, _, _, err := ProcessBody(tt.input, BodyMIMETypeHTML, h1Style, h2Style, bodyStyle, false)
 			if err != nil {
 				t.Fatalf("ProcessBody() failed: %v", err)
 			}
@@ -782,7 +782,7 @@ func TestProcessBodyDoesNotHyperlinkNonRemoteImageFallbacks(t *testing.T) {
 		<img src="cid:test-image@example.com" alt="cid image">
 	`
 
-	processed, _, err := ProcessBody(input, BodyMIMETypeHTML, h1Style, h2Style, bodyStyle, true)
+	processed, _, _, err := ProcessBody(input, BodyMIMETypeHTML, h1Style, h2Style, bodyStyle, true)
 	if err != nil {
 		t.Fatalf("ProcessBody() failed: %v", err)
 	}
@@ -934,7 +934,7 @@ func TestProcessBodyWithImageProtocol(t *testing.T) {
 			tc.clearAllImageEnv()
 			tc.setupImageProtocol()
 
-			processed, placements, err := ProcessBody(tc.input, "", h1Style, h2Style, bodyStyle, false)
+			processed, placements, _, err := ProcessBody(tc.input, "", h1Style, h2Style, bodyStyle, false)
 			if err != nil {
 				t.Fatalf("ProcessBody() failed: %v", err)
 			}
@@ -1001,7 +1001,7 @@ func TestProcessBody(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			processed, _, err := ProcessBody(tc.input, "", h1Style, h2Style, bodyStyle, false)
+			processed, _, _, err := ProcessBody(tc.input, "", h1Style, h2Style, bodyStyle, false)
 			if err != nil {
 				t.Fatalf("ProcessBody() failed: %v", err)
 			}
@@ -1038,7 +1038,7 @@ const datadogShapeHTML = `    <table cellpadding="0" cellspacing="0" border="0" 
 // not the fix.
 func TestProcessBody_LegacyPathManglesIndentedHTML(t *testing.T) {
 	ansiEscapeRegex := regexp.MustCompile(`\x1b\[[0-9;]*m`)
-	processed, _, err := ProcessBody(datadogShapeHTML, "", lipgloss.NewStyle(), lipgloss.NewStyle(), lipgloss.NewStyle(), false)
+	processed, _, _, err := ProcessBody(datadogShapeHTML, "", lipgloss.NewStyle(), lipgloss.NewStyle(), lipgloss.NewStyle(), false)
 	if err != nil {
 		t.Fatalf("ProcessBody(legacy) failed: %v", err)
 	}
@@ -1059,7 +1059,7 @@ func TestProcessBody_HTMLMIMETypeSkipsMarkdownPrepass(t *testing.T) {
 
 	// Same input as TestProcessBody_LegacyPathManglesIndentedHTML — the
 	// differential is purely the MIME-type argument.
-	processed, _, err := ProcessBody(datadogShapeHTML, BodyMIMETypeHTML, h1Style, h2Style, bodyStyle, false)
+	processed, _, _, err := ProcessBody(datadogShapeHTML, BodyMIMETypeHTML, h1Style, h2Style, bodyStyle, false)
 	if err != nil {
 		t.Fatalf("ProcessBody(text/html) failed: %v", err)
 	}
@@ -1074,7 +1074,7 @@ func TestProcessBody_HTMLMIMETypeSkipsMarkdownPrepass(t *testing.T) {
 	// Sanity: a body labeled as plain text falls through markdownToHTML and
 	// preserves markdown semantics (heading rendering through the pipeline).
 	mdBody := "# Heading One\n\nSome **bold** text."
-	plainProcessed, _, err := ProcessBody(mdBody, BodyMIMETypePlain, h1Style, h2Style, bodyStyle, false)
+	plainProcessed, _, _, err := ProcessBody(mdBody, BodyMIMETypePlain, h1Style, h2Style, bodyStyle, false)
 	if err != nil {
 		t.Fatalf("ProcessBody(text/plain) failed: %v", err)
 	}
@@ -1117,5 +1117,150 @@ func TestRemoteImageCache_EvictsOldestWhenFull(t *testing.T) {
 		if _, ok := remoteImageCache.Get(keptURL); !ok {
 			t.Errorf("expected %q to still be in cache", keptURL)
 		}
+	}
+}
+
+func TestProcessBodyReturnsMailtoLinks(t *testing.T) {
+	t.Setenv("TERM", "xterm-kitty")
+	t.Setenv("TERM_PROGRAM", "")
+
+	h1Style := lipgloss.NewStyle()
+	h2Style := lipgloss.NewStyle()
+	bodyStyle := lipgloss.NewStyle()
+
+	_, _, links, err := ProcessBody(
+		`<a href="mailto:hello@example.com">hello@example.com</a>`,
+		BodyMIMETypeHTML, h1Style, h2Style, bodyStyle, false,
+	)
+	if err != nil {
+		t.Fatalf("ProcessBody() failed: %v", err)
+	}
+	if len(links) != 1 {
+		t.Fatalf("expected 1 mailto link, got %d", len(links))
+	}
+	if links[0].URL != "mailto:hello@example.com" {
+		t.Errorf("URL = %q, want %q", links[0].URL, "mailto:hello@example.com")
+	}
+	if links[0].Address != "hello@example.com" {
+		t.Errorf("Address = %q, want %q", links[0].Address, "hello@example.com")
+	}
+	if links[0].VisibleText != "hello@example.com" {
+		t.Errorf("VisibleText = %q, want %q", links[0].VisibleText, "hello@example.com")
+	}
+}
+
+func TestProcessBodyMailtoLinksWithSubject(t *testing.T) {
+	t.Setenv("TERM", "xterm-kitty")
+
+	h1Style := lipgloss.NewStyle()
+	h2Style := lipgloss.NewStyle()
+	bodyStyle := lipgloss.NewStyle()
+
+	_, _, links, err := ProcessBody(
+		`<a href="mailto:boss@corp.com?subject=Meeting">Email the boss</a>`,
+		BodyMIMETypeHTML, h1Style, h2Style, bodyStyle, false,
+	)
+	if err != nil {
+		t.Fatalf("ProcessBody() failed: %v", err)
+	}
+	if len(links) != 1 {
+		t.Fatalf("expected 1 link, got %d", len(links))
+	}
+	if links[0].Address != "boss@corp.com" {
+		t.Errorf("Address = %q, want %q", links[0].Address, "boss@corp.com")
+	}
+	if links[0].VisibleText != "Email the boss" {
+		t.Errorf("VisibleText = %q", links[0].VisibleText)
+	}
+}
+
+func TestProcessBodyNoMailtoLinksForHttps(t *testing.T) {
+	t.Setenv("TERM", "xterm-kitty")
+
+	h1Style := lipgloss.NewStyle()
+	h2Style := lipgloss.NewStyle()
+	bodyStyle := lipgloss.NewStyle()
+
+	_, _, links, err := ProcessBody(
+		`<a href="https://example.com">visit site</a>`,
+		BodyMIMETypeHTML, h1Style, h2Style, bodyStyle, false,
+	)
+	if err != nil {
+		t.Fatalf("ProcessBody() failed: %v", err)
+	}
+	if len(links) != 0 {
+		t.Fatalf("expected 0 mailto links for https URL, got %d", len(links))
+	}
+}
+
+func TestProcessBodyMultipleMailtoLinks(t *testing.T) {
+	t.Setenv("TERM", "xterm-kitty")
+
+	h1Style := lipgloss.NewStyle()
+	h2Style := lipgloss.NewStyle()
+	bodyStyle := lipgloss.NewStyle()
+
+	_, _, links, err := ProcessBody(
+		`<a href="mailto:a@x.com">a@x.com</a> and <a href="mailto:b@y.com">b@y.com</a>`,
+		BodyMIMETypeHTML, h1Style, h2Style, bodyStyle, false,
+	)
+	if err != nil {
+		t.Fatalf("ProcessBody() failed: %v", err)
+	}
+	if len(links) != 2 {
+		t.Fatalf("expected 2 links, got %d", len(links))
+	}
+	if links[0].Address != "a@x.com" {
+		t.Errorf("link 0 Address = %q", links[0].Address)
+	}
+	if links[1].Address != "b@y.com" {
+		t.Errorf("link 1 Address = %q", links[1].Address)
+	}
+}
+
+func TestFindMailtoAtPosition(t *testing.T) {
+	links := []MailtoLink{
+		{URL: "mailto:hello@example.com", Address: "hello@example.com", VisibleText: "hello@example.com"},
+	}
+
+	tests := []struct {
+		name string
+		line string
+		col  int
+		want string
+	}{
+		{
+			name: "click on link text",
+			line: "Contact \x1b[36mhello@example.com\x1b[0m now",
+			col:  10, // "hello@..." starts at visible col 8
+			want: "mailto:hello@example.com",
+		},
+		{
+			name: "click before link",
+			line: "Contact \x1b[36mhello@example.com\x1b[0m now",
+			col:  3,
+			want: "",
+		},
+		{
+			name: "click after link",
+			line: "Contact \x1b[36mhello@example.com\x1b[0m now",
+			col:  30,
+			want: "",
+		},
+		{
+			name: "plain text no ansi",
+			line: "Email hello@example.com please",
+			col:  6,
+			want: "mailto:hello@example.com",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := FindMailtoAtPosition(tc.line, tc.col, links)
+			if got != tc.want {
+				t.Errorf("FindMailtoAtPosition() = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }

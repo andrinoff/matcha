@@ -47,7 +47,7 @@ func TestHighlightCodeMultipleLanguages(t *testing.T) {
 			if !strings.Contains(out, "\x1b[") {
 				t.Errorf("language %q: expected ANSI escapes, got plain: %q", tc.lang, out)
 			}
-			stripped := stripANSI(out)
+			stripped := stripANSITest(out)
 			if !strings.Contains(stripped, tc.want) {
 				t.Errorf("language %q: output missing %q in %q", tc.lang, tc.want, stripped)
 			}
@@ -115,7 +115,7 @@ func TestNormalizeLang(t *testing.T) {
 func TestRenderCodeBlockWithLang(t *testing.T) {
 	theme.ActiveTheme = theme.Matcha
 	out := renderCodeBlock("func main() {}", "go")
-	stripped := stripANSI(out)
+	stripped := stripANSITest(out)
 	if !strings.Contains(stripped, "GO") {
 		t.Errorf("code block with lang should show 'GO' label, got: %q", stripped)
 	}
@@ -127,7 +127,7 @@ func TestRenderCodeBlockWithLang(t *testing.T) {
 func TestRenderCodeBlockWithoutLang(t *testing.T) {
 	theme.ActiveTheme = theme.Matcha
 	out := renderCodeBlock("plain text code", "")
-	stripped := stripANSI(out)
+	stripped := stripANSITest(out)
 	if !strings.Contains(stripped, "plain text code") {
 		t.Errorf("code block without lang should still contain code, got: %q", stripped)
 	}
@@ -147,7 +147,7 @@ func TestProcessBodyMarkdownCodeBlock(t *testing.T) {
 	h2 := lipgloss.NewStyle().Bold(true).Foreground(theme.ActiveTheme.Secondary)
 	bodyStyle := lipgloss.NewStyle()
 
-	out, placements, err := ProcessBody(body, BodyMIMETypePlain, h1, h2, bodyStyle, true)
+	out, placements, _, err := ProcessBody(body, BodyMIMETypePlain, h1, h2, bodyStyle, true)
 	if err != nil {
 		t.Fatalf("ProcessBody failed: %v", err)
 	}
@@ -155,7 +155,7 @@ func TestProcessBodyMarkdownCodeBlock(t *testing.T) {
 		t.Errorf("expected no image placements, got %d", len(placements))
 	}
 
-	stripped := stripANSI(out)
+	stripped := stripANSITest(out)
 	if !strings.Contains(stripped, "GO") {
 		t.Errorf("markdown code block should show 'GO' language label, got: %q", stripped)
 	}
@@ -178,12 +178,12 @@ func TestProcessBodyHTMLCodeBlock(t *testing.T) {
 	h2 := lipgloss.NewStyle().Bold(true).Foreground(theme.ActiveTheme.Secondary)
 	bodyStyle := lipgloss.NewStyle()
 
-	out, _, err := ProcessBody(htmlBody, BodyMIMETypeHTML, h1, h2, bodyStyle, true)
+	out, _, _, err := ProcessBody(htmlBody, BodyMIMETypeHTML, h1, h2, bodyStyle, true)
 	if err != nil {
 		t.Fatalf("ProcessBody failed: %v", err)
 	}
 
-	stripped := stripANSI(out)
+	stripped := stripANSITest(out)
 	if !strings.Contains(stripped, "PYTHON") {
 		t.Errorf("HTML code block should show 'PYTHON' language label, got: %q", stripped)
 	}
@@ -199,12 +199,12 @@ func TestProcessBodyCodeBlockNoLanguage(t *testing.T) {
 	h2 := lipgloss.NewStyle().Bold(true).Foreground(theme.ActiveTheme.Secondary)
 	bodyStyle := lipgloss.NewStyle()
 
-	out, _, err := ProcessBody(body, BodyMIMETypePlain, h1, h2, bodyStyle, true)
+	out, _, _, err := ProcessBody(body, BodyMIMETypePlain, h1, h2, bodyStyle, true)
 	if err != nil {
 		t.Fatalf("ProcessBody failed: %v", err)
 	}
 
-	stripped := stripANSI(out)
+	stripped := stripANSITest(out)
 	if !strings.Contains(stripped, "plain code") {
 		t.Errorf("code block without language should still contain code, got: %q", stripped)
 	}
@@ -217,12 +217,12 @@ func TestProcessBodyMultipleCodeBlocks(t *testing.T) {
 	h2 := lipgloss.NewStyle().Bold(true).Foreground(theme.ActiveTheme.Secondary)
 	bodyStyle := lipgloss.NewStyle()
 
-	out, _, err := ProcessBody(body, BodyMIMETypePlain, h1, h2, bodyStyle, true)
+	out, _, _, err := ProcessBody(body, BodyMIMETypePlain, h1, h2, bodyStyle, true)
 	if err != nil {
 		t.Fatalf("ProcessBody failed: %v", err)
 	}
 
-	stripped := stripANSI(out)
+	stripped := stripANSITest(out)
 	if !strings.Contains(stripped, "GO") {
 		t.Errorf("first code block should show 'GO' label, got: %q", stripped)
 	}
@@ -234,8 +234,8 @@ func TestProcessBodyMultipleCodeBlocks(t *testing.T) {
 	}
 }
 
-// stripANSI removes ANSI escape sequences from a string for test assertions.
-func stripANSI(s string) string {
+// stripANSITest removes ANSI escape sequences from a string for test assertions.
+func stripANSITest(s string) string {
 	var b strings.Builder
 	i := 0
 	for i < len(s) {

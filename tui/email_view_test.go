@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -160,4 +162,134 @@ func TestEmailViewUpdate(t *testing.T) {
 			t.Errorf("Expected reply to have subject '%s', but got '%s'", emailWithAttachments.Subject, replyMsg.Email.Subject)
 		}
 	})
+}
+
+func TestEmailViewMailtoClick(t *testing.T) {
+	origTerm := os.Getenv("TERM")
+	origTermProgram := os.Getenv("TERM_PROGRAM")
+	t.Cleanup(func() {
+		os.Setenv("TERM", origTerm)
+		os.Setenv("TERM_PROGRAM", origTermProgram)
+	})
+	os.Setenv("TERM", "xterm-kitty")
+	os.Setenv("TERM_PROGRAM", "")
+
+	email := fetcher.Email{
+		From:         "sender@example.com",
+		To:           []string{"recipient@example.com"},
+		Subject:      "Email with mailto link",
+		Body:         `<a href="mailto:contact@example.com">contact@example.com</a>`,
+		BodyMIMEType: "text/html",
+		Date:         time.Now(),
+		AccountID:    "test-acct",
+	}
+	emailView := NewEmailView(email, 0, 80, 24, MailboxInbox, false)
+
+	if len(emailView.mailtoLinks) != 1 {
+		t.Fatalf("expected 1 stored mailto link, got %d", len(emailView.mailtoLinks))
+	}
+	if emailView.mailtoLinks[0].VisibleText != "contact@example.com" {
+		t.Fatalf("unexpected VisibleText: %q", emailView.mailtoLinks[0].VisibleText)
+	}
+
+	// Find the line containing the link's visible text in the rendered viewport.
+	content := emailView.viewport.GetContent()
+	lines := strings.Split(content, "\n")
+	linkLine := -1
+	linkCol := -1
+	searchText := emailView.mailtoLinks[0].VisibleText
+	for i, line := range lines {
+		plain := stripANSIFromLine(line)
+		if idx := strings.Index(plain, searchText); idx >= 0 {
+			linkLine = i
+			linkCol = idx
+			break
+		}
+	}
+	if linkLine < 0 {
+		t.Fatalf("could not find mailto link text in rendered body:\n%s", content)
+	}
+
+	// Map content line + visible column to screen coordinates.
+	headerHeight := emailView.renderedHeaderHeight()
+	clickY := headerHeight + 1 + linkLine
+	clickX := linkCol
+
+	model, cmd := emailView.Update(tea.MouseClickMsg{
+		X:      clickX,
+		Y:      clickY,
+		Button: tea.MouseLeft,
+	})
+	if cmd == nil {
+		t.Fatal("Expected a command for mailto click, got nil")
+	}
+	msg := cmd()
+	openMsg, ok := msg.(OpenMailtoMsg)
+	if !ok {
+		t.Fatalf("Expected OpenMailtoMsg, got %T", msg)
+	}
+	if openMsg.URL != "mailto:contact@example.com" {
+		t.Errorf("URL = %q, want %q", openMsg.URL, "mailto:contact@example.com")
+	}
+
+	if _, ok := model.(*EmailView); !ok {
+		t.Errorf("Expected model to remain *EmailView, got %T", model)
+	}
+}
+
+func TestEmailViewMailtoClickOutsideLink(t *testing.T) {
+	origTerm := os.Getenv("TERM")
+	t.Cleanup(func() { os.Setenv("TERM", origTerm) })
+	os.Setenv("TERM", "xterm-kitty")
+
+	email := fetcher.Email{
+		From:         "sender@example.com",
+		To:           []string{"recipient@example.com"},
+		Subject:      "Email without mailto link",
+		Body:         `<a href="https://example.com">visit site</a>`,
+		BodyMIMEType: "text/html",
+		Date:         time.Now(),
+	}
+	emailView := NewEmailView(email, 0, 80, 24, MailboxInbox, false)
+
+	if len(emailView.mailtoLinks) != 0 {
+		t.Fatalf("expected 0 mailto links, got %d", len(emailView.mailtoLinks))
+	}
+
+	headerHeight := emailView.renderedHeaderHeight()
+	clickY := headerHeight + 1
+	clickX := 0
+
+	_, cmd := emailView.Update(tea.MouseClickMsg{
+		X:      clickX,
+		Y:      clickY,
+		Button: tea.MouseLeft,
+	})
+	if cmd != nil {
+		msg := cmd()
+		if _, ok := msg.(OpenMailtoMsg); ok {
+			t.Fatal("Should not emit OpenMailtoMsg when email has no mailto links")
+		}
+	}
+}
+
+// stripANSIFromLine removes ANSI escape sequences for test text matching.
+func stripANSIFromLine(s string) string {
+	var b strings.Builder
+	i := 0
+	for i < len(s) {
+		if s[i] == 0x1b {
+			i++
+			for i < len(s) && s[i] != 'm' && s[i] != 'H' && s[i] != 'G' {
+				i++
+			}
+			if i < len(s) {
+				i++
+			}
+			continue
+		}
+		b.WriteByte(s[i])
+		i++
+	}
+	return b.String()
 }

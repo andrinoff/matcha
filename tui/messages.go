@@ -165,6 +165,13 @@ type GoToSendMsg struct {
 	Body    string
 }
 
+// OpenMailtoMsg requests opening the composer with a mailto: URL pre-filled.
+// Emitted when a user clicks a mailto: link inside an email view so the
+// composer opens in-app instead of launching a new matcha instance.
+type OpenMailtoMsg struct {
+	URL string // raw mailto: URL (e.g. "mailto:user@example.com?subject=Hi")
+}
+
 type GoToSettingsMsg struct{}
 
 type GoToTrashArchiveMsg struct{}

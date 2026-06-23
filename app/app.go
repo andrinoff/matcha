@@ -162,6 +162,24 @@ func parseMailto(u *url.URL) (to, subject, body string) {
 	return to, u.Query().Get("subject"), u.Query().Get("body")
 }
 
+// parseMailtoURLString parses a raw mailto: URL string into its to, subject,
+// and body components. It is the string-based counterpart to parseMailto,
+// used when handling mailto: link clicks from within the email view.
+func parseMailtoURLString(rawURL string) (to, subject, body string) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		// Fall back to stripping the scheme so we at least populate the To field.
+		s := strings.TrimSpace(rawURL)
+		s = strings.TrimPrefix(s, "mailto:")
+		s = strings.TrimPrefix(s, "MAILTO:")
+		if i := strings.IndexByte(s, '?'); i >= 0 {
+			s = s[:i]
+		}
+		return s, "", ""
+	}
+	return parseMailto(u)
+}
+
 func newSetupGuide() *tui.SetupGuide {
 	isMac := runtime.GOOS == goosDarwin
 	isLinux := runtime.GOOS == goosLinux
@@ -1389,6 +1407,25 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 		drafts := config.GetAllDrafts()
 		m.current = tui.NewDrafts(drafts)
 		m.updateCurrentWindowSize()
+		return m, m.current.Init()
+
+	case tui.OpenMailtoMsg:
+		to, subject, body := parseMailtoURLString(msg.URL)
+		hideTips := false
+		if m.config != nil {
+			hideTips = m.config.HideTips
+		}
+		var composer *tui.Composer
+		if m.config != nil && len(m.config.Accounts) > 0 {
+			firstAccount := m.config.GetFirstAccount()
+			composer = tui.NewComposerWithAccounts(m.config.Accounts, firstAccount.ID, to, subject, body, hideTips)
+		} else {
+			composer = tui.NewComposer("", to, subject, body, hideTips)
+		}
+		m.applySpellcheckOptions(composer)
+		m.current = composer
+		m.updateCurrentWindowSize()
+		m.syncPluginKeyBindings()
 		return m, m.current.Init()
 
 	case tui.OpenDraftMsg:

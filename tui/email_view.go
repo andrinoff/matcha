@@ -68,6 +68,7 @@ type EmailView struct {
 	pgpTrusted         bool
 	isPGPEncrypted     bool
 	imagePlacements    []view.ImagePlacement
+	mailtoLinks        []view.MailtoLink
 	pluginStatus       string
 	pluginKeyBindings  []PluginKeyBinding
 	hasCalendarInvite  bool
@@ -133,7 +134,7 @@ func NewEmailView(email fetcher.Email, emailIndex, width, height int, mailbox Ma
 	// Initial state for showImages matches config unless overridden later
 	showImages := !disableImages
 
-	body, placements, err := view.ProcessBodyWithInline(email.Body, email.BodyMIMEType, inlineImages, H1Style, H2Style, BodyStyle, !showImages)
+	body, placements, mailtoLinks, err := view.ProcessBodyWithInline(email.Body, email.BodyMIMEType, inlineImages, H1Style, H2Style, BodyStyle, !showImages)
 	if err != nil {
 		body = fmt.Sprintf("Error rendering body: %v", err)
 	}
@@ -176,6 +177,7 @@ func NewEmailView(email fetcher.Email, emailIndex, width, height int, mailbox Ma
 		pgpTrusted:        pgpTrusted,
 		isPGPEncrypted:    isPGPEncrypted,
 		imagePlacements:   placements,
+		mailtoLinks:       mailtoLinks,
 		hasCalendarInvite: calendarEvent != nil,
 		calendarEvent:     calendarEvent,
 		originalICSData:   originalICSData,
@@ -262,12 +264,13 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					ClearKittyGraphics()
 
 					inlineImages := inlineImagesFromAttachments(m.email.Attachments)
-					body, placements, err := view.ProcessBodyWithInline(m.email.Body, m.email.BodyMIMEType, inlineImages, H1Style, H2Style, BodyStyle, !m.showImages)
+					body, placements, mailtoLinks, err := view.ProcessBodyWithInline(m.email.Body, m.email.BodyMIMEType, inlineImages, H1Style, H2Style, BodyStyle, !m.showImages)
 					if err != nil {
 						body = fmt.Sprintf("Error rendering body: %v", err)
 					}
 					body = applyBodyTransform(body, m.email)
 					m.imagePlacements = placements
+					m.mailtoLinks = mailtoLinks
 					wrapped := wrapBodyToWidth(body, m.viewport.Width())
 					m.viewport.SetContent(wrapped + "\n")
 					return m, nil
@@ -339,20 +342,86 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// When the window size changes, wrap and clear kitty images to keep placement stable
 		ClearKittyGraphics()
 		inlineImages := inlineImagesFromAttachments(m.email.Attachments)
-		body, placements, err := view.ProcessBodyWithInline(m.email.Body, m.email.BodyMIMEType, inlineImages, H1Style, H2Style, BodyStyle, !m.showImages)
+		body, placements, mailtoLinks, err := view.ProcessBodyWithInline(m.email.Body, m.email.BodyMIMEType, inlineImages, H1Style, H2Style, BodyStyle, !m.showImages)
 		if err != nil {
 			body = fmt.Sprintf("Error rendering body: %v", err)
 		}
 		body = applyBodyTransform(body, m.email)
 		m.imagePlacements = placements
+		m.mailtoLinks = mailtoLinks
 		wrapped := wrapBodyToWidth(body, m.viewport.Width())
 		m.viewport.SetContent(wrapped + "\n")
+
+	case tea.MouseClickMsg:
+		if msg.Button == tea.MouseLeft {
+			if mailtoURL := m.mailtoAtClick(msg.X, msg.Y); mailtoURL != "" {
+				ClearKittyGraphics()
+				return m, func() tea.Msg { return OpenMailtoMsg{URL: mailtoURL} }
+			}
+		}
 	}
 
 	m.viewport, cmd = m.viewport.Update(msg)
 	cmds = append(cmds, cmd)
 
 	return m, tea.Batch(cmds...)
+}
+
+// mailtoAtClick returns the mailto: URL at the given screen (x, y) coordinates,
+// or "" if the click does not land on a mailto link in the email body.
+//
+// The y coordinate is mapped to a viewport content line by subtracting the
+// rendered header height and adding the current scroll offset. The x
+// coordinate is matched against the visible text of each mailto link on that
+// line by stripping ANSI styling and searching for the link text.
+func (m *EmailView) mailtoAtClick(x, y int) string {
+	if len(m.mailtoLinks) == 0 {
+		return ""
+	}
+	headerHeight := m.renderedHeaderHeight()
+	// Calendar card (if present) sits between header and viewport.
+	if m.hasCalendarInvite && m.calendarEvent != nil {
+		headerHeight += 10
+	}
+	vpTop := headerHeight + 1 // +1 for the newline after the header block
+	if y < vpTop {
+		return ""
+	}
+	contentLine := y - vpTop + m.viewport.YOffset()
+	content := m.viewport.GetContent()
+	lines := strings.Split(content, "\n")
+	if contentLine < 0 || contentLine >= len(lines) {
+		return ""
+	}
+	return view.FindMailtoAtPosition(lines[contentLine], x, m.mailtoLinks)
+}
+
+// renderedHeaderHeight returns the number of terminal rows the email header
+// occupies in View(), matching the styledHeader layout. The header is rendered
+// with emailHeaderStyle (border-bottom + padding) at the viewport width.
+func (m *EmailView) renderedHeaderHeight() int {
+	var cryptoStatus strings.Builder
+	if m.isEncrypted {
+		cryptoStatus.WriteString(" [S/MIME: 🔒 Encrypted]")
+	} else if m.isSMIME {
+		if m.smimeTrusted {
+			cryptoStatus.WriteString(" [S/MIME: ✅ Trusted]")
+		} else {
+			cryptoStatus.WriteString(" [S/MIME: ❌ Untrusted]")
+		}
+	}
+	if m.isPGPEncrypted {
+		cryptoStatus.WriteString(" [PGP: 🔒 Encrypted]")
+	} else if m.isPGP {
+		if m.pgpTrusted {
+			cryptoStatus.WriteString(" [PGP: ✅ Verified]")
+		} else {
+			cryptoStatus.WriteString(" [PGP: ⚠️ Unverified]")
+		}
+	}
+	header := fmt.Sprintf("To: %s | From: %s | Subject: %s%s", strings.Join(m.email.To, ", "), m.email.From, m.email.Subject, cryptoStatus.String())
+	styledHeader := emailHeaderStyle.Width(m.viewport.Width()).Render(header)
+	return lipgloss.Height(styledHeader)
 }
 
 func (m *EmailView) View() tea.View {
