@@ -460,7 +460,8 @@ func (m *Composer) orderedFocusIndices() []int {
 		minFocus = focusTo
 	}
 
-	indices := []int{
+	indices := make([]int, 0, 8+len(m.visibleCryptoToggles())+1)
+	indices = append(indices,
 		focusFrom,
 		focusTo,
 		focusCc,
@@ -469,7 +470,7 @@ func (m *Composer) orderedFocusIndices() []int {
 		focusBody,
 		focusSignature,
 		focusAttachment,
-	}
+	)
 	indices = append(indices, m.visibleCryptoToggles()...)
 	indices = append(indices, focusSend)
 
