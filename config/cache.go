@@ -556,6 +556,10 @@ type Draft struct {
 	InReplyTo       string    `json:"in_reply_to,omitempty"`
 	References      []string  `json:"references,omitempty"`
 	QuotedText      string    `json:"quoted_text,omitempty"`
+	SignSMIME       bool      `json:"sign_smime,omitempty"`
+	EncryptSMIME    bool      `json:"encrypt_smime,omitempty"`
+	SignPGP         bool      `json:"sign_pgp,omitempty"`
+	EncryptPGP      bool      `json:"encrypt_pgp,omitempty"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 }

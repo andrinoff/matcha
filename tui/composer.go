@@ -54,6 +54,7 @@ const (
 	focusSignature
 	focusAttachment
 	focusEncryptSMIME
+	focusSignSMIME
 	focusSignPGP
 	focusEncryptPGP
 	focusSend
@@ -76,6 +77,7 @@ type Composer struct {
 	attachmentNames  map[string]string
 	attachmentCursor int
 	encryptSMIME     bool
+	signSMIME        bool
 	signPGP          bool
 	encryptPGP       bool
 	width            int
@@ -139,14 +141,19 @@ type Composer struct {
 
 	// WKD key download confirmation
 	wkdConfirmRecipients []string // recipients missing local keys, awaiting confirmation
+
+	// PGP keys discovered for recipients (local or WKD). Used to decide when to
+	// show the PGP encryption toggle.
+	pgpKeysAvailable map[string]bool
 }
 
 // NewComposer initializes a new composer model.
 func NewComposer(from, to, subject, body string, hideTips bool) *Composer {
 	m := &Composer{
-		draftID:         uuid.New().String(),
-		hideTips:        hideTips,
-		attachmentNames: make(map[string]string),
+		draftID:          uuid.New().String(),
+		hideTips:         hideTips,
+		attachmentNames:  make(map[string]string),
+		pgpKeysAvailable: make(map[string]bool),
 	}
 
 	tiStyles := ThemedTextInputStyles()
@@ -316,63 +323,195 @@ func (m *Composer) updatePGPDefaults() {
 	}
 }
 
-func (m *Composer) missingRecipientKeys() []string {
-	cfgDir, err := config.GetConfigDir()
-	if err != nil {
-		return nil
+func (m *Composer) updateSMIMEDefaults() {
+	if acc := m.getSelectedAccount(); acc != nil {
+		m.signSMIME = acc.SMIMESignByDefault
 	}
-	pgpDir := cfgDir + "/pgp"
+}
 
-	var allRecipients []string
+func (m *Composer) signSMIMEEnabled() bool {
+	acc := m.getSelectedAccount()
+	if !pgp.HasSMIMESetup(acc) {
+		return false
+	}
+	return m.signSMIME
+}
+
+func (m *Composer) pgpRecipients() []string {
+	var recipients []string
 	for _, s := range []string{m.toInput.Value(), m.ccInput.Value(), m.bccInput.Value()} {
 		for _, r := range strings.Split(s, ",") {
-			if trimmed := strings.TrimSpace(r); trimmed != "" {
-				allRecipients = append(allRecipients, trimmed)
+			if email := strings.TrimSpace(r); email != "" {
+				recipients = append(recipients, email)
 			}
 		}
 	}
-	return pgp.MissingLocalKeys(pgpDir, allRecipients)
+	return recipients
 }
 
-func (m *Composer) downloadWKDKeysCmd(recipients []string) tea.Cmd {
+func (m *Composer) hasPGPKeyAvailable() bool {
+	for _, email := range m.pgpRecipients() {
+		if m.pgpKeysAvailable[email] {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *Composer) missingRecipientKeys() []string {
+	var missing []string
+	for _, email := range m.pgpRecipients() {
+		if !m.pgpKeysAvailable[email] {
+			missing = append(missing, email)
+		}
+	}
+	return missing
+}
+
+func (m *Composer) hasSMIMECertForAnyRecipient() bool {
+	acc := m.getSelectedAccount()
+	if !pgp.HasSMIMESetup(acc) {
+		return false
+	}
+	for _, email := range m.pgpRecipients() {
+		if email != "" && pgp.HasSMIMECertForRecipient(email, acc) {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *Composer) refreshPGPKeyAvailability() tea.Cmd {
+	var cmds []tea.Cmd
+	for _, email := range m.pgpRecipients() {
+		if !m.pgpKeysAvailable[email] {
+			cmds = append(cmds, m.lookupPGPKeyCmd(email))
+		}
+	}
+	if len(cmds) == 0 {
+		return nil
+	}
+	return tea.Batch(cmds...)
+}
+
+func (m *Composer) lookupPGPKeyCmd(email string) tea.Cmd {
+	return func() tea.Msg {
+		found, err := pgp.HasLocalKeyForRecipient(email)
+		if err == nil && found {
+			return pgpKeyFoundMsg{email: email, source: "local"}
+		}
+		entity, err := pgp.LookupWKD(email)
+		if err != nil {
+			return nil
+		}
+		return pgpKeyFoundMsg{email: email, source: "wkd", entity: entity}
+	}
+}
+
+type pgpKeyFoundMsg struct {
+	email  string
+	source string
+	entity interface{}
+}
+
+func (m *Composer) installPGPKeyCmd(email string) tea.Cmd {
 	return func() tea.Msg {
 		cfgDir, err := config.GetConfigDir()
 		if err != nil {
-			return NotifyMsg{Message: "WKD: could not determine config directory"}
+			return NotifyMsg{Message: "PGP: could not determine config directory"}
 		}
 		pgpDir := cfgDir + "/pgp"
-
-		var downloaded []string
-		var failed []string
-		for _, email := range recipients {
-			entity, err := pgp.LookupWKD(email)
-			if err != nil {
-				failed = append(failed, email)
-				continue
-			}
-			if err := pgp.CacheWKDKey(pgpDir, email, entity); err != nil {
-				failed = append(failed, email)
-				continue
-			}
-			downloaded = append(downloaded, email)
+		entity, err := pgp.LookupWKD(email)
+		if err != nil {
+			return NotifyMsg{Message: fmt.Sprintf("PGP: could not download key for %s", email)}
 		}
-
-		if len(downloaded) > 0 {
-			m.encryptPGP = true
+		if err := pgp.CacheWKDKey(pgpDir, email, entity); err != nil {
+			return NotifyMsg{Message: fmt.Sprintf("PGP: could not save key for %s", email)}
 		}
-
-		var msg string
-		switch {
-		case len(downloaded) > 0 && len(failed) > 0:
-			msg = fmt.Sprintf("WKD: downloaded keys for %s; failed for %s",
-				strings.Join(downloaded, ", "), strings.Join(failed, ", "))
-		case len(downloaded) > 0:
-			msg = fmt.Sprintf("WKD: downloaded keys for %s", strings.Join(downloaded, ", "))
-		default:
-			msg = fmt.Sprintf("WKD: no keys found for %s", strings.Join(failed, ", "))
-		}
-		return NotifyMsg{Message: msg}
+		return InfoNotifyMsg{Message: fmt.Sprintf("PGP key downloaded for %s", email), Duration: 2}
 	}
+}
+
+func (m *Composer) visibleCryptoToggles() []int {
+	selAcc := m.getSelectedAccount()
+	hasSMIME := pgp.HasSMIMESetup(selAcc)
+	hasPGP := pgp.HasPGPSetup(selAcc)
+
+	var toggles []int
+	if hasSMIME && m.hasSMIMECertForAnyRecipient() {
+		toggles = append(toggles, focusEncryptSMIME)
+	}
+	if hasSMIME {
+		toggles = append(toggles, focusSignSMIME)
+	}
+	if hasPGP {
+		toggles = append(toggles, focusSignPGP)
+	}
+	if hasPGP && m.hasPGPKeyAvailable() {
+		toggles = append(toggles, focusEncryptPGP)
+	}
+	return toggles
+}
+
+func (m *Composer) orderedFocusIndices() []int {
+	minFocus := focusFrom
+	// Skip From field if only one non-catch-all account (nothing to switch or edit)
+	if len(m.accounts) <= 1 && !m.isCatchAllAccount() {
+		minFocus = focusTo
+	}
+
+	indices := make([]int, 0, 8+len(m.visibleCryptoToggles())+1)
+	indices = append(indices,
+		focusFrom,
+		focusTo,
+		focusCc,
+		focusBcc,
+		focusSubject,
+		focusBody,
+		focusSignature,
+		focusAttachment,
+	)
+	indices = append(indices, m.visibleCryptoToggles()...)
+	indices = append(indices, focusSend)
+
+	result := make([]int, 0, len(indices))
+	for _, idx := range indices {
+		if idx >= minFocus {
+			result = append(result, idx)
+		}
+	}
+	return result
+}
+
+func (m *Composer) advanceFocus(focusList []int) {
+	m.cycleFocus(focusList, 1)
+}
+
+func (m *Composer) retreatFocus(focusList []int) {
+	m.cycleFocus(focusList, -1)
+}
+
+func (m *Composer) cycleFocus(focusList []int, delta int) {
+	if len(focusList) == 0 {
+		return
+	}
+	pos := -1
+	for i, f := range focusList {
+		if f == m.focusIndex {
+			pos = i
+			break
+		}
+	}
+	if pos == -1 {
+		if delta > 0 {
+			pos = -1
+		} else {
+			pos = len(focusList)
+		}
+	}
+	pos += delta
+	pos = ((pos % len(focusList)) + len(focusList)) % len(focusList)
+	m.focusIndex = focusList[pos]
 }
 
 // NewComposerWithAccounts initializes a composer with multiple account support.
@@ -389,6 +528,7 @@ func NewComposerWithAccounts(accounts []config.Account, selectedAccountID string
 	}
 	m.updateSignature()
 	m.updatePGPDefaults()
+	m.updateSMIMEDefaults()
 
 	return m
 }
@@ -894,6 +1034,17 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 		}
 		return m, nil
 
+	case pgpKeyFoundMsg:
+		if msg.email != "" {
+			m.pgpKeysAvailable[msg.email] = true
+		}
+		if msg.source == "wkd" {
+			return m, func() tea.Msg {
+				return InfoNotifyMsg{Message: fmt.Sprintf("PGP key found for %s", msg.email), Duration: 2}
+			}
+		}
+		return m, nil
+
 	case FileSelectedMsg:
 		// Avoid duplicates and add all selected paths
 		for _, newPath := range msg.Paths {
@@ -1030,9 +1181,9 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 		if len(m.wkdConfirmRecipients) > 0 {
 			switch msg.String() {
 			case "y", "Y":
-				recipients := m.wkdConfirmRecipients
+				recipient := m.wkdConfirmRecipients[0]
 				m.wkdConfirmRecipients = nil
-				return m, m.downloadWKDKeysCmd(recipients)
+				return m, m.installPGPKeyCmd(recipient)
 			case "n", "N", "esc":
 				m.wkdConfirmRecipients = nil
 				return m, nil
@@ -1113,34 +1264,11 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 
 		case kb.Composer.NextField, kb.Composer.PrevField:
 			previousFocus := m.focusIndex
+			focusList := m.orderedFocusIndices()
 			if msg.String() == kb.Composer.PrevField {
-				m.focusIndex--
+				m.retreatFocus(focusList)
 			} else {
-				m.focusIndex++
-			}
-
-			maxFocus := focusSend
-			minFocus := focusFrom
-			// Skip From field if only one non-catch-all account (nothing to switch or edit)
-			if len(m.accounts) <= 1 && !m.isCatchAllAccount() {
-				minFocus = focusTo
-			}
-
-			if m.focusIndex > maxFocus {
-				m.focusIndex = minFocus
-			} else if m.focusIndex < minFocus {
-				m.focusIndex = maxFocus
-			}
-
-			// Skip PGP focus states when PGP is not configured for the account.
-			if selAcc := m.getSelectedAccount(); selAcc == nil || (selAcc.PGPKeySource == "" && selAcc.PGPPublicKey == "") {
-				if m.focusIndex == focusSignPGP || m.focusIndex == focusEncryptPGP {
-					if msg.String() == kb.Composer.PrevField {
-						m.focusIndex = focusEncryptSMIME
-					} else {
-						m.focusIndex = focusSend
-					}
-				}
+				m.advanceFocus(focusList)
 			}
 
 			if previousFocus == focusFrom {
@@ -1208,6 +1336,12 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 				}
 				return m, nil
 
+			case focusSignSMIME:
+				if msg.String() == keyEnter || msg.String() == " " {
+					m.signSMIME = !m.signSMIME
+				}
+				return m, nil
+
 			case focusSignPGP:
 				if msg.String() == keyEnter || msg.String() == " " {
 					m.signPGP = !m.signPGP
@@ -1261,7 +1395,7 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 							InReplyTo:       m.inReplyTo,
 							References:      m.references,
 							Signature:       m.signatureInput.Value(),
-							SignSMIME:       acc != nil && acc.SMIMESignByDefault,
+							SignSMIME:       m.signSMIMEEnabled(),
 							EncryptSMIME:    m.encryptSMIME,
 							SignPGP:         m.signPGP,
 							EncryptPGP:      m.encryptPGP,
@@ -1307,6 +1441,12 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 				m.showSuggestions = false
 				m.suggestions = nil
 			}
+
+			if pgp.HasPGPSetup(m.getSelectedAccount()) && currentValue != previousToValue {
+				if cmd := m.refreshPGPKeyAvailability(); cmd != nil {
+					cmds = append(cmds, cmd)
+				}
+			}
 		}
 	case focusCc:
 		previousCcValue := m.ccInput.Value()
@@ -1314,6 +1454,11 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 		cmds = append(cmds, cmd)
 		if m.ccInput.Value() != previousCcValue {
 			m.ccError = ""
+			if pgp.HasPGPSetup(m.getSelectedAccount()) {
+				if cmd := m.refreshPGPKeyAvailability(); cmd != nil {
+					cmds = append(cmds, cmd)
+				}
+			}
 		}
 	case focusBcc:
 		previousBccValue := m.bccInput.Value()
@@ -1321,6 +1466,11 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 		cmds = append(cmds, cmd)
 		if m.bccInput.Value() != previousBccValue {
 			m.bccError = ""
+			if pgp.HasPGPSetup(m.getSelectedAccount()) {
+				if cmd := m.refreshPGPKeyAvailability(); cmd != nil {
+					cmds = append(cmds, cmd)
+				}
+			}
 		}
 	case focusSubject:
 		m.subjectInput, cmd = m.subjectInput.Update(msg)
@@ -1417,17 +1567,27 @@ func (m *Composer) View() tea.View { //nolint:gocyclo
 		attachmentField = b.String()
 	}
 
-	encToggle := "[ ]"
+	acc := m.getSelectedAccount()
+	hasSMIME := pgp.HasSMIMESetup(acc)
+	hasPGP := pgp.HasPGPSetup(acc)
+
+	encSMIMEToggle := "[ ]"
 	if m.encryptSMIME {
-		encToggle = "[x]"
+		encSMIMEToggle = "[x]"
 	}
-	encField := blurredStyle.Render(fmt.Sprintf("  %s %s", t("composer.encrypt_smime"), encToggle))
+	encSMIMEField := blurredStyle.Render(fmt.Sprintf("  %s %s", t("composer.encrypt_smime"), encSMIMEToggle))
 	if m.focusIndex == focusEncryptSMIME {
-		encField = focusedStyle.Render(fmt.Sprintf("> %s %s", t("composer.encrypt_smime"), encToggle))
+		encSMIMEField = focusedStyle.Render(fmt.Sprintf("> %s %s", t("composer.encrypt_smime"), encSMIMEToggle))
 	}
 
-	acc := m.getSelectedAccount()
-	hasPGP := acc != nil && (acc.PGPKeySource != "" || acc.PGPPublicKey != "")
+	signSMIMEToggle := "[ ]"
+	if m.signSMIME {
+		signSMIMEToggle = "[x]"
+	}
+	signSMIMEField := blurredStyle.Render(fmt.Sprintf("  %s %s", t("composer.sign_smime"), signSMIMEToggle))
+	if m.focusIndex == focusSignSMIME {
+		signSMIMEField = focusedStyle.Render(fmt.Sprintf("> %s %s", t("composer.sign_smime"), signSMIMEToggle))
+	}
 
 	signPGPToggle := "[ ]"
 	if m.signPGP {
@@ -1510,6 +1670,8 @@ func (m *Composer) View() tea.View { //nolint:gocyclo
 		tip = fmt.Sprintf("Enter: add file • up/down: select attachment • %s: remove selected", ck.Delete)
 	case focusEncryptSMIME:
 		tip = "Press Space or Enter to toggle S/MIME encryption on or off."
+	case focusSignSMIME:
+		tip = "Press Space or Enter to toggle S/MIME signing on or off."
 	case focusSignPGP:
 		tip = "Press Space or Enter to toggle PGP signing on or off."
 	case focusEncryptPGP:
@@ -1538,14 +1700,20 @@ func (m *Composer) View() tea.View { //nolint:gocyclo
 	if len(m.attachmentPaths) > 0 {
 		composerViewElements = append(composerViewElements, "")
 	}
-	composerViewElements = append(composerViewElements,
-		smimeToggleStyle.Render(encField),
-	)
-	if hasPGP {
+	showSMIMEEnc := hasSMIME && m.hasSMIMECertForAnyRecipient()
+	if showSMIMEEnc {
 		composerViewElements = append(composerViewElements,
-			smimeToggleStyle.Render(signPGPField),
-			smimeToggleStyle.Render(encPGPField),
+			smimeToggleStyle.Render(encSMIMEField),
 		)
+	}
+	if hasSMIME {
+		composerViewElements = append(composerViewElements, smimeToggleStyle.Render(signSMIMEField))
+	}
+	if hasPGP {
+		composerViewElements = append(composerViewElements, smimeToggleStyle.Render(signPGPField))
+		if m.hasPGPKeyAvailable() {
+			composerViewElements = append(composerViewElements, smimeToggleStyle.Render(encPGPField))
+		}
 	}
 	composerViewElements = append(composerViewElements,
 		button,
@@ -1979,6 +2147,10 @@ func (m *Composer) ToDraft() config.Draft {
 		InReplyTo:       m.inReplyTo,
 		References:      m.references,
 		QuotedText:      m.quotedText,
+		SignSMIME:       m.signSMIME,
+		EncryptSMIME:    m.encryptSMIME,
+		SignPGP:         m.signPGP,
+		EncryptPGP:      m.encryptPGP,
 	}
 }
 
@@ -2000,5 +2172,9 @@ func NewComposerFromDraft(draft config.Draft, accounts []config.Account, hideTip
 	m.inReplyTo = draft.InReplyTo
 	m.references = draft.References
 	m.quotedText = draft.QuotedText
+	m.signSMIME = draft.SignSMIME
+	m.encryptSMIME = draft.EncryptSMIME
+	m.signPGP = draft.SignPGP
+	m.encryptPGP = draft.EncryptPGP
 	return m
 }

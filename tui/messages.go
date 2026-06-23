@@ -14,6 +14,11 @@ type NotifyMsg struct {
 	Message string
 }
 
+type InfoNotifyMsg struct {
+	Message  string
+	Duration float64
+}
+
 type MailboxKind string
 
 const (
