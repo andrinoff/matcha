@@ -13,7 +13,12 @@ import (
 	"github.com/floatpane/matcha/plugins"
 )
 
-const rawThemeBaseURL = "https://raw.githubusercontent.com/floatpane/matcha-themes/master/themes/"
+const (
+	rawThemeBaseURL = "https://raw.githubusercontent.com/floatpane/matcha-themes/master/themes/"
+
+	installKindPlugin = "plugin"
+	installKindTheme  = "theme"
+)
 
 // RunInstall handles `matcha install [plugin|theme] <name_or_url_or_file>`.
 func RunInstall(args []string) error {
@@ -24,9 +29,9 @@ func RunInstall(args []string) error {
 	kind, source := detectKind(args)
 
 	switch kind {
-	case "theme":
+	case installKindTheme:
 		return installTheme(source)
-	case "plugin":
+	case installKindPlugin:
 		return installPlugin(source)
 	default:
 		return fmt.Errorf("unknown install kind: %s", kind)
@@ -38,10 +43,10 @@ func RunInstall(args []string) error {
 func detectKind(args []string) (string, string) {
 	if len(args) >= 2 {
 		switch args[0] {
-		case "plugin":
-			return "plugin", args[1]
-		case "theme":
-			return "theme", args[1]
+		case installKindPlugin:
+			return installKindPlugin, args[1]
+		case installKindTheme:
+			return installKindTheme, args[1]
 		}
 	}
 
@@ -50,9 +55,9 @@ func detectKind(args []string) (string, string) {
 	// Explicit URLs or local files are downloaded as-is; infer from extension.
 	if isURL(source) || isFilePath(source) {
 		if strings.HasSuffix(source, ".json") {
-			return "theme", source
+			return installKindTheme, source
 		}
-		return "plugin", source
+		return installKindPlugin, source
 	}
 
 	// Ambiguous bare name: check for collisions between plugin/theme names.
@@ -60,17 +65,17 @@ func detectKind(args []string) (string, string) {
 	isThemeName := isKnownThemeName(source)
 
 	if isPluginName && !isThemeName {
-		return "plugin", source
+		return installKindPlugin, source
 	}
 	if isThemeName && !isPluginName {
-		return "theme", source
+		return installKindTheme, source
 	}
 	if isPluginName && isThemeName {
 		return "", source
 	}
 
 	// Unknown name: assume plugin to preserve existing behavior.
-	return "plugin", source
+	return installKindPlugin, source
 }
 
 func isURL(s string) bool {
@@ -96,7 +101,7 @@ func isKnownPluginName(name string) bool {
 
 func isKnownThemeName(name string) bool {
 	client := httpclient.New(httpclient.RegistryFetchTimeout)
-	resp, err := client.Get(fmt.Sprintf("https://api.github.com/repos/floatpane/matcha-themes/contents/themes?ref=master")) //nolint:noctx
+	resp, err := client.Get("https://api.github.com/repos/floatpane/matcha-themes/contents/themes?ref=master") //nolint:noctx
 	if err != nil {
 		return false
 	}
@@ -137,7 +142,7 @@ func installPlugin(source string) error {
 	}
 
 	dest := filepath.Join(dir, filename)
-	if err := os.WriteFile(dest, data, 0o644); err != nil { //nolint:gosec
+	if err := os.WriteFile(dest, data, 0o644); err != nil {
 		return fmt.Errorf("failed to write plugin: %w", err)
 	}
 
@@ -198,7 +203,7 @@ func installTheme(source string) error {
 	}
 
 	dest := filepath.Join(dir, filename)
-	if err := os.WriteFile(dest, data, 0o644); err != nil { //nolint:gosec
+	if err := os.WriteFile(dest, data, 0o644); err != nil {
 		return fmt.Errorf("failed to write theme: %w", err)
 	}
 
