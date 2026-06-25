@@ -60,6 +60,8 @@ type logEntryMsg struct {
 
 type clearErrorNotifMsg struct{}
 
+const maxBodyFetchRetries = 3
+
 // Model is the main Bubble Tea application model that orchestrates the TUI.
 type Model struct {
 	current       tea.Model
@@ -96,6 +98,10 @@ type Model struct {
 
 	errorNotification overlay.Notification
 	showErrorNotif    bool
+
+	// Track body fetch retries to prevent infinite loops
+	pendingBodyFetchUID   uint32
+	pendingBodyFetchCount int
 }
 
 // NewModel creates the initial TUI model.
@@ -1233,14 +1239,40 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 		return m, fetchcmd.FetchPreviewBodyCmd(m.config, msg.UID, msg.AccountID, folderName)
 
 	case tui.PreviewBodyFetchedMsg:
-		if msg.Err == nil && m.folderInbox != nil {
-			m.cacheEmailBody(m.folderName(), msg.UID, msg.AccountID, msg.Body, msg.BodyMIMEType, msg.Attachments)
+		if msg.Err != nil {
+			log.Printf("preview body fetch error for UID %d: %v", msg.UID, msg.Err)
+			m.pendingBodyFetchUID = 0
+			m.pendingBodyFetchCount = 0
+			return m, m.showErrorCmd(msg.Err.Error())
 		}
-		if m.folderInbox != nil {
-			m.current, cmd = m.current.Update(msg)
-			return m, cmd
+		if m.folderInbox == nil {
+			m.pendingBodyFetchUID = 0
+			m.pendingBodyFetchCount = 0
+			return m, nil
 		}
-		return m, nil
+		// If body is empty or whitespace-only, retry the fetch (up to max retries)
+		if strings.TrimSpace(msg.Body) == "" {
+			if m.pendingBodyFetchUID == msg.UID && m.pendingBodyFetchCount >= maxBodyFetchRetries {
+				log.Printf("preview body still empty after %d retries for UID %d, showing error", maxBodyFetchRetries, msg.UID)
+				m.pendingBodyFetchUID = 0
+				m.pendingBodyFetchCount = 0
+				return m, m.showErrorCmd("Email body could not be loaded after multiple attempts")
+			}
+			m.pendingBodyFetchUID = msg.UID
+			m.pendingBodyFetchCount++
+			log.Printf("preview body empty for UID %d, retrying fetch (%d/%d)", msg.UID, m.pendingBodyFetchCount, maxBodyFetchRetries)
+			return m, tea.Batch(
+				m.current.Init(),
+				fetchcmd.FetchPreviewBodyCmd(m.config, msg.UID, msg.AccountID, m.folderName()),
+			)
+		}
+		// Reset retry counter on successful fetch
+		m.pendingBodyFetchUID = 0
+		m.pendingBodyFetchCount = 0
+		// Cache the valid body
+		m.cacheEmailBody(m.folderName(), msg.UID, msg.AccountID, msg.Body, msg.BodyMIMEType, msg.Attachments)
+		m.current, cmd = m.current.Update(msg)
+		return m, cmd
 
 	case tui.EmailMovedMsg:
 		if msg.Err != nil {
@@ -1656,11 +1688,35 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 	case tui.EmailBodyFetchedMsg:
 		if msg.Err != nil {
 			log.Printf("could not fetch email body: %v", msg.Err)
+			m.pendingBodyFetchUID = 0
+			m.pendingBodyFetchCount = 0
 			if m.folderInbox != nil {
 				m.current = m.folderInbox
 			}
 			return m, m.showErrorCmd(msg.Err.Error())
 		}
+		// If body is empty or whitespace-only, retry the fetch instead of showing incomplete content
+		if strings.TrimSpace(msg.Body) == "" {
+			if m.pendingBodyFetchUID == msg.UID && m.pendingBodyFetchCount >= maxBodyFetchRetries {
+				log.Printf("email body still empty after %d retries for UID %d, showing error", maxBodyFetchRetries, msg.UID)
+				m.pendingBodyFetchUID = 0
+				m.pendingBodyFetchCount = 0
+				if m.folderInbox != nil {
+					m.current = m.folderInbox
+				}
+				return m, m.showErrorCmd("Email body could not be loaded after multiple attempts")
+			}
+			m.pendingBodyFetchUID = msg.UID
+			m.pendingBodyFetchCount++
+			log.Printf("email body empty for UID %d, retrying fetch (%d/%d)", msg.UID, m.pendingBodyFetchCount, maxBodyFetchRetries)
+			m.current = tui.NewStatus("Fetching email content...")
+			return m, tea.Batch(
+				append(m.pluginFlagCmds(), m.current.Init(), fetchcmd.FetchFolderEmailBodyCmd(m.config, msg.UID, msg.AccountID, m.folderName(), msg.Mailbox), m.pluginNotifyCmd())...,
+			)
+		}
+		// Reset retry counter on successful fetch
+		m.pendingBodyFetchUID = 0
+		m.pendingBodyFetchCount = 0
 		m.store.UpdateEmailBodyByUID(msg.UID, msg.AccountID, msg.Body, msg.BodyMIMEType, msg.Attachments)
 		folderForCache := m.folderName()
 		m.cacheEmailBody(folderForCache, msg.UID, msg.AccountID, msg.Body, msg.BodyMIMEType, msg.Attachments)
