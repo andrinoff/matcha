@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/floatpane/matcha/config"
+	"github.com/floatpane/matcha/internal/httpclient"
+	"github.com/floatpane/matcha/internal/marketplace"
 	"github.com/floatpane/matcha/plugins"
 )
 
@@ -39,6 +42,12 @@ type RegistryFetchedMsg struct {
 	Err     error
 }
 
+// MarketplacePlugin wraps marketplace.PluginInfo for TUI display
+type MarketplacePlugin struct {
+	Info marketplace.PluginInfo
+	File string // derived filename
+}
+
 // PluginInstalledMsg signals that a plugin was installed from the marketplace.
 type PluginInstalledMsg struct {
 	Name string
@@ -53,6 +62,7 @@ type PluginDeletedMsg struct {
 
 type Marketplace struct {
 	entries          []plugins.PluginEntry
+	marketplacePlugins []MarketplacePlugin
 	installed        map[string]bool
 	cursor           int
 	offset           int // scroll offset
@@ -65,6 +75,7 @@ type Marketplace struct {
 	lastClickY       int
 	confirmingDelete bool   // true when prompting the user to confirm plugin removal
 	deleteTarget     string // name of the plugin pending deletion
+	useNewAPI        bool   // whether to use new marketplace API
 }
 
 func NewMarketplace(standalone bool) Marketplace {
@@ -75,13 +86,51 @@ func NewMarketplace(standalone bool) Marketplace {
 }
 
 func (m Marketplace) Init() tea.Cmd {
-	return fetchRegistry
+	// Try new marketplace API first, fallback to old registry
+	return func() tea.Msg {
+		return fetchFromNewMarketplace()
+	}
 }
 
 func (m Marketplace) itemsStartY() int {
 	// docStyle top margin (1) + choiceLogo blank+5 lines (6) + explicit \n (1) = 8
 	// mpTitleStyle title (1) + \n\n (2) = 3
 	return 8 + 3
+}
+
+func fetchFromNewMarketplace() tea.Msg {
+	plugins, err := marketplace.ListPlugins()
+	if err != nil {
+		// Fallback to old registry
+		return fetchRegistry()
+	}
+	
+	marketplacePlugins := make([]MarketplacePlugin, len(plugins))
+	for i, p := range plugins {
+		marketplacePlugins[i] = MarketplacePlugin{
+			Info: p,
+			File: p.Name + ".lua",
+		}
+	}
+	
+	return RegistryFetchedMsg{
+		Entries: convertToPluginEntries(marketplacePlugins),
+		Err: nil,
+	}
+}
+
+func convertToPluginEntries(mpPlugins []MarketplacePlugin) []plugins.PluginEntry {
+	entries := make([]plugins.PluginEntry, len(mpPlugins))
+	for i, mp := range mpPlugins {
+		entries[i] = plugins.PluginEntry{
+			Name:        mp.Info.Name,
+			Title:       mp.Info.Title,
+			Description: mp.Info.Description,
+			File:        mp.File,
+			URL:         mp.Info.RepositoryURL,
+		}
+	}
+	return entries
 }
 
 func fetchRegistry() tea.Msg {
@@ -240,7 +289,15 @@ func (m Marketplace) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				m.status = fmt.Sprintf("%s is already installed", entry.Name)
 				return m, nil
 			}
-			m.status = fmt.Sprintf("Installing %s...", entry.Name)
+			
+			// Check if plugin is from new marketplace API and needs trust confirmation
+			pluginInfo := getPluginInfo(entry.Name)
+			if pluginInfo != nil && !pluginInfo.IsTrustedAuthor() {
+				m.status = fmt.Sprintf("Installing %s (unverified author)...", entry.Name)
+			} else {
+				m.status = fmt.Sprintf("Installing %s...", entry.Name)
+			}
+			
 			return m, installPlugin(entry)
 		}
 	case kb.Inbox.Delete:
@@ -287,9 +344,30 @@ func (m Marketplace) visibleRows() int {
 	return available / 2
 }
 
+func getPluginInfo(name string) *marketplace.PluginInfo {
+	info, err := marketplace.FetchPluginInfo(name)
+	if err != nil {
+		return nil
+	}
+	return info
+}
+
 func installPlugin(entry plugins.PluginEntry) tea.Cmd {
 	return func() tea.Msg {
-		data, err := plugins.FetchPlugin(entry)
+		// Try to get plugin info from new marketplace
+		pluginInfo := getPluginInfo(entry.Name)
+		
+		var data []byte
+		var err error
+		
+		if pluginInfo != nil {
+			// Download from marketplace URL
+			data, err = downloadFromURL(pluginInfo.FileURL)
+		} else {
+			// Fallback to old registry
+			data, err = plugins.FetchPlugin(entry)
+		}
+		
 		if err != nil {
 			return PluginInstalledMsg{Name: entry.Name, Err: err}
 		}
@@ -311,6 +389,26 @@ func installPlugin(entry plugins.PluginEntry) tea.Cmd {
 
 		return PluginInstalledMsg{Name: entry.Name}
 	}
+}
+
+func downloadFromURL(url string) ([]byte, error) {
+	client := httpclient.New(httpclient.RegistryFetchTimeout)
+	resp, err := client.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	
+	return data, nil
 }
 
 func deletePlugin(name string) tea.Cmd {
