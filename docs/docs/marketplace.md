@@ -82,10 +82,6 @@ Want to share your plugin? Visit the [Submit Plugin](https://marketplace.matcha.
 
 ## For Developers
 
-### Plugin API Documentation
-
-Learn how to create plugins in the [Plugin Development Guide](./for-developers/plugins.md).
-
 ### Trusted Maintainer Program
 
 To become a verified/trusted maintainer:
