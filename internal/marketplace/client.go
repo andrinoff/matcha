@@ -11,20 +11,20 @@ import (
 const MarketplaceAPI = "https://marketplace.matcha.email/api"
 
 type PluginInfo struct {
-	ID                   string `json:"id"`
-	Name                 string `json:"name"`
-	Title                string `json:"title"`
-	Description          string `json:"description"`
-	Version              string `json:"version"`
-	Author               Author `json:"author"`
-	Maintainer           Author `json:"maintainer"`
-	RepositoryURL        string `json:"repository_url"`
-	FileURL              string `json:"file_url"`
-	SHA256               string `json:"sha256"`
-	Status               string `json:"status"`
-	VerificationStatus   string `json:"verification_status"`
-	Downloads            int    `json:"downloads"`
-	Tags                 []string `json:"tags"`
+	ID                 string   `json:"id"`
+	Name               string   `json:"name"`
+	Title              string   `json:"title"`
+	Description        string   `json:"description"`
+	Version            string   `json:"version"`
+	Author             Author   `json:"author"`
+	Maintainer         Author   `json:"maintainer"`
+	RepositoryURL      string   `json:"repository_url"`
+	FileURL            string   `json:"file_url"`
+	SHA256             string   `json:"sha256"`
+	Status             string   `json:"status"`
+	VerificationStatus string   `json:"verification_status"`
+	Downloads          int      `json:"downloads"`
+	Tags               []string `json:"tags"`
 }
 
 type Author struct {
@@ -37,7 +37,7 @@ type Author struct {
 func FetchPluginInfo(name string) (*PluginInfo, error) {
 	client := httpclient.New(httpclient.RegistryFetchTimeout)
 	url := fmt.Sprintf("%s/plugins?id=%s", MarketplaceAPI, name)
-	
+
 	resp, err := client.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch plugin info: %w", err)
@@ -64,7 +64,7 @@ func FetchPluginInfo(name string) (*PluginInfo, error) {
 func ListPlugins() ([]PluginInfo, error) {
 	client := httpclient.New(httpclient.RegistryFetchTimeout)
 	url := fmt.Sprintf("%s/plugins", MarketplaceAPI)
-	
+
 	resp, err := client.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch plugins list: %w", err)

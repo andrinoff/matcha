@@ -61,21 +61,21 @@ type PluginDeletedMsg struct {
 }
 
 type Marketplace struct {
-	entries          []plugins.PluginEntry
+	entries            []plugins.PluginEntry
 	marketplacePlugins []MarketplacePlugin
-	installed        map[string]bool
-	cursor           int
-	offset           int // scroll offset
-	width            int
-	height           int
-	state            marketplaceState
-	status           string // transient status message
-	standalone       bool   // true when launched via `matcha marketplace` (not from main menu)
-	lastClickTime    time.Time
-	lastClickY       int
-	confirmingDelete bool   // true when prompting the user to confirm plugin removal
-	deleteTarget     string // name of the plugin pending deletion
-	useNewAPI        bool   // whether to use new marketplace API
+	installed          map[string]bool
+	cursor             int
+	offset             int // scroll offset
+	width              int
+	height             int
+	state              marketplaceState
+	status             string // transient status message
+	standalone         bool   // true when launched via `matcha marketplace` (not from main menu)
+	lastClickTime      time.Time
+	lastClickY         int
+	confirmingDelete   bool   // true when prompting the user to confirm plugin removal
+	deleteTarget       string // name of the plugin pending deletion
+	useNewAPI          bool   // whether to use new marketplace API
 }
 
 func NewMarketplace(standalone bool) Marketplace {
@@ -104,7 +104,7 @@ func fetchFromNewMarketplace() tea.Msg {
 		// Fallback to old registry
 		return fetchRegistry()
 	}
-	
+
 	marketplacePlugins := make([]MarketplacePlugin, len(plugins))
 	for i, p := range plugins {
 		marketplacePlugins[i] = MarketplacePlugin{
@@ -112,10 +112,10 @@ func fetchFromNewMarketplace() tea.Msg {
 			File: p.Name + ".lua",
 		}
 	}
-	
+
 	return RegistryFetchedMsg{
 		Entries: convertToPluginEntries(marketplacePlugins),
-		Err: nil,
+		Err:     nil,
 	}
 }
 
@@ -289,7 +289,7 @@ func (m Marketplace) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				m.status = fmt.Sprintf("%s is already installed", entry.Name)
 				return m, nil
 			}
-			
+
 			// Check if plugin is from new marketplace API and needs trust confirmation
 			pluginInfo := getPluginInfo(entry.Name)
 			if pluginInfo != nil && !pluginInfo.IsTrustedAuthor() {
@@ -297,7 +297,7 @@ func (m Marketplace) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			} else {
 				m.status = fmt.Sprintf("Installing %s...", entry.Name)
 			}
-			
+
 			return m, installPlugin(entry)
 		}
 	case kb.Inbox.Delete:
@@ -356,10 +356,10 @@ func installPlugin(entry plugins.PluginEntry) tea.Cmd {
 	return func() tea.Msg {
 		// Try to get plugin info from new marketplace
 		pluginInfo := getPluginInfo(entry.Name)
-		
+
 		var data []byte
 		var err error
-		
+
 		if pluginInfo != nil {
 			// Download from marketplace URL
 			data, err = downloadFromURL(pluginInfo.FileURL)
@@ -367,7 +367,7 @@ func installPlugin(entry plugins.PluginEntry) tea.Cmd {
 			// Fallback to old registry
 			data, err = plugins.FetchPlugin(entry)
 		}
-		
+
 		if err != nil {
 			return PluginInstalledMsg{Name: entry.Name, Err: err}
 		}
@@ -398,16 +398,16 @@ func downloadFromURL(url string) ([]byte, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
-	
+
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return data, nil
 }
 

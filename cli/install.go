@@ -174,11 +174,11 @@ func installFromMarketplace(name string) error {
 		fmt.Printf("   Verification status: %s\n", plugin.VerificationStatus)
 		fmt.Println()
 		fmt.Print("Do you want to continue? (y/N): ")
-		
+
 		reader := bufio.NewReader(os.Stdin)
 		response, _ := reader.ReadString('\n')
 		response = strings.TrimSpace(strings.ToLower(response))
-		
+
 		if response != "y" && response != "yes" {
 			return fmt.Errorf("installation cancelled by user")
 		}
@@ -190,11 +190,11 @@ func installFromMarketplace(name string) error {
 		fmt.Printf("   GitHub: https://github.com/%s\n", plugin.Author.GitHubUsername)
 		fmt.Println()
 		fmt.Print("Do you trust this author? (y/N): ")
-		
+
 		reader := bufio.NewReader(os.Stdin)
 		response, _ := reader.ReadString('\n')
 		response = strings.TrimSpace(strings.ToLower(response))
-		
+
 		if response != "y" && response != "yes" {
 			return fmt.Errorf("installation cancelled by user")
 		}
@@ -220,18 +220,18 @@ func installFromMarketplace(name string) error {
 	// Verify SHA256
 	computedHash := sha256.Sum256(data)
 	computedHashStr := hex.EncodeToString(computedHash[:])
-	
+
 	if computedHashStr != plugin.SHA256 {
 		fmt.Printf("⚠️  Warning: SHA256 mismatch!\n")
 		fmt.Printf("   Expected: %s\n", plugin.SHA256)
 		fmt.Printf("   Got:      %s\n", computedHashStr)
 		fmt.Println()
 		fmt.Print("Do you want to continue anyway? (y/N): ")
-		
+
 		reader := bufio.NewReader(os.Stdin)
 		response, _ := reader.ReadString('\n')
 		response = strings.TrimSpace(strings.ToLower(response))
-		
+
 		if response != "y" && response != "yes" {
 			return fmt.Errorf("installation cancelled due to SHA256 mismatch")
 		}
@@ -250,11 +250,11 @@ func installFromMarketplace(name string) error {
 
 	fmt.Printf("✓ Installed plugin %s v%s\n", plugin.Title, plugin.Version)
 	fmt.Printf("  Location: %s\n", dest)
-	
+
 	if plugin.IsTrustedAuthor() && plugin.IsVerifiedSafe() {
 		fmt.Println("  Status: Verified safe ✓")
 	}
-	
+
 	return nil
 }
 
@@ -264,34 +264,34 @@ func installFromOldRegistry(name string) error {
 	if err != nil {
 		return fmt.Errorf("failed to fetch plugin registry: %w", err)
 	}
-	
+
 	for _, e := range entries {
 		if strings.EqualFold(e.Name, name) || strings.EqualFold(strings.TrimSuffix(e.File, ".lua"), name) {
 			data, err := plugins.FetchPlugin(e)
 			if err != nil {
 				return err
 			}
-			
+
 			filename := e.File
 			if !strings.HasSuffix(filename, ".lua") {
 				filename += ".lua"
 			}
-			
+
 			dir, err := pluginsDir()
 			if err != nil {
 				return err
 			}
-			
+
 			dest := filepath.Join(dir, filename)
 			if err := os.WriteFile(dest, data, 0o644); err != nil {
 				return fmt.Errorf("failed to write plugin: %w", err)
 			}
-			
+
 			fmt.Printf("Installed plugin %s to %s\n", filename, dest)
 			return nil
 		}
 	}
-	
+
 	return fmt.Errorf("plugin '%s' not found", name)
 }
 
