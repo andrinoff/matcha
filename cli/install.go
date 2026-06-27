@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bufio"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -202,11 +203,15 @@ func installFromMarketplace(name string) error {
 
 	// Download plugin file
 	client := httpclient.New(httpclient.RegistryFetchTimeout)
-	resp, err := client.Get(plugin.FileURL)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, plugin.FileURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to build download request: %w", err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to download plugin: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("failed to download plugin: HTTP %d", resp.StatusCode)

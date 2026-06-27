@@ -1,6 +1,7 @@
 package marketplace
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -38,11 +39,15 @@ func FetchPluginInfo(name string) (*PluginInfo, error) {
 	client := httpclient.New(httpclient.RegistryFetchTimeout)
 	url := fmt.Sprintf("%s/plugins?id=%s", MarketplaceAPI, name)
 
-	resp, err := client.Get(url)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build request: %w", err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch plugin info: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, fmt.Errorf("plugin '%s' not found in marketplace", name)
@@ -65,11 +70,15 @@ func ListPlugins() ([]PluginInfo, error) {
 	client := httpclient.New(httpclient.RegistryFetchTimeout)
 	url := fmt.Sprintf("%s/plugins", MarketplaceAPI)
 
-	resp, err := client.Get(url)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build request: %w", err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch plugins list: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("marketplace API returned status %d", resp.StatusCode)

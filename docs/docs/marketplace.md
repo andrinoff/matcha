@@ -80,7 +80,7 @@ Want to share your plugin? Visit the [Submit Plugin](https://marketplace.matcha.
 4. Wait for automated scanning and manual approval
 5. Once approved, your plugin will be available to all users
 
-## For Developers
+## For Developers`
 
 ### Trusted Maintainer Program
 

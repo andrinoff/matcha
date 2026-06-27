@@ -1,8 +1,10 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -61,21 +63,19 @@ type PluginDeletedMsg struct {
 }
 
 type Marketplace struct {
-	entries            []plugins.PluginEntry
-	marketplacePlugins []MarketplacePlugin
-	installed          map[string]bool
-	cursor             int
-	offset             int // scroll offset
-	width              int
-	height             int
-	state              marketplaceState
-	status             string // transient status message
-	standalone         bool   // true when launched via `matcha marketplace` (not from main menu)
-	lastClickTime      time.Time
-	lastClickY         int
-	confirmingDelete   bool   // true when prompting the user to confirm plugin removal
-	deleteTarget       string // name of the plugin pending deletion
-	useNewAPI          bool   // whether to use new marketplace API
+	entries          []plugins.PluginEntry
+	installed        map[string]bool
+	cursor           int
+	offset           int // scroll offset
+	width            int
+	height           int
+	state            marketplaceState
+	status           string // transient status message
+	standalone       bool   // true when launched via `matcha marketplace` (not from main menu)
+	lastClickTime    time.Time
+	lastClickY       int
+	confirmingDelete bool   // true when prompting the user to confirm plugin removal
+	deleteTarget     string // name of the plugin pending deletion
 }
 
 func NewMarketplace(standalone bool) Marketplace {
@@ -87,9 +87,7 @@ func NewMarketplace(standalone bool) Marketplace {
 
 func (m Marketplace) Init() tea.Cmd {
 	// Try new marketplace API first, fallback to old registry
-	return func() tea.Msg {
-		return fetchFromNewMarketplace()
-	}
+	return fetchFromNewMarketplace
 }
 
 func (m Marketplace) itemsStartY() int {
@@ -393,13 +391,17 @@ func installPlugin(entry plugins.PluginEntry) tea.Cmd {
 
 func downloadFromURL(url string) ([]byte, error) {
 	client := httpclient.New(httpclient.RegistryFetchTimeout)
-	resp, err := client.Get(url)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build download request: %w", err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 
