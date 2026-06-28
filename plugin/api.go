@@ -219,9 +219,10 @@ func (m *Manager) luaSetComposeField(L *lua.LState) int { //nolint:gocritic
 // plugins cannot call os.date() directly.
 //
 // Examples:
-//   matcha.time("15:04")           -> "14:32"
-//   matcha.time("Mon Jan 2")       -> "Fri Jun 28"
-//   matcha.time()                  -> "2026-06-28T14:32:00Z"
+//
+//	matcha.time("15:04")           -> "14:32"
+//	matcha.time("Mon Jan 2")       -> "Fri Jun 28"
+//	matcha.time()                  -> "2026-06-28T14:32:00Z"
 func (m *Manager) luaTime(L *lua.LState) int { //nolint:gocritic
 	layout := L.OptString(1, time.RFC3339)
 	L.Push(lua.LString(time.Now().Format(layout)))
