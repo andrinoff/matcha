@@ -171,7 +171,7 @@ type PendingNotification struct {
 	Title    string
 	Duration float64 // seconds, 0 means default (2s)
 	Kind     NotifyKind
-	Closable bool   // true = dismissible with a key press; false = auto-close only
+	Closable bool // true = dismissible with a key press; false = auto-close only
 }
 
 // TakePendingNotification returns and clears any pending notification.

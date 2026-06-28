@@ -101,7 +101,7 @@ type Model struct {
 	showErrorNotif    bool
 
 	pluginNotification overlay.Notification
-	showPluginNotif   bool
+	showPluginNotif    bool
 
 	// Track body fetch retries to prevent infinite loops
 	pendingBodyFetchUID   uint32
