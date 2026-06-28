@@ -44,8 +44,7 @@ type Manager struct {
 	// statuses holds persistent status strings per view area, shown in the UI.
 	statuses map[string]string
 	// pendingNotification is set by matcha.notify() and consumed by the orchestrator.
-	pendingNotification string
-	pendingDuration     float64 // seconds, 0 means default (2s)
+	pendingNotification *PendingNotification
 	// pendingFields holds compose field updates set by matcha.set_compose_field().
 	pendingFields map[string]string
 	// bindings holds plugin-registered keyboard shortcuts.
@@ -61,6 +60,11 @@ type Manager struct {
 	pluginSchemas map[string][]SettingDef
 	// pluginValues holds current setting values per plugin.
 	pluginValues map[string]map[string]interface{}
+
+	// ui holds all plugin-driven UI customization state: text overrides,
+	// component visibility toggles, custom injected components, and the
+	// startup banner override. See ui.go for details.
+	ui uiState
 }
 
 // NewManager creates a new plugin manager with a Lua VM.
@@ -72,6 +76,7 @@ func NewManager() *Manager {
 		pluginSchemas: make(map[string][]SettingDef),
 		pluginValues:  make(map[string]map[string]interface{}),
 	}
+	m.initUI()
 
 	L := lua.NewState(lua.Options{
 		SkipOpenLibs: true,
@@ -149,23 +154,33 @@ func (m *Manager) Plugins() []string {
 	return m.plugins
 }
 
-// PendingNotification holds a notification message and its display duration.
+// NotifyKind classifies a plugin notification for visual styling.
+type NotifyKind string
+
+const (
+	NotifyKindInfo    NotifyKind = "info"
+	NotifyKindWarning NotifyKind = "warning"
+	NotifyKindError   NotifyKind = "error"
+)
+
+// PendingNotification holds a notification requested by a plugin via
+// matcha.notify(). It is consumed once by the orchestrator via
+// TakePendingNotification().
 type PendingNotification struct {
 	Message  string
-	Duration float64 // seconds, 0 means default
+	Title    string
+	Duration float64 // seconds, 0 means default (2s)
+	Kind     NotifyKind
+	Closable bool // true = dismissible with a key press; false = auto-close only
 }
 
 // TakePendingNotification returns and clears any pending notification.
-func (m *Manager) TakePendingNotification() (PendingNotification, bool) {
-	if m.pendingNotification == "" {
-		return PendingNotification{}, false
+func (m *Manager) TakePendingNotification() (*PendingNotification, bool) {
+	if m.pendingNotification == nil {
+		return nil, false
 	}
-	n := PendingNotification{
-		Message:  m.pendingNotification,
-		Duration: m.pendingDuration,
-	}
-	m.pendingNotification = ""
-	m.pendingDuration = 0
+	n := m.pendingNotification
+	m.pendingNotification = nil
 	return n, true
 }
 

@@ -1241,8 +1241,12 @@ func (m *Inbox) fetchMoreCmds() []tea.Cmd {
 func (m *Inbox) View() tea.View {
 	var b strings.Builder
 
-	// Render tabs if there are multiple accounts
-	if len(m.tabs) > 1 {
+	// The tab bar is part of the "header" component. Skip it when a plugin
+	// has hidden the header via matcha.ui.set_visible("header", false).
+	headerVisible := isUIVisible("header")
+
+	// Render tabs if there are multiple accounts and the header is visible
+	if headerVisible && len(m.tabs) > 1 {
 		var tabViews []string
 		for i, tab := range m.tabs {
 			label := tab.Label
@@ -1261,6 +1265,10 @@ func (m *Inbox) View() tea.View {
 		b.WriteString("\n")
 	}
 
+	// Toggle the list title visibility based on the header component state.
+	// The list title is the "Inbox" / "Sent" / folder name header line.
+	m.list.SetShowTitle(headerVisible)
+
 	b.WriteString(m.list.View())
 
 	if m.searchOverlay != nil {
@@ -1273,7 +1281,12 @@ func (m *Inbox) View() tea.View {
 		b.WriteString("\n")
 	}
 
-	helpView := inboxHelpStyle.Render(m.list.Help.View(m.list))
+	// The help/status bar is only rendered when the "status_bar" component
+	// is visible (plugin can hide it via matcha.ui.set_visible).
+	helpView := ""
+	if isUIVisible("status_bar") {
+		helpView = inboxHelpStyle.Render(m.list.Help.View(m.list))
+	}
 
 	if m.height > 0 {
 		usedHeight := lipgloss.Height(b.String())

@@ -332,8 +332,8 @@ func (m Marketplace) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Marketplace) headerHeight() int {
-	// logoStyle.Render(choiceLogo) + \n + mpTitleStyle(1) + \n\n
-	return lipgloss.Height(logoStyle.Render(choiceLogo)) + 1 + 1 + 1
+	// renderLogo(choiceLogo) + \n + mpTitleStyle(1) + \n\n
+	return lipgloss.Height(renderLogo(choiceLogo)) + 1 + 1 + 1
 }
 
 func (m Marketplace) footerHeight() int {
@@ -472,7 +472,7 @@ func installedPlugins() map[string]bool {
 func (m Marketplace) View() tea.View {
 	var body strings.Builder
 
-	body.WriteString(logoStyle.Render(choiceLogo))
+	body.WriteString(renderLogo(choiceLogo))
 	body.WriteString("\n")
 	body.WriteString(mpTitleStyle.Render(" " + t("marketplace.title") + " "))
 	body.WriteString("\n\n")

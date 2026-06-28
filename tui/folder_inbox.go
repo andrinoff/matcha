@@ -411,7 +411,7 @@ func (m *FolderInbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocycl
 			}
 		} else {
 			// Original two-pane resize
-			inboxWidth := msg.Width - sidebarWidth - 3
+			inboxWidth := msg.Width - m.effectiveSidebarWidth() - 3
 			if inboxWidth < 20 {
 				inboxWidth = 20
 			}
@@ -751,8 +751,15 @@ func (m *FolderInbox) switchFolder() tea.Cmd {
 }
 
 func (m *FolderInbox) View() tea.View {
-	// Render sidebar
-	sidebar := m.renderSidebar()
+	// Check plugin visibility toggles for the sidebar. When hidden, the
+	// sidebar is not rendered and the inbox expands to fill the full width.
+	sidebarVisible := isUIVisible("sidebar")
+
+	// Render sidebar only if visible
+	var sidebar string
+	if sidebarVisible {
+		sidebar = m.renderSidebar()
+	}
 
 	var content string
 
@@ -763,10 +770,18 @@ func (m *FolderInbox) View() tea.View {
 		if m.isVerticalSplit() {
 			// Folders | (inbox stacked above preview)
 			stacked := lipgloss.JoinVertical(lipgloss.Left, inboxPane, previewPane)
-			content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, stacked)
+			if sidebarVisible {
+				content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, stacked)
+			} else {
+				content = stacked
+			}
 		} else {
 			// Folders | inbox | email preview
-			content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, inboxPane, previewPane)
+			if sidebarVisible {
+				content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, inboxPane, previewPane)
+			} else {
+				content = lipgloss.JoinHorizontal(lipgloss.Top, inboxPane, previewPane)
+			}
 		}
 	case m.previewedUID != 0:
 		// Split pane loading state (body being fetched)
@@ -775,15 +790,27 @@ func (m *FolderInbox) View() tea.View {
 		if m.isVerticalSplit() {
 			// Folders | (inbox stacked above loading preview)
 			stacked := lipgloss.JoinVertical(lipgloss.Left, inboxPane, emptyPreview)
-			content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, stacked)
+			if sidebarVisible {
+				content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, stacked)
+			} else {
+				content = stacked
+			}
 		} else {
 			// Folders | inbox | loading preview
-			content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, inboxPane, emptyPreview)
+			if sidebarVisible {
+				content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, inboxPane, emptyPreview)
+			} else {
+				content = lipgloss.JoinHorizontal(lipgloss.Top, inboxPane, emptyPreview)
+			}
 		}
 	default:
 		// Two-pane layout (original): folders | inbox
 		inboxView := m.inbox.View().Content
-		content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, inboxView)
+		if sidebarVisible {
+			content = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, inboxView)
+		} else {
+			content = inboxView
+		}
 	}
 
 	// If move overlay is active, render it on top
@@ -796,6 +823,10 @@ func (m *FolderInbox) View() tea.View {
 		content = m.renderWithJumpOverlay(content)
 	}
 
+	// Composite plugin-injected custom components (floating overlays and
+	// anchored blocks) onto the final content.
+	content = renderCustomComponents(content, m.width, m.height)
+
 	v := tea.NewView(content)
 	if config.MouseEnabled != nil && *config.MouseEnabled {
 		v.MouseMode = tea.MouseModeCellMotion
@@ -806,18 +837,22 @@ func (m *FolderInbox) View() tea.View {
 func (m *FolderInbox) renderSidebar() string {
 	var b strings.Builder
 
-	// Account name as title
-	title := t("folder_inbox.folders_title")
-	if len(m.accounts) > 0 {
-		acc := m.accounts[0]
-		if acc.Name != "" {
-			title = acc.Name
-		} else if acc.FetchEmail != "" {
-			title = acc.FetchEmail
+	// The sidebar title ("Folders" / account name) is part of the "header"
+	// component. Skip it when a plugin has hidden the header.
+	if isUIVisible("header") {
+		// Account name as title
+		title := t("folder_inbox.folders_title")
+		if len(m.accounts) > 0 {
+			acc := m.accounts[0]
+			if acc.Name != "" {
+				title = acc.Name
+			} else if acc.FetchEmail != "" {
+				title = acc.FetchEmail
+			}
 		}
+		b.WriteString(sidebarTitleStyle.Render(title))
+		b.WriteString("\n")
 	}
-	b.WriteString(sidebarTitleStyle.Render(title))
-	b.WriteString("\n")
 
 	for i, folder := range m.folders {
 		displayName := m.formatFolderName(folder)
@@ -1204,7 +1239,7 @@ func (m *FolderInbox) closeSplitPreview() {
 	m.previewSearchEmail = nil
 	m.focusedPane = FocusInbox
 	// Restore full inbox width
-	inboxWidth := m.width - sidebarWidth - 3
+	inboxWidth := m.width - m.effectiveSidebarWidth() - 3
 	if inboxWidth < 20 {
 		inboxWidth = 20
 	}
@@ -1229,9 +1264,20 @@ func (m *FolderInbox) findEmailByUID(uid uint32, accountID string) *fetcher.Emai
 	return nil
 }
 
+// effectiveSidebarWidth returns the width consumed by the sidebar (including
+// its right border and padding) when visible, or 0 when a plugin has hidden it
+// via matcha.ui.set_visible("sidebar", false). All width-calculation methods
+// call this so the inbox and preview panes expand to fill the freed space.
+func (m *FolderInbox) effectiveSidebarWidth() int {
+	if !isUIVisible("sidebar") {
+		return 0
+	}
+	return sidebarWidth
+}
+
 // calculatePreviewWidth calculates width for preview pane
 func (m *FolderInbox) calculatePreviewWidth() int {
-	remainingWidth := m.width - sidebarWidth - 4 // 4 for borders
+	remainingWidth := m.width - m.effectiveSidebarWidth() - 4 // 4 for borders
 	inboxWidth := int(float64(remainingWidth) * 0.4)
 	if inboxWidth < 30 {
 		inboxWidth = 30
@@ -1245,7 +1291,7 @@ func (m *FolderInbox) calculatePreviewWidth() int {
 
 // calculateInboxWidth calculates width for inbox pane in horizontal split mode
 func (m *FolderInbox) calculateInboxWidth() int {
-	remainingWidth := m.width - sidebarWidth - 4
+	remainingWidth := m.width - m.effectiveSidebarWidth() - 4
 	inboxWidth := int(float64(remainingWidth) * 0.4)
 	if inboxWidth < 30 {
 		inboxWidth = 30
@@ -1257,7 +1303,7 @@ func (m *FolderInbox) calculateInboxWidth() int {
 // and preview panes when the split is stacked vertically. They share whatever
 // horizontal space is left after the sidebar.
 func (m *FolderInbox) calculateInboxWidthVertical() int {
-	w := m.width - sidebarWidth - 3
+	w := m.width - m.effectiveSidebarWidth() - 3
 	if w < 20 {
 		w = 20
 	}
@@ -1287,9 +1333,15 @@ func (m *FolderInbox) calculatePreviewHeight() int {
 }
 
 // availableHeight returns the vertical space reserved for the main content
-// area (total screen height minus one row for the bottom help bar).
+// area. By default it is the total screen height minus one row for the bottom
+// help bar (status bar). When a plugin hides the status bar via
+// matcha.ui.set_visible("status_bar", false), that row is returned to the
+// main content area.
 func (m *FolderInbox) availableHeight() int {
-	h := m.height - 1
+	h := m.height
+	if isUIVisible("status_bar") {
+		h-- // reserve one row for the bottom help bar
+	}
 	if h < 1 {
 		h = 1
 	}

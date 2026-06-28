@@ -69,6 +69,13 @@ func main() {
 	_, logCh, logPanel := setupLogging(showLogPanel)
 	plugins := setupPlugins(cfg)
 
+	// Wire the plugin manager into the TUI layer so that text overrides,
+	// visibility toggles, custom components, and banner overrides are
+	// consulted during rendering. Must happen before HookStartup so that
+	// plugins calling matcha.ui.set_banner() in their startup hook take
+	// effect before the first frame.
+	tui.SetUIProvider(plugins)
+
 	initialModel := app.NewModel(cfg, mailtoURL, plugins, showLogPanel, logCh, logPanel)
 	if config.IsSecureModeEnabled() {
 		initialModel.SetPasswordPrompt()
