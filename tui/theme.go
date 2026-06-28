@@ -139,6 +139,11 @@ func RebuildStyles() {
 		Foreground(t.Danger)
 	mpFooterStyle = lipgloss.NewStyle().
 		Foreground(t.SubtleText)
+	mpAuthorStyle = lipgloss.NewStyle().
+		Foreground(t.SubtleText)
+	mpVerifiedStyle = lipgloss.NewStyle().
+		Foreground(t.Accent).
+		Bold(true)
 }
 
 // ThemedTextInputStyles returns textinput.Styles using the active theme colors.

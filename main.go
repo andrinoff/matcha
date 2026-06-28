@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/url"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -43,6 +44,15 @@ func main() {
 	os.Args = args
 	loglevel.Set(level)
 
+	// Handle matcha: URL scheme (e.g. matcha:install:my-plugin)
+	if installSlug := parseMatchaInstallURL(os.Args); installSlug != "" {
+		if err := matchaCli.RunInstall([]string{installSlug}); err != nil {
+			fmt.Fprintf(os.Stderr, "install failed: %v\n", err)
+			cliutil.Exit(1)
+		}
+		cliutil.Exit(0)
+	}
+
 	runSubcommand(os.Args)
 
 	if err := config.MigrateCacheFiles(); err != nil {
@@ -68,6 +78,7 @@ func main() {
 	plugins.CallHook(plugin.HookStartup)
 
 	startMacOSSync(cfg)
+	ensureProtocolHandler()
 
 	p := tea.NewProgram(initialModel)
 	if _, err := p.Run(); err != nil {
@@ -137,6 +148,12 @@ func runSubcommand(args []string) {
 			cliutil.Exit(1)
 		}
 		cliutil.Exit(0)
+	case "setup-protocol":
+		if err := matchaCli.SetupProtocolHandler(); err != nil {
+			fmt.Fprintf(os.Stderr, "setup-protocol failed: %v\n", err)
+			cliutil.Exit(1)
+		}
+		cliutil.Exit(0)
 	case "helper":
 		if err := matchaCli.RunHelper(args[2:]); err != nil {
 			fmt.Fprintf(os.Stderr, "helper: %v\n", err)
@@ -180,6 +197,23 @@ func parseMailto(args []string) *url.URL {
 		}
 	}
 	return nil
+}
+
+// parseMatchaInstallURL checks whether the first argument is a
+// matcha:install:<slug> URL and returns the slug.
+func parseMatchaInstallURL(args []string) string {
+	if len(args) <= 1 {
+		return ""
+	}
+	arg := strings.ToLower(args[1])
+	if !strings.HasPrefix(arg, "matcha:install:") {
+		return ""
+	}
+	slug := strings.TrimSpace(args[1][len("matcha:install:"):])
+	if slug == "" {
+		return ""
+	}
+	return slug
 }
 
 func loadConfigAndSetup() *config.Config {
@@ -261,6 +295,33 @@ func startMacOSSync(cfg *config.Config) {
 		}()
 		_ = config.SyncMacOSContacts()
 		_ = theme.SyncWithMacOS()
+	}()
+}
+
+// ensureProtocolHandler registers the matcha: URL scheme handler once.
+// A sentinel file (~/.config/matcha/.protocol_registered) prevents
+// re-running on every launch. Failures are logged but never fatal.
+func ensureProtocolHandler() {
+	dir, err := config.GetConfigDir()
+	if err != nil {
+		return
+	}
+	sentinel := filepath.Join(dir, ".protocol_registered")
+	if _, err := os.Stat(sentinel); err == nil {
+		return // already registered
+	}
+
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("panic in protocol handler setup: %v", r)
+			}
+		}()
+		if err := matchaCli.SetupProtocolHandler(); err != nil {
+			log.Printf("warning: could not register matcha: protocol: %v", err)
+			return
+		}
+		_ = os.WriteFile(sentinel, []byte("1"), 0644)
 	}()
 }
 
