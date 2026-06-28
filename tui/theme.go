@@ -40,7 +40,6 @@ func RebuildStyles() {
 
 	// choice.go
 	titleStyle = lipgloss.NewStyle().Foreground(t.AccentText).Background(t.AccentDark).Padding(0, 1)
-	logoStyle = lipgloss.NewStyle().Foreground(t.Accent)
 	listHeader = lipgloss.NewStyle().Foreground(t.SubtleText).PaddingBottom(1)
 	itemStyle = lipgloss.NewStyle().PaddingLeft(2)
 	selectedItemStyle = lipgloss.NewStyle().PaddingLeft(2).Foreground(t.Accent)

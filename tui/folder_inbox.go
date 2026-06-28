@@ -1340,7 +1340,7 @@ func (m *FolderInbox) calculatePreviewHeight() int {
 func (m *FolderInbox) availableHeight() int {
 	h := m.height
 	if isUIVisible("status_bar") {
-		h -= 1 // reserve one row for the bottom help bar
+		h-- // reserve one row for the bottom help bar
 	}
 	if h < 1 {
 		h = 1

@@ -185,7 +185,7 @@ func renderCustomComponents(content string, width, height int) string {
 // joinComponentBlocks concatenates the content of multiple components
 // vertically, separated by newlines.
 func joinComponentBlocks(components []plugin.CustomComponent) string {
-	var blocks []string
+	blocks := make([]string, 0, len(components))
 	for _, c := range components {
 		blocks = append(blocks, c.Content)
 	}

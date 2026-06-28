@@ -15,7 +15,6 @@ import (
 var (
 	docStyle          = lipgloss.NewStyle().Margin(1, 2)
 	titleStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFDF5")).Background(lipgloss.Color("#25A065")).Padding(0, 1)
-	logoStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
 	listHeader        = lipgloss.NewStyle().Foreground(lipgloss.Color("241")).PaddingBottom(1)
 	itemStyle         = lipgloss.NewStyle().PaddingLeft(2)
 	selectedItemStyle = lipgloss.NewStyle().PaddingLeft(2).Foreground(lipgloss.Color("42"))
