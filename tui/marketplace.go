@@ -65,17 +65,17 @@ type PluginDeletedMsg struct {
 }
 
 type Marketplace struct {
-	entries          []plugins.PluginEntry
-	installed        map[string]bool
-	cursor           int
-	offset           int // scroll offset
-	width            int
-	height           int
-	state            marketplaceState
-	status           string // transient status message
-	standalone       bool   // true when launched via `matcha marketplace` (not from main menu)
-	lastClickTime    time.Time
-	lastClickY       int
+	entries           []plugins.PluginEntry
+	installed         map[string]bool
+	cursor            int
+	offset            int // scroll offset
+	width             int
+	height            int
+	state             marketplaceState
+	status            string // transient status message
+	standalone        bool   // true when launched via `matcha marketplace` (not from main menu)
+	lastClickTime     time.Time
+	lastClickY        int
 	confirmingInstall bool // true when prompting the user to confirm plugin installation
 	installTarget     plugins.PluginEntry
 	confirmingDelete  bool   // true when prompting the user to confirm plugin removal
