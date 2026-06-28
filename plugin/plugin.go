@@ -61,6 +61,11 @@ type Manager struct {
 	pluginSchemas map[string][]SettingDef
 	// pluginValues holds current setting values per plugin.
 	pluginValues map[string]map[string]interface{}
+
+	// ui holds all plugin-driven UI customization state: text overrides,
+	// component visibility toggles, custom injected components, and the
+	// startup banner override. See ui.go for details.
+	ui uiState
 }
 
 // NewManager creates a new plugin manager with a Lua VM.
@@ -72,6 +77,7 @@ func NewManager() *Manager {
 		pluginSchemas: make(map[string][]SettingDef),
 		pluginValues:  make(map[string]map[string]interface{}),
 	}
+	m.initUI()
 
 	L := lua.NewState(lua.Options{
 		SkipOpenLibs: true,

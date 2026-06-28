@@ -177,7 +177,9 @@ func (m Choice) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Choice) View() tea.View {
 	var b strings.Builder
 
-	b.WriteString(logoStyle.Render(choiceLogo))
+	// renderLogo checks the plugin banner override (set via
+	// matcha.ui.set_banner) and falls back to the default choiceLogo.
+	b.WriteString(renderLogo(choiceLogo))
 	b.WriteString("\n")
 
 	if len(m.keybindWarnings) > 0 {

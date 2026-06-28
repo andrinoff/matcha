@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"log"
+	"time"
 
 	"charm.land/lipgloss/v2"
 	lua "github.com/yuin/gopher-lua"
@@ -30,9 +31,21 @@ func (m *Manager) registerAPI() {
 		"mark_read":          m.luaMarkRead,
 		"mark_unread":        m.luaMarkUnread,
 		"suppress_auto_read": m.luaSuppressAutoRead,
+		"time":               m.luaTime,
 	})
 
 	L.SetField(mod, "_VERSION", lua.LString("0.1.0"))
+
+	// Register the matcha.ui submodule for deep UI customization.
+	// Plugins access these as matcha.ui.set_text(...), matcha.ui.set_visible(...),
+	// matcha.ui.add_component(...), and matcha.ui.set_banner(...).
+	uiMod := L.RegisterModule("matcha.ui", map[string]lua.LGFunction{
+		"set_text":      m.luaUISetText,
+		"set_visible":   m.luaUISetVisible,
+		"add_component": m.luaUIAddComponent,
+		"set_banner":    m.luaUISetBanner,
+	})
+	L.SetField(mod, "ui", uiMod)
 }
 
 // matcha.on(event, callback) — register a hook callback.
@@ -196,4 +209,21 @@ func (m *Manager) luaSetComposeField(L *lua.LState) int { //nolint:gocritic
 		L.ArgError(1, "invalid field: must be \"to\", \"cc\", \"bcc\", \"subject\", or \"body\"")
 	}
 	return 0
+}
+
+// matcha.time([format]) — returns the current time formatted as a string.
+// The optional format argument follows Go's time.Format layout (reference
+// time: Mon Jan 2 15:04:05 MST 2006). If no format is given, returns RFC3339.
+//
+// This exists because the Lua sandbox does not expose the os library, so
+// plugins cannot call os.date() directly.
+//
+// Examples:
+//   matcha.time("15:04")           -> "14:32"
+//   matcha.time("Mon Jan 2")       -> "Fri Jun 28"
+//   matcha.time()                  -> "2026-06-28T14:32:00Z"
+func (m *Manager) luaTime(L *lua.LState) int { //nolint:gocritic
+	layout := L.OptString(1, time.RFC3339)
+	L.Push(lua.LString(time.Now().Format(layout)))
+	return 1
 }
