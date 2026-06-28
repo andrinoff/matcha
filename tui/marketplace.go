@@ -28,6 +28,8 @@ var (
 	mpStatusStyle    lipgloss.Style
 	mpErrorStyle     lipgloss.Style
 	mpFooterStyle    lipgloss.Style
+	mpAuthorStyle    lipgloss.Style
+	mpVerifiedStyle  lipgloss.Style
 )
 
 type marketplaceState int
@@ -74,8 +76,10 @@ type Marketplace struct {
 	standalone       bool   // true when launched via `matcha marketplace` (not from main menu)
 	lastClickTime    time.Time
 	lastClickY       int
-	confirmingDelete bool   // true when prompting the user to confirm plugin removal
-	deleteTarget     string // name of the plugin pending deletion
+	confirmingInstall bool // true when prompting the user to confirm plugin installation
+	installTarget     plugins.PluginEntry
+	confirmingDelete  bool   // true when prompting the user to confirm plugin removal
+	deleteTarget      string // name of the plugin pending deletion
 }
 
 func NewMarketplace(standalone bool) Marketplace {
@@ -121,11 +125,13 @@ func convertToPluginEntries(mpPlugins []MarketplacePlugin) []plugins.PluginEntry
 	entries := make([]plugins.PluginEntry, len(mpPlugins))
 	for i, mp := range mpPlugins {
 		entries[i] = plugins.PluginEntry{
-			Name:        mp.Info.Name,
-			Title:       mp.Info.Title,
-			Description: mp.Info.Description,
-			File:        mp.File,
-			URL:         mp.Info.RepositoryURL,
+			Name:              mp.Info.Name,
+			Title:             mp.Info.Title,
+			Description:       mp.Info.Description,
+			File:              mp.File,
+			URL:               mp.Info.RepositoryURL,
+			AuthorDisplayName: mp.Info.Author.DisplayName,
+			AuthorVerified:    mp.Info.IsTrustedAuthor(),
 		}
 	}
 	return entries
@@ -180,8 +186,9 @@ func (m Marketplace) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.status = fmt.Sprintf("%s is already installed", entry.Name)
 						return m, nil
 					}
-					m.status = fmt.Sprintf("Installing %s...", entry.Name)
-					return m, installPlugin(entry)
+					m.confirmingInstall = true
+					m.installTarget = entry
+					return m, nil
 				}
 			}
 		}
@@ -247,6 +254,26 @@ func (m Marketplace) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	if m.confirmingInstall {
+		switch msg.String() {
+		case "y", "Y":
+			entry := m.installTarget
+			m.confirmingInstall = false
+			m.installTarget = plugins.PluginEntry{}
+			if entry.AuthorVerified {
+				m.status = fmt.Sprintf("Installing %s...", entry.Name)
+			} else {
+				m.status = fmt.Sprintf("Installing %s (unverified author)...", entry.Name)
+			}
+			return m, installPlugin(entry)
+		case "n", "N", kb.Global.Cancel:
+			m.confirmingInstall = false
+			m.installTarget = plugins.PluginEntry{}
+			return m, nil
+		}
+		return m, nil
+	}
+
 	if m.state != marketplaceReady {
 		if msg.String() == "q" || msg.String() == kb.Global.Cancel || msg.String() == kb.Global.Quit {
 			if m.standalone {
@@ -287,16 +314,9 @@ func (m Marketplace) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				m.status = fmt.Sprintf("%s is already installed", entry.Name)
 				return m, nil
 			}
-
-			// Check if plugin is from new marketplace API and needs trust confirmation
-			pluginInfo := getPluginInfo(entry.Name)
-			if pluginInfo != nil && !pluginInfo.IsTrustedAuthor() {
-				m.status = fmt.Sprintf("Installing %s (unverified author)...", entry.Name)
-			} else {
-				m.status = fmt.Sprintf("Installing %s...", entry.Name)
-			}
-
-			return m, installPlugin(entry)
+			m.confirmingInstall = true
+			m.installTarget = entry
+			return m, nil
 		}
 	case kb.Inbox.Delete:
 		if m.cursor < len(m.entries) {
@@ -484,6 +504,13 @@ func (m Marketplace) View() tea.View {
 			if m.installed[entry.Name] {
 				name += " " + mpInstalledStyle.Render(" "+t("marketplace.installed")+" ")
 			}
+			if entry.AuthorDisplayName != "" {
+				author := mpAuthorStyle.Render(" by " + entry.AuthorDisplayName)
+				if entry.AuthorVerified {
+					author += " " + mpVerifiedStyle.Render("✓")
+				}
+				name += author
+			}
 
 			fmt.Fprintf(&body, "%s%s\n", cursor, name)
 			fmt.Fprintf(&body, "    %s\n", mpItemDescStyle.Render(entry.Description))
@@ -529,6 +556,36 @@ func (m Marketplace) View() tea.View {
 				accountEmailStyle.Render(m.deleteTarget),
 				helpStyle.Render("(y/n)"),
 			),
+		)
+		if m.width > 0 && m.height > 0 {
+			rendered = lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, dialog, lipgloss.WithWhitespaceChars(" "))
+		} else {
+			rendered = "\n\n" + dialog
+		}
+	}
+
+	// Confirmation overlay: prompt the user before installing a plugin.
+	if m.confirmingInstall {
+		entry := m.installTarget
+		var lines []string
+		if entry.AuthorVerified {
+			lines = append(lines, mpSelectedStyle.Render(tpl("marketplace.install_confirm", map[string]interface{}{
+				"title": entry.Title,
+			})))
+		} else {
+			lines = append(lines, dangerStyle.Render(tpl("marketplace.install_confirm", map[string]interface{}{
+				"title": entry.Title,
+			})))
+			lines = append(lines, dangerStyle.Render(t("marketplace.unverified_warning")))
+		}
+		if entry.AuthorDisplayName != "" {
+			lines = append(lines, accountEmailStyle.Render(tpl("marketplace.install_author", map[string]interface{}{
+				"author": entry.AuthorDisplayName,
+			})))
+		}
+		lines = append(lines, helpStyle.Render("(y/n)"))
+		dialog := DialogBoxStyle.Render(
+			lipgloss.JoinVertical(lipgloss.Center, lines...),
 		)
 		if m.width > 0 && m.height > 0 {
 			rendered = lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, dialog, lipgloss.WithWhitespaceChars(" "))
