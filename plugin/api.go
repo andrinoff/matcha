@@ -72,11 +72,63 @@ func (m *Manager) luaSetStatus(L *lua.LState) int { //nolint:gocritic
 	return 0
 }
 
-// matcha.notify(msg [, seconds]) — show a temporary notification in the TUI.
-// The optional second argument sets the display duration in seconds (default 2).
+// matcha.notify(msg [, seconds]) or matcha.notify(msg, opts) — show a
+// non-blocking toast notification overlaid on the current view.
+//
+// Backward-compatible form:
+//
+//	matcha.notify("Hello")           -- default 2s, info kind, closable
+//	matcha.notify("Hello", 5)        -- 5s, info kind, closable
+//
+// Options table form (all fields optional):
+//
+//	matcha.notify("Disk full", {
+//	    duration = 10,           -- seconds before auto-close (default 2)
+//	    kind = "error",          -- "info", "warning", or "error" (default "info")
+//	    title = "Storage Alert", -- optional header above the message
+//	    closable = false,        -- if false, auto-close only; no key dismiss
+//	})
 func (m *Manager) luaNotify(L *lua.LState) int { //nolint:gocritic
-	m.pendingNotification = L.CheckString(1)
-	m.pendingDuration = float64(L.OptNumber(2, 2))
+	msg := L.CheckString(1)
+
+	n := &PendingNotification{
+		Message:  msg,
+		Duration: 2,
+		Kind:     NotifyKindInfo,
+		Closable: true,
+	}
+
+	// The second argument can be a number (backward compat) or a table (opts).
+	if L.GetTop() >= 2 {
+		switch v := L.Get(2).(type) {
+		case lua.LNumber:
+			n.Duration = float64(v)
+		case *lua.LTable:
+			if d, ok := v.RawGetString("duration").(lua.LNumber); ok {
+				n.Duration = float64(d)
+			}
+			if t, ok := v.RawGetString("title").(lua.LString); ok && t != "" {
+				n.Title = string(t)
+			}
+			if k, ok := v.RawGetString("kind").(lua.LString); ok && k != "" {
+				switch NotifyKind(k) {
+				case NotifyKindInfo, NotifyKindWarning, NotifyKindError:
+					n.Kind = NotifyKind(k)
+				default:
+					L.ArgError(2, "invalid kind: must be \"info\", \"warning\", or \"error\"")
+					return 0
+				}
+			}
+			if v.RawGetString("closable") != lua.LNil {
+				n.Closable = lua.LVAsBool(v.RawGetString("closable"))
+			}
+		default:
+			L.ArgError(2, "expected number or table")
+			return 0
+		}
+	}
+
+	m.pendingNotification = n
 	return 0
 }
 

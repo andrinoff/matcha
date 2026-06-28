@@ -635,10 +635,14 @@ type DaemonEventMsg struct {
 
 // --- Plugin Messages ---
 
-// PluginNotifyMsg signals that a plugin wants to show a notification.
+// PluginNotifyMsg signals that a plugin wants to show a non-blocking
+// toast notification overlaid on the current view.
 type PluginNotifyMsg struct {
 	Message  string
+	Title    string
 	Duration float64 // Duration in seconds (default 2)
+	Kind     string  // "info", "warning", or "error" (default "info")
+	Closable bool    // If true, user can dismiss with a key press
 }
 
 // PluginKeyBinding describes a plugin-registered keyboard shortcut for display in the help bar.

@@ -59,6 +59,7 @@ type logEntryMsg struct {
 }
 
 type clearErrorNotifMsg struct{}
+type clearPluginNotifMsg struct{}
 
 const maxBodyFetchRetries = 3
 
@@ -98,6 +99,9 @@ type Model struct {
 
 	errorNotification overlay.Notification
 	showErrorNotif    bool
+
+	pluginNotification overlay.Notification
+	showPluginNotif   bool
 
 	// Track body fetch retries to prevent infinite loops
 	pendingBodyFetchUID   uint32
@@ -912,6 +916,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 			m.showErrorNotif = false
 			return m, nil
 		}
+		if m.showPluginNotif && m.pluginNotification.Done() {
+			m.showPluginNotif = false
+		}
+		if m.showPluginNotif && msg.String() == config.Keybinds.Global.DismissNotification {
+			m.showPluginNotif = false
+			return m, nil
+		}
 		if msg.String() == config.Keybinds.Composer.UndoSend {
 			if m.actionManager.IsPending() {
 				m.actionManager.RestorePendingAction()
@@ -1131,13 +1142,40 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 		return m, m.fetchCurrentFolderEmails(msg.FolderName)
 
 	case tui.PluginNotifyMsg:
-		m.previousModel = m.current
-		m.current = tui.NewStatus(msg.Message)
+		// Build a non-blocking overlay notification instead of swapping the
+		// full-screen view. The notification is composited on top of the
+		// current view via PlaceOn() in View().
 		dur := time.Duration(msg.Duration * float64(time.Second))
 		if dur <= 0 {
 			dur = 2 * time.Second
 		}
-		return m, tea.Tick(dur, func(t time.Time) tea.Msg { return tui.RestoreViewMsg{} })
+		col := max(0, m.width-44)
+		opts := []overlay.Option{
+			overlay.WithMessage(msg.Message),
+			overlay.WithPosition(0, col),
+			overlay.WithDuration(dur),
+		}
+		if msg.Title != "" {
+			opts = append(opts, overlay.WithTitle(msg.Title))
+		}
+		if msg.Closable {
+			opts = append(opts,
+				overlay.WithKey(config.Keybinds.Global.DismissNotification),
+				overlay.WithDismissMode(overlay.DismissEither),
+			)
+		} else {
+			opts = append(opts, overlay.WithDismissMode(overlay.DismissAfterTimer))
+		}
+		switch msg.Kind {
+		case "warning":
+			m.pluginNotification = overlay.NewWarning(opts...)
+		case "error":
+			m.pluginNotification = overlay.NewError(opts...)
+		default:
+			m.pluginNotification = overlay.NewInfo(opts...)
+		}
+		m.showPluginNotif = true
+		return m, tea.Tick(dur, func(time.Time) tea.Msg { return clearPluginNotifMsg{} })
 
 	case tui.PluginPromptSubmitMsg:
 		if m.pendingPrompt != nil {
@@ -2015,6 +2053,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 		m.showErrorNotif = false
 		return m, nil
 
+	case clearPluginNotifMsg:
+		m.showPluginNotif = false
+		return m, nil
+
 	case tui.InfoNotifyMsg:
 		dur := time.Duration(msg.Duration * float64(time.Second))
 		if dur <= 0 {
@@ -2253,6 +2295,9 @@ func (m *Model) View() tea.View {
 	}
 	if m.showErrorNotif {
 		v.Content = m.errorNotification.PlaceOn(v.Content)
+	}
+	if m.showPluginNotif {
+		v.Content = m.pluginNotification.PlaceOn(v.Content)
 	}
 	v.AltScreen = true
 	return v
