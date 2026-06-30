@@ -330,7 +330,7 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tea.WindowSizeMsg:
 		header := fmt.Sprintf("To: %s\nFrom: %s\nSubject: %s ", strings.Join(m.email.To, ", "), m.email.From, m.email.Subject)
-	headerHeight := lipgloss.Height(header) + 2
+		headerHeight := lipgloss.Height(header) + 2
 		attachmentHeight := 0
 		if len(m.email.Attachments) > 0 {
 			attachmentHeight = len(m.email.Attachments) + 2
