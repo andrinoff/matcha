@@ -1,11 +1,13 @@
 package plugin
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/floatpane/matcha/internal/loglevel"
 	lua "github.com/yuin/gopher-lua"
 )
 
@@ -45,6 +47,11 @@ type Manager struct {
 	statuses map[string]string
 	// pendingNotification is set by matcha.notify() and consumed by the orchestrator.
 	pendingNotification *PendingNotification
+	// pendingLoadNotifications holds plugin load errors queued for display.
+	// They are drained one-at-a-time into pendingNotification by the
+	// orchestrator so that multiple failed plugins don't get lost when the
+	// single-slot pendingNotification is already occupied.
+	pendingLoadNotifications []*PendingNotification
 	// pendingFields holds compose field updates set by matcha.set_compose_field().
 	pendingFields map[string]string
 	// bindings holds plugin-registered keyboard shortcuts.
@@ -143,10 +150,11 @@ func (m *Manager) loadPlugin(name, path string) {
 
 	if err := m.state.DoFile(path); err != nil {
 		log.Printf("plugin %q: load error: %v", name, err)
+		m.queueLoadNotification(name, err)
 		return
 	}
 	m.plugins = append(m.plugins, name)
-	log.Printf("plugin %q: loaded", name)
+	loglevel.Verbosef("plugin %q: loaded", name)
 }
 
 // Plugins returns the names of all loaded plugins.
@@ -176,12 +184,30 @@ type PendingNotification struct {
 
 // TakePendingNotification returns and clears any pending notification.
 func (m *Manager) TakePendingNotification() (*PendingNotification, bool) {
+	if m.pendingNotification == nil && len(m.pendingLoadNotifications) > 0 {
+		m.pendingNotification = m.pendingLoadNotifications[0]
+		m.pendingLoadNotifications = m.pendingLoadNotifications[1:]
+	}
 	if m.pendingNotification == nil {
 		return nil, false
 	}
 	n := m.pendingNotification
 	m.pendingNotification = nil
 	return n, true
+}
+
+// queueLoadNotification records a plugin load error as a non-blocking
+// notification so the orchestrator can surface it in the UI via the
+// bubble-overlay notification system. Multiple failures are queued and
+// drained one-at-a-time by TakePendingNotification.
+func (m *Manager) queueLoadNotification(name string, err error) {
+	m.pendingLoadNotifications = append(m.pendingLoadNotifications, &PendingNotification{
+		Title:    "Plugin load error",
+		Message:  fmt.Sprintf("%s: %v", name, err),
+		Duration: 6,
+		Kind:     NotifyKindError,
+		Closable: true,
+	})
 }
 
 // TakePendingFields returns and clears any pending compose field updates.
