@@ -490,6 +490,26 @@ func (p *Provider) Watch(_ context.Context, _ string) (<-chan backend.NotifyEven
 // Close releases any provider-held resources. None for Maildir.
 func (p *Provider) Close() error { return nil }
 
+// CreateFolder creates a new Maildir folder on disk by creating the cur,
+// new, and tmp subdirectories. If the folder already exists (all three
+// subdirs present), it returns backend.ErrFolderExists.
+func (p *Provider) CreateFolder(_ context.Context, folderPath string) error {
+	dir := p.dirForFolder(folderPath)
+	base := string(dir)
+
+	// Check if the folder already exists with a cur/ directory.
+	if _, err := os.Stat(filepath.Join(base, "cur")); err == nil {
+		return backend.ErrFolderExists
+	}
+
+	for _, sub := range []string{"cur", "new", "tmp"} {
+		if err := os.MkdirAll(filepath.Join(base, sub), 0o755); err != nil {
+			return fmt.Errorf("maildir: create folder %q: %w", folderPath, err)
+		}
+	}
+	return nil
+}
+
 // Capabilities reports what the Maildir backend can do.
 func (p *Provider) Capabilities() backend.Capabilities {
 	_, hasArchive := os.Stat(filepath.Join(p.archiveDir(), "cur"))
@@ -500,6 +520,7 @@ func (p *Provider) Capabilities() backend.Capabilities {
 		CanPush:         false,
 		CanSearchServer: true,
 		CanFetchFolders: true,
+		CanCreateFolder: true,
 		SupportsSMIME:   false,
 	}
 }

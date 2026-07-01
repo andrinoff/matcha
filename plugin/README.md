@@ -39,6 +39,8 @@ end)
 | `matcha.mark_read(uid, account_id, folder)` | Queue a mark-as-read operation; dispatched after the hook or keybinding returns |
 | `matcha.mark_unread(uid, account_id, folder)` | Queue a mark-as-unread operation; dispatched after the hook or keybinding returns |
 | `matcha.suppress_auto_read()` | Prevent the viewed email from being auto-marked as read; only effective inside an `email_viewed` callback |
+| `matcha.mailbox.create(account_id, folder_path)` | Queue a folder-creation operation; dispatched asynchronously after the hook returns. If the folder already exists, the operation succeeds silently |
+| `matcha.message.move(account_id, uid, source_folder, destination_folder)` | Queue a message-move operation; dispatched asynchronously after the hook returns |
 
 ## Hook events
 
@@ -47,6 +49,7 @@ end)
 | `startup` | — | Matcha has started |
 | `shutdown` | — | Matcha is exiting |
 | `email_received` | Lua table with `uid`, `from`, `to`, `subject`, `date`, `is_read`, `account_id`, `folder` | New email arrived |
+| `on_new_email` | Lua table with `id`, `uid`, `date_received`, `account_id`, `folder`, `from`, `subject`, `is_read` | New email arrived (lightweight, no body loaded). Use for auto-archiving, filtering, and routing plugins that only need metadata |
 | `email_viewed` | Same as `email_received` | User opened an email. Call `matcha.suppress_auto_read()` here to prevent automatic mark-as-read. |
 | `email_send_before` | Table with `to`, `cc`, `subject`, `account_id` | About to send an email |
 | `email_send_after` | Same as `email_send_before` | Email sent successfully |

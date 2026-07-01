@@ -12,6 +12,7 @@ const (
 	HookStartup         = "startup"
 	HookShutdown        = "shutdown"
 	HookEmailReceived   = "email_received"
+	HookNewEmail        = "on_new_email"
 	HookEmailSendBefore = "email_send_before"
 	HookEmailSendAfter  = "email_send_after"
 	HookEmailViewed     = "email_viewed"
@@ -59,6 +60,88 @@ func (m *Manager) CallHook(event string, args ...lua.LValue) {
 			log.Printf("plugin hook %q error: %v", event, err)
 		}
 	}
+}
+
+// NewEmailInfo carries the minimal metadata needed by the on_new_email hook.
+// It intentionally excludes the email body to avoid loading large payloads
+// into memory when plugins only need the date and identity for routing
+// decisions (e.g. year-based archiving).
+type NewEmailInfo struct {
+	UID          uint32
+	AccountID    string
+	Folder       string
+	From         string
+	Subject      string
+	DateReceived time.Time
+	IsRead       bool
+}
+
+// CallNewEmailHook dispatches the on_new_email event to all registered
+// callbacks. It builds a lightweight Lua table containing essential metadata
+// (id, uid, date_received, account_id, folder, from, subject, is_read) without
+// loading the email body. This is the primary entry point for auto-archiver
+// and filtering plugins that need to act on incoming mail.
+//
+// The Lua table passed to the callback:
+//
+//	{
+//	  id            = "acct-1:1234",   -- unique identifier string
+//	  uid           = 1234,            -- numeric UID for move/delete ops
+//	  date_received = "2024-06-15T...", -- RFC3339 timestamp
+//	  account_id    = "acct-1",
+//	  folder        = "INBOX",
+//	  from          = "sender@example.com",
+//	  subject       = "...",
+//	  is_read       = false,
+//	}
+func (m *Manager) CallNewEmailHook(info NewEmailInfo) {
+	callbacks, ok := m.hooks[HookNewEmail]
+	if !ok || len(callbacks) == 0 {
+		return
+	}
+
+	L := m.state
+	t := L.NewTable()
+	t.RawSetString("id", lua.LString(info.AccountID+":"+itoa(info.UID)))
+	t.RawSetString("uid", lua.LNumber(info.UID))
+	t.RawSetString("date_received", lua.LString(info.DateReceived.Format(time.RFC3339)))
+	t.RawSetString("account_id", lua.LString(info.AccountID))
+	t.RawSetString("folder", lua.LString(info.Folder))
+	t.RawSetString("from", lua.LString(info.From))
+	t.RawSetString("subject", lua.LString(info.Subject))
+	t.RawSetString("is_read", lua.LBool(info.IsRead))
+
+	previousPlugin := m.currentPlugin
+	defer func() {
+		m.currentPlugin = previousPlugin
+	}()
+
+	for _, hook := range callbacks {
+		m.currentPlugin = hook.plugin
+		if err := L.CallByParam(lua.P{
+			Fn:      hook.fn,
+			NRet:    0,
+			Protect: true,
+		}, t); err != nil {
+			log.Printf("plugin hook %q error: %v", HookNewEmail, err)
+		}
+	}
+}
+
+// itoa converts a uint32 to its decimal string representation without
+// importing strconv (which is not otherwise needed in this file).
+func itoa(n uint32) string {
+	if n == 0 {
+		return "0"
+	}
+	var buf [10]byte
+	i := len(buf)
+	for n > 0 {
+		i--
+		buf[i] = byte('0' + n%10)
+		n /= 10
+	}
+	return string(buf[i:])
 }
 
 // CallSendHook calls a hook with email send metadata.

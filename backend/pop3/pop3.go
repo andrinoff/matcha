@@ -278,6 +278,10 @@ func (p *Provider) FetchFolders(_ context.Context) ([]backend.Folder, error) {
 	}, nil
 }
 
+func (p *Provider) CreateFolder(_ context.Context, _ string) error {
+	return backend.ErrNotSupported
+}
+
 func (p *Provider) Watch(_ context.Context, _ string) (<-chan backend.NotifyEvent, func(), error) {
 	return nil, nil, backend.ErrNotSupported
 }

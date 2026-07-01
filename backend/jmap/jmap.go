@@ -677,6 +677,70 @@ func (p *Provider) FetchFolders(_ context.Context) ([]backend.Folder, error) {
 	return folders, nil
 }
 
+// CreateFolder creates a new mailbox. If the folder already exists (by name),
+// it returns backend.ErrFolderExists so callers can treat that as a non-fatal
+// condition. For hierarchical paths (e.g. "Archive/2024"), the parent mailbox
+// is resolved and set as ParentID; if the parent does not exist, the folder is
+// created at the top level.
+func (p *Provider) CreateFolder(_ context.Context, folderPath string) error {
+	if err := p.refreshMailboxes(); err != nil {
+		return fmt.Errorf("jmap: refresh mailboxes: %w", err)
+	}
+
+	p.mu.Lock()
+	if _, ok := p.mailboxes[folderPath]; ok {
+		p.mu.Unlock()
+		return backend.ErrFolderExists
+	}
+	p.mu.Unlock()
+
+	create := &mailbox.Set{
+		Account: p.accountID,
+		Create: map[jmapclient.ID]*mailbox.Mailbox{
+			"new": {Name: folderPath},
+		},
+	}
+
+	// Try to resolve a parent for hierarchical paths like "Archive/2024".
+	if idx := strings.LastIndex(folderPath, "/"); idx > 0 {
+		parent := folderPath[:idx]
+		p.mu.Lock()
+		parentID, ok := p.mailboxes[parent]
+		p.mu.Unlock()
+		if ok {
+			create.Create["new"].ParentID = parentID
+		}
+	}
+
+	req := &jmapclient.Request{}
+	req.Invoke(create)
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("jmap: create mailbox: %w", err)
+	}
+
+	for _, inv := range resp.Responses {
+		if r, ok := inv.Args.(*mailbox.SetResponse); ok {
+			if nc, exists := r.NotCreated["new"]; exists {
+				// "alreadyExists" is JMAP's way of telling us the mailbox is there.
+				if nc.Type == "alreadyExists" {
+					return backend.ErrFolderExists
+				}
+				desc := "unknown error"
+				if nc.Description != nil {
+					desc = *nc.Description
+				}
+				return fmt.Errorf("jmap: mailbox not created: %s", desc)
+			}
+		}
+	}
+
+	// Refresh the cache so subsequent calls see the new mailbox.
+	_ = p.refreshMailboxes()
+	return nil
+}
+
 func (p *Provider) Watch(_ context.Context, _ string) (<-chan backend.NotifyEvent, func(), error) {
 	ch := make(chan backend.NotifyEvent, 16)
 

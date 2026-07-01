@@ -46,6 +46,20 @@ func (m *Manager) registerAPI() {
 		"set_banner":    m.luaUISetBanner,
 	})
 	L.SetField(mod, "ui", uiMod)
+
+	// Register the matcha.mailbox submodule for folder management.
+	// Plugins access these as matcha.mailbox.create(...).
+	mailboxMod := L.RegisterModule("matcha.mailbox", map[string]lua.LGFunction{
+		"create": m.luaMailboxCreate,
+	})
+	L.SetField(mod, "mailbox", mailboxMod)
+
+	// Register the matcha.message submodule for message operations.
+	// Plugins access these as matcha.message.move(...).
+	messageMod := L.RegisterModule("matcha.message", map[string]lua.LGFunction{
+		"move": m.luaMessageMove,
+	})
+	L.SetField(mod, "message", messageMod)
 }
 
 // matcha.on(event, callback) — register a hook callback.

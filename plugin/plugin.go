@@ -28,6 +28,26 @@ type FlagOp struct {
 	Read      bool // true = mark read, false = mark unread
 }
 
+// MoveOp is a pending message-move queued by a plugin via matcha.message.move.
+// The orchestrator executes the actual backend call asynchronously after the
+// Lua callback returns, so the TUI render loop is never blocked.
+type MoveOp struct {
+	UID        uint32
+	AccountID  string
+	SrcFolder  string
+	DstFolder  string
+	PluginName string
+}
+
+// CreateFolderOp is a pending folder-creation queued by a plugin via
+// matcha.mailbox.create. The orchestrator executes the backend call
+// asynchronously after the Lua callback returns.
+type CreateFolderOp struct {
+	AccountID  string
+	FolderPath string
+	PluginName string
+}
+
 // Manager manages the Lua VM and loaded plugins.
 //
 // Manager is not safe for concurrent use. The Lua VM itself is single-
@@ -60,6 +80,12 @@ type Manager struct {
 	pendingPrompt *PendingPrompt
 	// pendingFlagOps queues flag changes (read/unread) requested by plugins.
 	pendingFlagOps []FlagOp
+	// pendingMoveOps queues message-move operations requested by plugins via
+	// matcha.message.move. Drained by the orchestrator after hooks return.
+	pendingMoveOps []MoveOp
+	// pendingCreateFolderOps queues folder-creation operations requested by
+	// plugins via matcha.mailbox.create. Drained by the orchestrator.
+	pendingCreateFolderOps []CreateFolderOp
 	// suppressAutoRead is set by matcha.suppress_auto_read() inside email_viewed callbacks.
 	suppressAutoRead bool
 
@@ -243,6 +269,26 @@ func (m *Manager) TakePendingFlagOps() []FlagOp {
 	}
 	ops := m.pendingFlagOps
 	m.pendingFlagOps = nil
+	return ops
+}
+
+// TakePendingMoveOps returns and clears all pending message-move operations.
+func (m *Manager) TakePendingMoveOps() []MoveOp {
+	if len(m.pendingMoveOps) == 0 {
+		return nil
+	}
+	ops := m.pendingMoveOps
+	m.pendingMoveOps = nil
+	return ops
+}
+
+// TakePendingCreateFolderOps returns and clears all pending folder-creation operations.
+func (m *Manager) TakePendingCreateFolderOps() []CreateFolderOp {
+	if len(m.pendingCreateFolderOps) == 0 {
+		return nil
+	}
+	ops := m.pendingCreateFolderOps
+	m.pendingCreateFolderOps = nil
 	return ops
 }
 

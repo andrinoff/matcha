@@ -125,6 +125,10 @@ func (p *Provider) FetchFolders(_ context.Context) ([]backend.Folder, error) {
 	return toBackendFolders(folders), nil
 }
 
+func (p *Provider) CreateFolder(_ context.Context, folderPath string) error {
+	return fetcher.CreateFolder(p.account, folderPath)
+}
+
 func (p *Provider) Watch(_ context.Context, _ string) (<-chan backend.NotifyEvent, func(), error) {
 	// IMAP IDLE is handled by the existing IdleWatcher in main.go
 	return nil, nil, backend.ErrNotSupported

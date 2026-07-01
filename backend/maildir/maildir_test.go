@@ -106,6 +106,64 @@ func TestFetchFoldersListsInboxAndSubfolders(t *testing.T) {
 	}
 }
 
+func TestCreateFolderCreatesMaildirPlusSubfolder(t *testing.T) {
+	root := makeMaildir(t)
+	p := newProvider(t, root)
+
+	ctx := context.Background()
+	if err := p.CreateFolder(ctx, "Archive/2024"); err != nil {
+		t.Fatalf("CreateFolder: %v", err)
+	}
+
+	// Maildir++ layout: "Archive/2024" maps to ".Archive.2024"
+	for _, sub := range []string{"cur", "new", "tmp"} {
+		dir := filepath.Join(root, ".Archive.2024", sub)
+		if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+			t.Errorf("expected directory %q to exist", dir)
+		}
+	}
+}
+
+func TestCreateFolderReturnsErrFolderExists(t *testing.T) {
+	root := makeMaildir(t, ".Archive")
+	p := newProvider(t, root)
+
+	ctx := context.Background()
+	err := p.CreateFolder(ctx, "Archive")
+	if !errors.Is(err, backend.ErrFolderExists) {
+		t.Fatalf("expected ErrFolderExists, got %v", err)
+	}
+}
+
+func TestCreateFolderNestedLayout(t *testing.T) {
+	root := t.TempDir()
+	// Create nested layout: root/INBOX/cur
+	inboxDir := filepath.Join(root, "INBOX")
+	for _, sub := range []string{"cur", "new", "tmp"} {
+		if err := os.MkdirAll(filepath.Join(inboxDir, sub), 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+	}
+	p, err := New(&config.Account{ID: "acct1", MaildirPath: root})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if !p.nested {
+		t.Fatal("expected nested layout")
+	}
+
+	ctx := context.Background()
+	if err := p.CreateFolder(ctx, "Archive/2024"); err != nil {
+		t.Fatalf("CreateFolder: %v", err)
+	}
+	for _, sub := range []string{"cur", "new", "tmp"} {
+		dir := filepath.Join(root, "Archive", "2024", sub)
+		if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+			t.Errorf("expected directory %q to exist", dir)
+		}
+	}
+}
+
 func TestFetchEmailsNewestFirst(t *testing.T) {
 	root := makeMaildir(t)
 	t0 := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)

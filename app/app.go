@@ -484,6 +484,32 @@ func (m *Model) pluginNotifyCmd() tea.Cmd {
 	return m.pluginBridge.NotifyCmd()
 }
 
+// pluginMoveCmds drains pending plugin move operations and returns async
+// commands. Must be called after every hook dispatch that may have triggered
+// matcha.message.move() calls, so the moves execute without blocking the
+// render loop.
+func (m *Model) pluginMoveCmds() []tea.Cmd {
+	return m.pluginBridge.MoveCmds()
+}
+
+// pluginMailboxCmds drains pending plugin folder-creation operations and
+// returns async commands. Must be called after every hook dispatch that may
+// have triggered matcha.mailbox.create() calls.
+func (m *Model) pluginMailboxCmds() []tea.Cmd {
+	return m.pluginBridge.MailboxCmds()
+}
+
+// pluginActionCmds returns the concatenation of all pending plugin backend
+// operations (flags, moves, mailbox creation). This is the single call site
+// that should be used after hook dispatches to ensure all async ops are queued.
+func (m *Model) pluginActionCmds() []tea.Cmd {
+	var cmds []tea.Cmd
+	cmds = append(cmds, m.pluginFlagCmds()...)
+	cmds = append(cmds, m.pluginMoveCmds()...)
+	cmds = append(cmds, m.pluginMailboxCmds()...)
+	return cmds
+}
+
 func (m *Model) syncPluginStatus() {
 	m.pluginBridge.SyncStatus(m.current)
 }
@@ -1204,6 +1230,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 			for _, email := range msg.Emails {
 				t := m.plugins.EmailToTable(email.UID, email.From, email.To, email.Subject, email.Date, email.IsRead, email.AccountID, msg.FolderName)
 				m.plugins.CallHook(plugin.HookEmailReceived, t)
+				// Dispatch the on_new_email hook with lightweight metadata
+				// (no body loaded) for plugins like auto-archiver that only
+				// need the date and identity to make routing decisions.
+				m.plugins.CallNewEmailHook(plugin.NewEmailInfo{
+					UID:          email.UID,
+					AccountID:    email.AccountID,
+					Folder:       msg.FolderName,
+					From:         email.From,
+					Subject:      email.Subject,
+					DateReceived: email.Date,
+					IsRead:       email.IsRead,
+				})
 			}
 		}
 		m.store.FolderEmails[msg.FolderName] = msg.Emails
@@ -1212,7 +1250,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 			return m, nil
 		}
 		m.setFolderInboxEmails(msg.FolderName, msg.Emails)
-		return m, tea.Batch(append(m.pluginFlagCmds(), m.pluginNotifyCmd())...)
+		return m, tea.Batch(append(m.pluginActionCmds(), m.pluginNotifyCmd())...)
 
 	case tui.FetchFolderMoreEmailsMsg:
 		if msg.AccountID == "" || m.config == nil {
@@ -1256,6 +1294,39 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 		flushCmd := m.batchActionCmd()
 		pa, notice := m.actionManager.HandleMoveEmailMsg(msg, folderName)
 		return m, tea.Batch(flushCmd, m.actionManager.StartActionGracePeriod(pa, notice))
+
+	case tui.PluginEmailMovedMsg:
+		// A plugin-initiated move completed asynchronously. Update local
+		// state and surface any error via notification.
+		if msg.Err != nil {
+			log.Printf("[plugin:%s] move UID %d from %q to %q failed: %v",
+				msg.PluginName, msg.UID, msg.SourceFolder, msg.DestFolder, msg.Err)
+			return m, m.showErrorCmd(fmt.Sprintf("Plugin move failed: %v", msg.Err))
+		}
+		if m.folderInbox != nil {
+			m.folderInbox.GetInbox().RemoveEmail(msg.UID, msg.AccountID)
+		}
+		m.store.RemoveEmailFromStores(msg.UID, msg.AccountID)
+		m.store.RemoveFolderEmail(msg.SourceFolder, msg.UID, msg.AccountID)
+		m.syncUnreadBadge()
+		loglevel.Debugf("[plugin:%s] moved UID %d from %q to %q",
+			msg.PluginName, msg.UID, msg.SourceFolder, msg.DestFolder)
+		return m, nil
+
+	case tui.PluginFolderCreatedMsg:
+		// A plugin-initiated folder creation completed asynchronously.
+		if msg.Err != nil {
+			log.Printf("[plugin:%s] create folder %q failed: %v",
+				msg.PluginName, msg.FolderPath, msg.Err)
+			return m, m.showErrorCmd(fmt.Sprintf("Plugin folder creation failed: %v", msg.Err))
+		}
+		loglevel.Debugf("[plugin:%s] created folder %q for account %q",
+			msg.PluginName, msg.FolderPath, msg.AccountID)
+		// Refresh folder list so the new folder appears in the sidebar.
+		if m.config != nil {
+			return m, fetchcmd.FetchFoldersCmd(m.config)
+		}
+		return m, nil
 
 	case tui.UpdatePreviewMsg:
 		if m.folderInbox == nil {
@@ -1699,7 +1770,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 			m.folderInbox.OpenSplitPreview(msg.UID, msg.AccountID, email)
 			m.current = m.folderInbox
 			cmd = m.markEmailReadAndQueue(msg.AccountID, msg.UID, suppressRead)
-			return m, tea.Batch(append(m.pluginFlagCmds(), cmd, func() tea.Msg {
+			return m, tea.Batch(append(m.pluginActionCmds(), cmd, func() tea.Msg {
 				return tui.UpdatePreviewMsg{UID: msg.UID, AccountID: msg.AccountID}
 			})...)
 		}
@@ -1717,7 +1788,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 			}
 		}
 		m.current = tui.NewStatus("Fetching email content...")
-		return m, tea.Batch(append(m.pluginFlagCmds(), m.current.Init(), fetchcmd.FetchFolderEmailBodyCmd(m.config, msg.UID, msg.AccountID, folderName, msg.Mailbox), m.pluginNotifyCmd())...)
+		return m, tea.Batch(append(m.pluginActionCmds(), m.current.Init(), fetchcmd.FetchFolderEmailBodyCmd(m.config, msg.UID, msg.AccountID, folderName, msg.Mailbox), m.pluginNotifyCmd())...)
 
 	case tui.FetchErr:
 		log.Printf("paginated fetch error: %v", error(msg))
@@ -1749,7 +1820,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 			log.Printf("email body empty for UID %d, retrying fetch (%d/%d)", msg.UID, m.pendingBodyFetchCount, maxBodyFetchRetries)
 			m.current = tui.NewStatus("Fetching email content...")
 			return m, tea.Batch(
-				append(m.pluginFlagCmds(), m.current.Init(), fetchcmd.FetchFolderEmailBodyCmd(m.config, msg.UID, msg.AccountID, m.folderName(), msg.Mailbox), m.pluginNotifyCmd())...,
+				append(m.pluginActionCmds(), m.current.Init(), fetchcmd.FetchFolderEmailBodyCmd(m.config, msg.UID, msg.AccountID, m.folderName(), msg.Mailbox), m.pluginNotifyCmd())...,
 			)
 		}
 		// Reset retry counter on successful fetch
@@ -1783,7 +1854,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 		if markReadCmd != nil {
 			cmds = append(cmds, markReadCmd)
 		}
-		cmds = append(cmds, m.pluginFlagCmds()...)
+		cmds = append(cmds, m.pluginActionCmds()...)
 		if yubiCmd := m.maybeYubiKeyNotification(msg.AccountID, msg.Attachments); yubiCmd != nil {
 			cmds = append(cmds, yubiCmd)
 		}

@@ -13,6 +13,10 @@ import (
 // ErrNotSupported is returned when a provider does not support an operation.
 var ErrNotSupported = errors.New("operation not supported by this provider")
 
+// ErrFolderExists is returned when CreateFolder is called for a mailbox that
+// already exists on the server.
+var ErrFolderExists = errors.New("folder already exists")
+
 // Provider is the unified interface that all email backends must implement.
 type Provider interface {
 	EmailReader
@@ -60,9 +64,10 @@ type EmailSearcher interface {
 	Search(ctx context.Context, folder string, query SearchQuery) ([]Email, error)
 }
 
-// FolderManager lists folders/mailboxes.
+// FolderManager lists and manages folders/mailboxes.
 type FolderManager interface {
 	FetchFolders(ctx context.Context) ([]Folder, error)
+	CreateFolder(ctx context.Context, folderPath string) error
 }
 
 // Notifier provides real-time notifications for new email.
@@ -261,5 +266,6 @@ type Capabilities struct {
 	CanPush         bool
 	CanSearchServer bool
 	CanFetchFolders bool
+	CanCreateFolder bool
 	SupportsSMIME   bool
 }

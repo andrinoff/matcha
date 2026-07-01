@@ -659,6 +659,29 @@ type PluginPromptSubmitMsg struct {
 // PluginPromptCancelMsg signals that the user cancelled a plugin prompt input.
 type PluginPromptCancelMsg struct{}
 
+// PluginEmailMovedMsg signals that a plugin-initiated email move has completed.
+// It is emitted asynchronously after the backend MOVE command finishes so the
+// TUI can update local state (remove the email from the inbox list, refresh
+// folder counts) without having blocked the render loop.
+type PluginEmailMovedMsg struct {
+	UID          uint32
+	AccountID    string
+	SourceFolder string
+	DestFolder   string
+	Err          error
+	PluginName   string
+}
+
+// PluginFolderCreatedMsg signals that a plugin-initiated folder creation has
+// completed. If Err is backend.ErrFolderExists, the folder was already present
+// and the operation is treated as a success.
+type PluginFolderCreatedMsg struct {
+	AccountID  string
+	FolderPath string
+	Err        error
+	PluginName string
+}
+
 // GoToMarketplaceMsg signals navigation to the plugin marketplace.
 type GoToMarketplaceMsg struct{}
 

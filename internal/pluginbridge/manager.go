@@ -1,7 +1,11 @@
 package pluginbridge
 
 import (
+	"errors"
+	"log"
+
 	tea "charm.land/bubbletea/v2"
+	"github.com/floatpane/matcha/backend"
 	"github.com/floatpane/matcha/config"
 	"github.com/floatpane/matcha/fetcher"
 	"github.com/floatpane/matcha/plugin"
@@ -22,6 +26,19 @@ type FlagCmdBuilder interface {
 	MarkEmailAsUnreadCmd(account *config.Account, uid uint32, accountID string, folderName string) tea.Cmd
 }
 
+// MoveCmdBuilder creates the backend commands that apply plugin message-move
+// ops. The commands run in separate goroutines (Bubble Tea's command channel)
+// so the TUI render loop is never blocked by slow IMAP MOVE calls.
+type MoveCmdBuilder interface {
+	MoveEmailCmd(account *config.Account, uid uint32, accountID, srcFolder, dstFolder, pluginName string) tea.Cmd
+}
+
+// MailboxCmdBuilder creates the backend commands that apply plugin folder-
+// creation ops. Like move commands, these run asynchronously.
+type MailboxCmdBuilder interface {
+	CreateFolderCmd(account *config.Account, folderPath, accountID, pluginName string) tea.Cmd
+}
+
 type defaultFlagCmdBuilder struct{}
 
 func (defaultFlagCmdBuilder) MarkEmailAsReadCmd(account *config.Account, uid uint32, accountID string, folderName string) tea.Cmd {
@@ -38,13 +55,50 @@ func (defaultFlagCmdBuilder) MarkEmailAsUnreadCmd(account *config.Account, uid u
 	}
 }
 
+type defaultMoveCmdBuilder struct{}
+
+func (defaultMoveCmdBuilder) MoveEmailCmd(account *config.Account, uid uint32, accountID, srcFolder, dstFolder, pluginName string) tea.Cmd {
+	return func() tea.Msg {
+		err := fetcher.MoveEmailToFolder(account, uid, srcFolder, dstFolder)
+		return tui.PluginEmailMovedMsg{
+			UID:          uid,
+			AccountID:    accountID,
+			SourceFolder: srcFolder,
+			DestFolder:   dstFolder,
+			Err:          err,
+			PluginName:   pluginName,
+		}
+	}
+}
+
+type defaultMailboxCmdBuilder struct{}
+
+func (defaultMailboxCmdBuilder) CreateFolderCmd(account *config.Account, folderPath, accountID, pluginName string) tea.Cmd {
+	return func() tea.Msg {
+		err := fetcher.CreateFolder(account, folderPath)
+		// Treat "already exists" as a non-error for plugin ergonomics.
+		if errors.Is(err, backend.ErrFolderExists) {
+			log.Printf("[plugin:%s] folder %q already exists, treating as success", pluginName, folderPath)
+			err = nil
+		}
+		return tui.PluginFolderCreatedMsg{
+			AccountID:  accountID,
+			FolderPath: folderPath,
+			Err:        err,
+			PluginName: pluginName,
+		}
+	}
+}
+
 // Manager orchestrates plugin interactions for the main TUI model.
 type Manager struct {
-	plugins     *plugin.Manager
-	store       Store
-	cfg         *config.Config
-	folderInbox *tui.FolderInbox
-	cmdBuilder  FlagCmdBuilder
+	plugins           *plugin.Manager
+	store             Store
+	cfg               *config.Config
+	folderInbox       *tui.FolderInbox
+	cmdBuilder        FlagCmdBuilder
+	moveCmdBuilder    MoveCmdBuilder
+	mailboxCmdBuilder MailboxCmdBuilder
 }
 
 func NewManager(plugins *plugin.Manager, store Store, cfg *config.Config, folderInbox *tui.FolderInbox) *Manager {
@@ -56,11 +110,13 @@ func NewManagerWithCmdBuilder(plugins *plugin.Manager, store Store, cfg *config.
 		cmdBuilder = defaultFlagCmdBuilder{}
 	}
 	return &Manager{
-		plugins:     plugins,
-		store:       store,
-		cfg:         cfg,
-		folderInbox: folderInbox,
-		cmdBuilder:  cmdBuilder,
+		plugins:           plugins,
+		store:             store,
+		cfg:               cfg,
+		folderInbox:       folderInbox,
+		cmdBuilder:        cmdBuilder,
+		moveCmdBuilder:    defaultMoveCmdBuilder{},
+		mailboxCmdBuilder: defaultMailboxCmdBuilder{},
 	}
 }
 
@@ -100,6 +156,62 @@ func (m *Manager) FlagCmds() []tea.Cmd {
 			m.store.MarkEmailAsUnreadInStores(op.UID, op.AccountID)
 			cmds = append(cmds, m.cmdBuilder.MarkEmailAsUnreadCmd(account, op.UID, op.AccountID, op.Folder))
 		}
+	}
+	return cmds
+}
+
+// MoveCmds drains pending plugin move operations and returns async tea.Cmds
+// for each. Each cmd runs the backend MOVE in a separate goroutine, so the
+// TUI render loop is never blocked by slow IMAP/JMAP network calls.
+func (m *Manager) MoveCmds() []tea.Cmd {
+	if m.plugins == nil {
+		return nil
+	}
+	ops := m.plugins.TakePendingMoveOps()
+	if len(ops) == 0 {
+		return nil
+	}
+	var cmds []tea.Cmd
+	for _, op := range ops {
+		if m.cfg == nil {
+			continue
+		}
+		account := m.cfg.GetAccountByID(op.AccountID)
+		if account == nil {
+			log.Printf("[plugin:%s] move: account %q not found", op.PluginName, op.AccountID)
+			continue
+		}
+		cmds = append(cmds, m.moveCmdBuilder.MoveEmailCmd(
+			account, op.UID, op.AccountID, op.SrcFolder, op.DstFolder, op.PluginName,
+		))
+	}
+	return cmds
+}
+
+// MailboxCmds drains pending plugin folder-creation operations and returns
+// async tea.Cmds for each. Each cmd runs the backend CREATE in a separate
+// goroutine, so the TUI render loop is never blocked.
+func (m *Manager) MailboxCmds() []tea.Cmd {
+	if m.plugins == nil {
+		return nil
+	}
+	ops := m.plugins.TakePendingCreateFolderOps()
+	if len(ops) == 0 {
+		return nil
+	}
+	var cmds []tea.Cmd
+	for _, op := range ops {
+		if m.cfg == nil {
+			continue
+		}
+		account := m.cfg.GetAccountByID(op.AccountID)
+		if account == nil {
+			log.Printf("[plugin:%s] create folder: account %q not found", op.PluginName, op.AccountID)
+			continue
+		}
+		cmds = append(cmds, m.mailboxCmdBuilder.CreateFolderCmd(
+			account, op.FolderPath, op.AccountID, op.PluginName,
+		))
 	}
 	return cmds
 }

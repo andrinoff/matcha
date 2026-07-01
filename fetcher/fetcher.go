@@ -29,6 +29,7 @@ import (
 	"github.com/emersion/go-message"
 	"github.com/emersion/go-message/mail"
 	"github.com/emersion/go-pgpmail"
+	"github.com/floatpane/matcha/backend"
 	"github.com/floatpane/matcha/config"
 	"github.com/floatpane/matcha/internal/loglevel"
 	"github.com/floatpane/matcha/pgp"
@@ -2020,6 +2021,39 @@ func FetchFolders(account *config.Account) ([]Folder, error) {
 	}
 
 	return folders, nil
+}
+
+// CreateFolder creates a new mailbox/folder on the mail server or local
+// filesystem. For backend-provider accounts (maildir, JMAP) it delegates to
+// the backend. For IMAP accounts it sends an IMAP CREATE command. If the
+// folder already exists, it returns backend.ErrFolderExists.
+func CreateFolder(account *config.Account, folderPath string) error {
+	if hasBackendProvider(account) {
+		p, err := newBackendProvider(account)
+		if err != nil {
+			return err
+		}
+		defer p.Close() //nolint:errcheck
+		return p.CreateFolder(context.Background(), folderPath)
+	}
+
+	c, err := connect(account)
+	if err != nil {
+		return err
+	}
+	defer c.Close() //nolint:errcheck
+
+	if err := c.Create(folderPath, nil).Wait(); err != nil {
+		// IMAP servers return an "ALREADYEXISTS" response code (RFC 5161 /
+		// RFC 9051 §6.4.10) when the mailbox already exists. Some older
+		// servers just return a generic "failure" text. We check for both.
+		errStr := err.Error()
+		if strings.Contains(errStr, "ALREADYEXISTS") || strings.Contains(strings.ToLower(errStr), "already exists") {
+			return backend.ErrFolderExists
+		}
+		return fmt.Errorf("imap create folder: %w", err)
+	}
+	return nil
 }
 
 // MoveEmailToFolder moves an email from one folder to another via IMAP.
