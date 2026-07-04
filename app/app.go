@@ -2119,10 +2119,81 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 			m.updateCurrentWindowSize()
 			return m, tea.Batch(m.current.Init(), m.showErrorCmd(msg.Err.Error()))
 		}
+		if msg.Warning != "" {
+			log.Printf("Email send warning: %s", msg.Warning)
+			m.current = tui.NewChoice()
+			m.updateCurrentWindowSize()
+			return m, tea.Batch(m.current.Init(), m.showInfoCmd(msg.Warning))
+		}
 		if m.plugins != nil {
 			m.plugins.CallHook(plugin.HookEmailSendAfter)
 		}
 		return m, m.setChoiceMenu()
+
+	case tui.ApplyPatchMsg:
+		// Apply patch to current directory by default; user can change via config.
+		repoDir := "."
+		if cwd, err := os.Getwd(); err == nil {
+			repoDir = cwd
+		}
+		return m, send.ApplyPatchCmd(repoDir, msg)
+
+	case tui.PatchStagedMsg:
+		// Patch has been applied to disk and staged. Run git commit via
+		// tea.ExecProcess so the terminal is released for GPG pinentry.
+		repoDir := "."
+		if cwd, err := os.Getwd(); err == nil {
+			repoDir = cwd
+		}
+		return m, send.CommitPatchCmd(repoDir, msg)
+
+	case tui.PatchApplyResultMsg:
+		if msg.Err != nil {
+			errMsg := fmt.Sprintf("Patch apply failed: %v", msg.Err)
+			return m, tea.Batch(m.showErrorCmd(errMsg))
+		}
+		verb := "applied"
+		if msg.DryRun {
+			verb = "validated"
+		}
+		status := fmt.Sprintf("Patch %s: %s", verb, msg.Subject)
+		if len(msg.Files) > 0 {
+			status += fmt.Sprintf(" (%d files)", len(msg.Files))
+		}
+		if len(msg.Warnings) > 0 {
+			status += "\n" + strings.Join(msg.Warnings, "\n")
+		}
+		return m, tea.Batch(m.showInfoCmd(status))
+
+	case tui.GoToSendPatchMsg:
+		if m.config == nil || len(m.config.Accounts) == 0 {
+			return m, m.showErrorCmd("no accounts configured")
+		}
+		m.previousModel = m.current
+		m.current = tui.NewPatchSend(m.config.Accounts)
+		m.updateCurrentWindowSize()
+		return m, m.current.Init()
+
+	case tui.SendPatchMsg:
+		m.previousModel = m.current
+		m.current = tui.NewStatus("Generating and sending patch...")
+		return m, tea.Batch(m.current.Init(), send.SendPatchCmd(m.sendEmailDependencies(), msg))
+
+	case tui.PatchGeneratedMsg:
+		if msg.Err != nil {
+			errMsg := fmt.Sprintf("Patch generation failed: %v", msg.Err)
+			if m.previousModel != nil {
+				m.current = m.previousModel
+				m.previousModel = nil
+				m.updateCurrentWindowSize()
+			}
+			return m, tea.Batch(m.current.Init(), m.showErrorCmd(errMsg))
+		}
+		// Patch generated — now send the raw patch email via SMTP.
+		// We need the original SendPatchMsg (with To/Cc) to inject the
+		// recipients into the raw RFC 5322 message. The patch-send form
+		// stores it in the PatchGeneratedMsg.
+		return m, send.SendRawPatchCmd(m.sendEmailDependencies(), msg.SendPatchMsg, msg.RawPatch)
 
 	case tui.DeleteEmailMsg:
 		tui.ClearKittyGraphics()
