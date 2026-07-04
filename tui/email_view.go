@@ -220,6 +220,13 @@ func (m *EmailView) SetRowOffset(offset int) {
 	m.rowOffset = offset
 }
 
+// SetColumnOffset updates the horizontal offset used for out-of-band image
+// rendering. Call this after a layout change so images stay aligned with the
+// preview pane's new horizontal position.
+func (m *EmailView) SetColumnOffset(offset int) {
+	m.columnOffset = offset
+}
+
 func (m *EmailView) Init() tea.Cmd {
 	return nil
 }
@@ -597,6 +604,12 @@ func (m *EmailView) GetAccountID() string {
 // GetMailbox returns the mailbox kind for this email view
 func (m *EmailView) GetMailbox() MailboxKind {
 	return m.mailbox
+}
+
+// IsPreviewMode reports whether this EmailView is rendering inside the split
+// preview pane rather than full-screen.
+func (m *EmailView) IsPreviewMode() bool {
+	return m.isPreviewMode
 }
 
 // IsPatch returns true if the currently viewed email is a git patch.
