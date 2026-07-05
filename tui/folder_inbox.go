@@ -148,6 +148,28 @@ func (m *FolderInbox) isVerticalSplit() bool {
 	return m.splitOrientation == config.SplitPaneVertical
 }
 
+// IsVerticalSplit reports whether the split pane is oriented vertically.
+func (m *FolderInbox) IsVerticalSplit() bool {
+	return m.isVerticalSplit()
+}
+
+// CloseSplitPreview closes the split preview pane and returns to inbox-only.
+func (m *FolderInbox) CloseSplitPreview() {
+	m.closeSplitPreview()
+}
+
+// GetPreviewedUID returns the UID of the email currently shown in the split
+// preview pane, or 0 when no preview is open.
+func (m *FolderInbox) GetPreviewedUID() uint32 {
+	return m.previewedUID
+}
+
+// GetPreviewedAccountID returns the account ID of the email currently shown
+// in the split preview pane, or "" when no preview is open.
+func (m *FolderInbox) GetPreviewedAccountID() string {
+	return m.previewedAccountID
+}
+
 func (m *FolderInbox) GetUnreadCountsCopy() map[string]int {
 	if m.unread == nil {
 		return make(map[string]int)
@@ -398,6 +420,7 @@ func (m *FolderInbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocycl
 					previewMsg := tea.WindowSizeMsg{Width: paneWidth, Height: m.calculatePreviewHeight() - 1}
 					m.previewPane.Update(previewMsg)
 					m.previewPane.SetRowOffset(m.calculateInboxHeight() + 1)
+					m.previewPane.SetColumnOffset(m.effectiveSidebarWidth() + 2)
 				}
 			} else {
 				inboxWidth := m.calculateInboxWidth()
@@ -407,6 +430,8 @@ func (m *FolderInbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocycl
 				if m.previewPane != nil {
 					previewMsg := tea.WindowSizeMsg{Width: previewWidth - 2, Height: avail - 2}
 					m.previewPane.Update(previewMsg)
+					m.previewPane.SetRowOffset(0)
+					m.previewPane.SetColumnOffset(m.effectiveSidebarWidth() + 2 + inboxWidth + 2)
 				}
 			}
 		} else {

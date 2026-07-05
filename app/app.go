@@ -878,7 +878,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 		config.Keybinds.Global.CommandPalette != "" &&
 		keyMsg.String() == config.Keybinds.Global.CommandPalette &&
 		palette.Allowed(m.current) {
-		cmd := m.palette.Open(palette.BuildCommands(m.current, m.folderInbox), m.width, m.contentHeight())
+		cmd := m.palette.Open(palette.BuildCommands(m.current, m.folderInbox, m.config), m.width, m.contentHeight())
 		return m, cmd
 	}
 
@@ -1502,6 +1502,55 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 
 	case tui.ConfigSavedMsg:
 		m.afterConfigSaved()
+		return m, nil
+
+	case tui.ToggleSplitOrientationMsg:
+		if m.config.EnableSplitPane && m.folderInbox != nil && m.folderInbox.HasSplitPreview() {
+			if m.config.GetSplitPaneOrientation() == config.SplitPaneVertical {
+				m.config.SplitPaneOrientation = config.SplitPaneHorizontal
+			} else {
+				m.config.SplitPaneOrientation = config.SplitPaneVertical
+			}
+			tui.ClearKittyGraphics()
+			m.folderInbox.SetSplitOrientation(m.config.GetSplitPaneOrientation())
+			m.current, cmd = m.current.Update(m.currentWindowSize())
+			return m, cmd
+		}
+		return m, nil
+
+	case tui.OpenFullscreenFromSplitMsg:
+		if m.folderInbox != nil && m.folderInbox.HasSplitPreview() {
+			previewPane := m.folderInbox.GetPreviewPane()
+			if previewPane == nil {
+				return m, nil
+			}
+			email := previewPane.GetEmail()
+			m.folderInbox.CloseSplitPreview()
+			mailbox := tui.MailboxInbox
+			if inbox := m.folderInbox.GetInbox(); inbox != nil {
+				mailbox = inbox.GetMailbox()
+			}
+			emailIndex := m.store.GetEmailIndex(email.UID, email.AccountID)
+			emailView := tui.NewEmailView(email, emailIndex, m.width, m.height, mailbox, m.config.DisableImages)
+			m.current = emailView
+			m.syncPluginStatus()
+			m.syncPluginKeyBindings()
+			m.updateCurrentWindowSize()
+			return m, tea.Batch(append(m.pluginFlagCmds(), m.current.Init())...)
+		}
+		return m, nil
+
+	case tui.OpenSplitFromFullscreenMsg:
+		if ev, ok := m.current.(*tui.EmailView); ok && m.config.EnableSplitPane && m.folderInbox != nil {
+			email := ev.GetEmail()
+			m.folderInbox.OpenSplitPreview(email.UID, email.AccountID, &email)
+			m.current = m.folderInbox
+			m.updateCurrentWindowSize()
+			markReadCmd := m.markEmailReadAndQueue(email.AccountID, email.UID, false)
+			return m, tea.Batch(append(m.pluginFlagCmds(), markReadCmd, func() tea.Msg {
+				return tui.UpdatePreviewMsg{UID: email.UID, AccountID: email.AccountID}
+			})...)
+		}
 		return m, nil
 
 	case tui.LanguageChangedMsg:

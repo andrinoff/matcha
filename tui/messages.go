@@ -178,6 +178,18 @@ type UpdatePreviewMsg struct {
 	AccountID string
 }
 
+// ToggleSplitOrientationMsg requests switching the split pane orientation
+// between horizontal and vertical while a split preview is open.
+type ToggleSplitOrientationMsg struct{}
+
+// OpenFullscreenFromSplitMsg requests closing the split preview and opening
+// the currently previewed email in a full-screen EmailView.
+type OpenFullscreenFromSplitMsg struct{}
+
+// OpenSplitFromFullscreenMsg requests switching from a full-screen EmailView
+// back to the split-pane layout with the same email shown in the preview.
+type OpenSplitFromFullscreenMsg struct{}
+
 type PreviewBodyFetchedMsg struct {
 	UID          uint32
 	AccountID    string
