@@ -6,6 +6,7 @@ import (
 	"github.com/floatpane/matcha/config"
 	"github.com/floatpane/matcha/daemonrpc"
 	"github.com/floatpane/matcha/fetcher"
+	"github.com/floatpane/matcha/internal/github"
 )
 
 // NotifyMsg is returned as a tea.Cmd by sub-components to request
@@ -34,6 +35,26 @@ type ViewEmailMsg struct {
 	AccountID string
 	Mailbox   MailboxKind
 	Email     *fetcher.Email
+}
+
+type ViewGitHubGroupMsg struct {
+	Key       github.EventKey
+	UID       uint32
+	AccountID string
+	Mailbox   MailboxKind
+	Email     *fetcher.Email
+}
+
+type GitHubGroupBodiesFetchedMsg struct {
+	Key       github.EventKey
+	Bodies    map[uint32]GitHubBodyData
+	Err       error
+}
+
+type GitHubBodyData struct {
+	Body         string
+	BodyMIMEType string
+	AccountID    string
 }
 
 type SendEmailMsg struct {

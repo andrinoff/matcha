@@ -34,6 +34,7 @@ import (
 	"github.com/floatpane/matcha/internal/emailstore"
 	"github.com/floatpane/matcha/internal/exportcmd"
 	"github.com/floatpane/matcha/internal/fetchcmd"
+	"github.com/floatpane/matcha/internal/github"
 	"github.com/floatpane/matcha/internal/idledaemon"
 	"github.com/floatpane/matcha/internal/logging"
 	"github.com/floatpane/matcha/internal/loglevel"
@@ -45,6 +46,7 @@ import (
 	"github.com/floatpane/matcha/plugin"
 	"github.com/floatpane/matcha/theme"
 	"github.com/floatpane/matcha/tui"
+	"github.com/floatpane/matcha/view"
 	"github.com/google/uuid"
 )
 
@@ -1531,8 +1533,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 				mailbox = inbox.GetMailbox()
 			}
 			emailIndex := m.store.GetEmailIndex(email.UID, email.AccountID)
-			emailView := tui.NewEmailView(email, emailIndex, m.width, m.height, mailbox, m.config.DisableImages)
-			m.current = emailView
+			githubNotification := view.ParseGitHubNotification(email)
+			if githubNotification != nil {
+				m.current = tui.NewGitHubConversationView(githubNotification, email, m.width, m.height, mailbox)
+			} else {
+				emailView := tui.NewEmailView(email, emailIndex, m.width, m.height, mailbox, m.config.DisableImages)
+				m.current = emailView
+			}
 			m.syncPluginStatus()
 			m.syncPluginKeyBindings()
 			m.updateCurrentWindowSize()
@@ -1732,6 +1739,67 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 		m.deleteAccount(msg.AccountID)
 		return m, m.current.Init()
 
+	case tui.GitHubGroupBodiesFetchedMsg:
+		for uid, bodyData := range msg.Bodies {
+			if email := m.store.GetEmailByUIDAndAccount(uid, bodyData.AccountID); email != nil {
+				email.Body = bodyData.Body
+				email.BodyMIMEType = bodyData.BodyMIMEType
+				view.ParseGitHubNotification(*email)
+			}
+		}
+		if m.folderInbox != nil && m.current == m.folderInbox {
+			var cmd tea.Cmd
+			m.current, cmd = m.current.Update(msg)
+			return m, cmd
+		}
+		group := github.GetGroup(msg.Key)
+		if group == nil {
+			return m, nil
+		}
+		var representative fetcher.Email
+		for _, uid := range github.GetGroupEmailUIDs(msg.Key) {
+			if email := m.store.GetEmailByUIDAndAccount(uid.UID, uid.AccountID); email != nil {
+				representative = *email
+				break
+			}
+		}
+		if representative.UID == 0 {
+			return m, nil
+		}
+		m.current = tui.NewGitHubConversationView(group, representative, m.width, m.height, tui.MailboxInbox)
+		m.syncPluginStatus()
+		m.syncPluginKeyBindings()
+		m.updateCurrentWindowSize()
+		return m, tea.Batch(append(m.pluginFlagCmds(), m.current.Init())...)
+
+	case tui.ViewGitHubGroupMsg:
+		email := msg.Email
+		if email == nil {
+			email = m.store.GetEmailByUIDAndAccount(msg.UID, msg.AccountID)
+		}
+		if email == nil {
+			return m, nil
+		}
+		m.store.AddEmailToStoresIfMissing(*email, msg.Mailbox)
+		folderName := m.folderName()
+		suppressRead := false
+		if m.plugins != nil {
+			t := m.plugins.EmailToTable(email.UID, email.From, email.To, email.Subject, email.Date, email.IsRead, email.AccountID, folderName)
+			m.plugins.CallHook(plugin.HookEmailViewed, t)
+			suppressRead = m.plugins.TakeAutoReadSuppressed()
+		}
+		fetchBodiesCmd := fetchcmd.FetchGitHubGroupBodiesCmd(m.config, msg.Key, folderName, msg.Mailbox)
+		if m.config.EnableSplitPane && m.folderInbox != nil {
+			m.folderInbox.OpenSplitPreview(msg.UID, msg.AccountID, email)
+			m.current = m.folderInbox
+			cmd = m.markEmailReadAndQueue(msg.AccountID, msg.UID, suppressRead)
+			return m, tea.Batch(append(m.pluginFlagCmds(), cmd, fetchBodiesCmd, func() tea.Msg {
+				return tui.UpdatePreviewMsg{UID: msg.UID, AccountID: msg.AccountID}
+			})...)
+		}
+		m.current = tui.NewStatus("Fetching GitHub conversation...")
+		return m, tea.Batch(append(m.pluginFlagCmds(), m.current.Init(), fetchBodiesCmd)...)
+
 	case tui.ViewEmailMsg:
 		email := msg.Email
 		if email == nil {
@@ -1829,8 +1897,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 			}
 		}
 		emailIndex := m.store.GetEmailIndex(msg.UID, msg.AccountID)
-		emailView := tui.NewEmailView(*email, emailIndex, m.width, m.height, msg.Mailbox, m.config.DisableImages)
-		m.current = emailView
+		githubNotification := view.ParseGitHubNotification(*email)
+		if githubNotification != nil {
+			m.current = tui.NewGitHubConversationView(githubNotification, *email, m.width, m.height, msg.Mailbox)
+		} else {
+			emailView := tui.NewEmailView(*email, emailIndex, m.width, m.height, msg.Mailbox, m.config.DisableImages)
+			m.current = emailView
+		}
 		m.syncPluginStatus()
 		m.syncPluginKeyBindings()
 		cmds := []tea.Cmd{m.current.Init()}
