@@ -42,10 +42,9 @@ jobs:
                 "password": "dummy-password",
                 "service_provider": "custom",
                 "fetch_email": "matcha@floatpane.com"
-              },
-              "has_seen_setup_guide": true
-            }
-          ]
+              }
+            ],
+            "has_seen_setup_guide": true
           }
           EOF
       - name: Build Matcha
