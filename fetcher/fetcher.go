@@ -54,6 +54,8 @@ const (
 	// destination for any provider that does not have a custom mapping
 	// (e.g. Gmail's "[Gmail]/All Mail").
 	defaultArchiveMailbox = "Archive"
+	// AllEmailsLimit means fetch every message in the folder.
+	AllEmailsLimit = uint32(0)
 )
 
 func getDebugIMAPWriter() io.Writer {
@@ -549,10 +551,15 @@ func FetchMailboxEmails(account *config.Account, mailbox string, limit, offset u
 		Peek:         true,
 	}
 
-	// Loop until we have enough emails or run out of messages
-	for len(allEmails) < int(limit) && cursor > 0 {
-		chunkSize := limit
+	// When limit is 0 we fetch the entire folder; otherwise paginate.
+	fetchAll := limit == 0
+	chunkSize := uint32(1000)
+	if !fetchAll && limit < chunkSize {
+		chunkSize = limit
+	}
 
+	// Loop until we have enough emails or run out of messages
+	for (fetchAll || len(allEmails) < int(limit)) && cursor > 0 {
 		from := uint32(1)
 		if cursor > chunkSize {
 			from = cursor - chunkSize + 1
@@ -654,7 +661,7 @@ func FetchMailboxEmails(account *config.Account, mailbox string, limit, offset u
 	}
 
 	// Trim if we have too many
-	if len(allEmails) > int(limit) {
+	if !fetchAll && len(allEmails) > int(limit) {
 		allEmails = allEmails[:limit]
 	}
 
