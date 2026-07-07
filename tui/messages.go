@@ -3,6 +3,7 @@ package tui
 import (
 	calendar "github.com/floatpane/go-icalendar"
 	"github.com/floatpane/matcha/backend"
+	"github.com/floatpane/matcha/backend/repoapi"
 	"github.com/floatpane/matcha/config"
 	"github.com/floatpane/matcha/daemonrpc"
 	"github.com/floatpane/matcha/fetcher"
@@ -46,9 +47,9 @@ type ViewGitHubGroupMsg struct {
 }
 
 type GitHubGroupBodiesFetchedMsg struct {
-	Key       github.EventKey
-	Bodies    map[uint32]GitHubBodyData
-	Err       error
+	Key    github.EventKey
+	Bodies map[uint32]GitHubBodyData
+	Err    error
 }
 
 type GitHubBodyData struct {
@@ -796,4 +797,51 @@ type SetupGuideDoneMsg struct{}
 // answers the "enable mouse support?" startup question.
 type MouseSupportChosenMsg struct {
 	Enabled bool
+}
+
+// PRActionRequestMsg is emitted when the user presses a direct-action key
+// (approve, request changes, or leave comment) while viewing a GitHub PR
+// notification. The app layer opens an editor for markdown input (when
+// needed) and then calls the repo API client.
+type PRActionRequestMsg struct {
+	Owner        string
+	Repo         string
+	PRNumber     int
+	Action       repoapi.ReviewEvent
+	Host         repoapi.Host
+	CommitSHA    string
+	LineTarget   *repoapi.LineCommentTarget
+	EmailFrom    string
+	EmailSubject string
+}
+
+// PRActionResultMsg carries the outcome of a PR review/comment API call.
+type PRActionResultMsg struct {
+	Action repoapi.ReviewEvent
+	Err    error
+}
+
+// PREditorOpenMsg requests opening the external editor for PR markdown input.
+type PREditorOpenMsg struct {
+	Action     repoapi.ReviewEvent
+	Owner      string
+	Repo       string
+	PRNumber   int
+	Host       repoapi.Host
+	CommitSHA  string
+	LineTarget *repoapi.LineCommentTarget
+}
+
+// PREditorFinishedMsg carries the markdown body the user wrote in the external
+// editor for a PR action.
+type PREditorFinishedMsg struct {
+	Action     repoapi.ReviewEvent
+	Owner      string
+	Repo       string
+	PRNumber   int
+	Host       repoapi.Host
+	CommitSHA  string
+	LineTarget *repoapi.LineCommentTarget
+	Body       string
+	Err        error
 }

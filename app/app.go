@@ -2038,6 +2038,21 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 		}
 		return m, nil
 
+	case tui.PREditorOpenMsg:
+		return m, openPREditor(msg)
+
+	case tui.PREditorFinishedMsg:
+		if msg.Err != nil {
+			return m, m.showErrorCmd(fmt.Sprintf("Editor error: %v", msg.Err))
+		}
+		return m, submitPRReview(msg)
+
+	case tui.PRActionResultMsg:
+		if msg.Err != nil {
+			return m, m.showErrorCmd(fmt.Sprintf("PR action failed: %v", msg.Err))
+		}
+		return m, m.showInfoCmd("PR review submitted successfully")
+
 	case tui.GoToFilePickerMsg:
 		if runtime.GOOS == "darwin" {
 			return m, func() tea.Msg {

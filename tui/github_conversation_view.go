@@ -8,6 +8,7 @@ import (
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/floatpane/matcha/backend/repoapi"
 	"github.com/floatpane/matcha/config"
 	"github.com/floatpane/matcha/fetcher"
 	"github.com/floatpane/matcha/internal/github"
@@ -85,12 +86,12 @@ var (
 				MarginBottom(1)
 
 	githubSectionHeaderStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(lipgloss.Color("42")).
-				Background(lipgloss.Color("235")).
-				Padding(0, 1).
-				MarginTop(1).
-				MarginBottom(1)
+					Bold(true).
+					Foreground(lipgloss.Color("42")).
+					Background(lipgloss.Color("235")).
+					Padding(0, 1).
+					MarginTop(1).
+					MarginBottom(1)
 )
 
 type GitHubConversationView struct {
@@ -128,14 +129,77 @@ func (m *GitHubConversationView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			ClearKittyGraphics()
 			return m, func() tea.Msg { return BackToMailboxMsg{Mailbox: m.mailbox} }
 		}
+		if cmd := m.handlePRActionKey(msg); cmd != nil {
+			return m, cmd
+		}
 	case tea.WindowSizeMsg:
 		m.viewport.SetWidth(msg.Width)
 		m.viewport.SetHeight(msg.Height - 2)
 		m.viewport.SetContent(m.RenderContent())
+	case PRActionResultMsg:
+		if msg.Err != nil {
+			return m, func() tea.Msg {
+				return NotifyMsg{Message: fmt.Sprintf("PR action failed: %v", msg.Err)}
+			}
+		}
+		actionName := "completed"
+		switch msg.Action {
+		case repoapi.ReviewApprove:
+			actionName = "approved"
+		case repoapi.ReviewRequestChanges:
+			actionName = "changes requested"
+		case repoapi.ReviewComment:
+			actionName = "comment posted"
+		}
+		return m, func() tea.Msg {
+			return InfoNotifyMsg{Message: fmt.Sprintf("PR review %s", actionName), Duration: 3}
+		}
 	}
 	var cmd tea.Cmd
 	m.viewport, cmd = m.viewport.Update(msg)
 	return m, cmd
+}
+
+// handlePRActionKey checks whether the pressed key maps to a direct PR action
+// (approve, request changes, or leave comment). It returns a tea.Cmd that
+// emits a PREditorOpenMsg for the app layer to open the editor and then call
+// the repo API. Returns nil if the key is not a PR action or the notification
+// is not a PR.
+func (m *GitHubConversationView) handlePRActionKey(msg tea.KeyPressMsg) tea.Cmd {
+	if m.group == nil || !m.group.IsPR {
+		return nil
+	}
+	kb := config.Keybinds
+	var action repoapi.ReviewEvent
+	switch msg.String() {
+	case kb.Email.ApprovePR:
+		action = repoapi.ReviewApprove
+	case kb.Email.RequestChanges:
+		action = repoapi.ReviewRequestChanges
+	case kb.Email.LeaveComment:
+		action = repoapi.ReviewComment
+	default:
+		return nil
+	}
+
+	key := m.group.Key
+	host := repoapi.ParseHostFromEmailSender(m.email.From)
+	commitSHA := ""
+	if m.group.PRDetails != nil && m.group.PRDetails.Head.Sha != "" {
+		commitSHA = m.group.PRDetails.Head.Sha
+	}
+
+	return func() tea.Msg {
+		return PREditorOpenMsg{
+			Action:     action,
+			Owner:      key.OrgName,
+			Repo:       key.RepoName,
+			PRNumber:   key.IssueNumber,
+			Host:       host,
+			CommitSHA:  commitSHA,
+			LineTarget: nil,
+		}
+	}
 }
 
 func (m *GitHubConversationView) View() tea.View {
@@ -177,7 +241,16 @@ func (m *GitHubConversationView) RenderContent() string {
 	}
 
 	sb.WriteString("\n")
-	sb.WriteString(HelpStyle.Render(fmt.Sprintf("%s back", config.Keybinds.Global.Cancel)))
+	helpParts := []string{fmt.Sprintf("%s back", config.Keybinds.Global.Cancel)}
+	if m.group.IsPR {
+		kb := config.Keybinds
+		helpParts = append(helpParts,
+			fmt.Sprintf("%s approve", kb.Email.ApprovePR),
+			fmt.Sprintf("%s request changes", kb.Email.RequestChanges),
+			fmt.Sprintf("%s comment", kb.Email.LeaveComment),
+		)
+	}
+	sb.WriteString(HelpStyle.Render(strings.Join(helpParts, "  ")))
 
 	return sb.String()
 }

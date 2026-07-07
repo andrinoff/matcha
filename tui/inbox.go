@@ -33,22 +33,22 @@ var visualSelectedStyle lipgloss.Style
 var selectedDateStyle lipgloss.Style
 
 type item struct {
-	title, desc   string
-	originalIndex int
-	uid           uint32
-	accountID     string
-	accountEmail  string
-	date          time.Time
-	isRead        bool
-	threadKey     string
-	threadCount   int
-	threadRoot    bool
-	threadHeader  bool
-	threadChild   bool
-	threadDepth   int
-	expanded      bool
-	isGitHubGroup bool
-	githubGroupKey github.EventKey
+	title, desc      string
+	originalIndex    int
+	uid              uint32
+	accountID        string
+	accountEmail     string
+	date             time.Time
+	isRead           bool
+	threadKey        string
+	threadCount      int
+	threadRoot       bool
+	threadHeader     bool
+	threadChild      bool
+	threadDepth      int
+	expanded         bool
+	isGitHubGroup    bool
+	githubGroupKey   github.EventKey
 	githubGroupCount int
 	githubGroupPR    bool
 }

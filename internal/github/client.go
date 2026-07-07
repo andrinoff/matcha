@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/floatpane/matcha/internal/httpclient"
@@ -14,27 +16,27 @@ import (
 const apiTimeout = 10 * time.Second
 
 type PRDetails struct {
-	Number      int        `json:"number"`
-	Title       string     `json:"title"`
-	State       string     `json:"state"`
-	Body        string     `json:"body"`
-	User        GitHubUser `json:"user"`
-	HTMLURL     string     `json:"html_url"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
-	Merged      bool       `json:"merged"`
-	Mergeable   *bool      `json:"mergeable"`
-	Head        BranchRef  `json:"head"`
-	Base        BranchRef  `json:"base"`
-	Additions   int        `json:"additions"`
-	Deletions   int        `json:"deletions"`
-	ChangedFiles int       `json:"changed_files"`
-	Commits     int        `json:"commits"`
-	Comments    int        `json:"comments"`
-	ReviewComments int    `json:"review_comments"`
-	Draft       bool       `json:"draft"`
-	Labels      []Label    `json:"labels"`
-	Assignees   []GitHubUser `json:"assignees"`
+	Number         int          `json:"number"`
+	Title          string       `json:"title"`
+	State          string       `json:"state"`
+	Body           string       `json:"body"`
+	User           GitHubUser   `json:"user"`
+	HTMLURL        string       `json:"html_url"`
+	CreatedAt      time.Time    `json:"created_at"`
+	UpdatedAt      time.Time    `json:"updated_at"`
+	Merged         bool         `json:"merged"`
+	Mergeable      *bool        `json:"mergeable"`
+	Head           BranchRef    `json:"head"`
+	Base           BranchRef    `json:"base"`
+	Additions      int          `json:"additions"`
+	Deletions      int          `json:"deletions"`
+	ChangedFiles   int          `json:"changed_files"`
+	Commits        int          `json:"commits"`
+	Comments       int          `json:"comments"`
+	ReviewComments int          `json:"review_comments"`
+	Draft          bool         `json:"draft"`
+	Labels         []Label      `json:"labels"`
+	Assignees      []GitHubUser `json:"assignees"`
 }
 
 type GitHubUser struct {
@@ -65,7 +67,20 @@ type Client struct {
 
 func NewClient() *Client {
 	token := os.Getenv("GITHUB_TOKEN")
+	if token == "" {
+		token = tokenFromGHCLI()
+	}
 	return &Client{token: token}
+}
+
+// tokenFromGHCLI runs `gh auth token` to retrieve the GitHub OAuth token
+// stored by the GitHub CLI. Returns "" if gh is not installed or not authed.
+func tokenFromGHCLI() string {
+	out, err := exec.Command("gh", "auth", "token").Output() //nolint:noctx
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 func NewClientWithToken(token string) *Client {
@@ -133,15 +148,15 @@ func (c *Client) FetchIssueDetails(owner, repo string, number int) (*IssueDetail
 }
 
 type IssueDetails struct {
-	Number    int        `json:"number"`
-	Title     string     `json:"title"`
-	State     string     `json:"state"`
-	Body      string     `json:"body"`
-	User      GitHubUser `json:"user"`
-	HTMLURL   string     `json:"html_url"`
-	CreatedAt time.Time  `json:"created_at"`
-	UpdatedAt time.Time  `json:"updated_at"`
-	Labels    []Label    `json:"labels"`
+	Number    int          `json:"number"`
+	Title     string       `json:"title"`
+	State     string       `json:"state"`
+	Body      string       `json:"body"`
+	User      GitHubUser   `json:"user"`
+	HTMLURL   string       `json:"html_url"`
+	CreatedAt time.Time    `json:"created_at"`
+	UpdatedAt time.Time    `json:"updated_at"`
+	Labels    []Label      `json:"labels"`
 	Assignees []GitHubUser `json:"assignees"`
-	Comments  int        `json:"comments"`
+	Comments  int          `json:"comments"`
 }

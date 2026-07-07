@@ -11,8 +11,10 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	calendar "github.com/floatpane/go-icalendar"
+	"github.com/floatpane/matcha/backend/repoapi"
 	"github.com/floatpane/matcha/config"
 	"github.com/floatpane/matcha/fetcher"
+	"github.com/floatpane/matcha/internal/github"
 	"github.com/floatpane/matcha/theme"
 	"github.com/floatpane/matcha/view"
 	"github.com/floatpane/termimage"
@@ -401,12 +403,58 @@ func (m *EmailView) handleEmailBodyKey(msg tea.KeyPressMsg) (bool, func() (tea.M
 		return true, func() (tea.Model, tea.Cmd) {
 			return m, func() tea.Msg { return GoToSendPatchMsg{} }
 		}
+	case kb.Email.ApprovePR, kb.Email.RequestChanges, kb.Email.LeaveComment:
+		if m.isGitHub {
+			return m.handlePRActionKey(msg)
+		}
 	case kb.Email.FocusAttachments:
 		if len(m.email.Attachments) > 0 {
 			m.focusOnAttachments = true
 		}
 	}
 	return false, nil
+}
+
+// handlePRActionKey dispatches a GitHub PR direct-action keypress (approve,
+// request changes, comment) from the standard email viewer. It emits a
+// PREditorOpenMsg so the app layer can open the editor and submit the review.
+func (m *EmailView) handlePRActionKey(msg tea.KeyPressMsg) (bool, func() (tea.Model, tea.Cmd)) {
+	kb := config.Keybinds
+	var action repoapi.ReviewEvent
+	switch msg.String() {
+	case kb.Email.ApprovePR:
+		action = repoapi.ReviewApprove
+	case kb.Email.RequestChanges:
+		action = repoapi.ReviewRequestChanges
+	case kb.Email.LeaveComment:
+		action = repoapi.ReviewComment
+	default:
+		return false, nil
+	}
+
+	key, ok := view.ExtractGitHubKey(m.email)
+	if !ok || !key.IsPR {
+		return false, nil
+	}
+
+	host := repoapi.ParseHostFromEmailSender(m.email.From)
+	commitSHA := ""
+	if group := github.GetGroup(key); group != nil && group.PRDetails != nil {
+		commitSHA = group.PRDetails.Head.Sha
+	}
+
+	return true, func() (tea.Model, tea.Cmd) {
+		return m, func() tea.Msg {
+			return PREditorOpenMsg{
+				Action:    action,
+				Owner:     key.OrgName,
+				Repo:      key.RepoName,
+				PRNumber:  key.IssueNumber,
+				Host:      host,
+				CommitSHA: commitSHA,
+			}
+		}
+	}
 }
 
 // rsvpResponseFromKey maps an RSVP key to its calendar response string.

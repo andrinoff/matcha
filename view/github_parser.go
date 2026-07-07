@@ -20,11 +20,11 @@ type GitHubComment struct {
 }
 
 var (
-	githubSenderRe  = regexp.MustCompile(`([^/<]+)<[^>]*>`)
-	repoTitleRe     = regexp.MustCompile(`\[([^\]]+)\]\s*(.*)`)
-	prNumberRe      = regexp.MustCompile(`#(\d+)`)
-	githubFooterRe  = regexp.MustCompile(`(?i)(You are receiving this because|Reply to this email directly|View it on GitHub|Unsubscribe)`)
-	githubLoginRe   = regexp.MustCompile(`([A-Za-z0-9][A-Za-z0-9\-]*)\s+(?:left a comment|commented|opened|closed|merged|reviewed|requested|pushed|added|assigned|approved)`)
+	githubSenderRe = regexp.MustCompile(`([^/<]+)<[^>]*>`)
+	repoTitleRe    = regexp.MustCompile(`\[([^\]]+)\]\s*(.*)`)
+	prNumberRe     = regexp.MustCompile(`#(\d+)`)
+	githubFooterRe = regexp.MustCompile(`(?i)(You are receiving this because|Reply to this email directly|View it on GitHub|Unsubscribe)`)
+	githubLoginRe  = regexp.MustCompile(`([A-Za-z0-9][A-Za-z0-9\-]*)\s+(?:left a comment|commented|opened|closed|merged|reviewed|requested|pushed|added|assigned|approved)`)
 )
 
 func ParseGitHubNotification(email fetcher.Email) *github.NotificationGroup {
