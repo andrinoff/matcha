@@ -1667,6 +1667,115 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 		m.syncPluginKeyBindings()
 		return m, m.current.Init()
 
+	case tui.ReplyAllEmailMsg:
+		// Determine the original sender (Reply-To if present, else From)
+		var sender string
+		if len(msg.Email.ReplyTo) > 0 {
+			sender = strings.Join(msg.Email.ReplyTo, ", ")
+		} else {
+			sender = msg.Email.From
+		}
+		subject := msg.Email.Subject
+		normalizedSubject := strings.ToLower(strings.TrimSpace(subject))
+		if !strings.HasPrefix(normalizedSubject, "re:") {
+			subject = "Re: " + subject
+		}
+		quotedText := fmt.Sprintf("\n\nOn %s, %s wrote:\n> %s", msg.Email.Date.Local().Format("Jan 2, 2006 at 3:04 PM"), msg.Email.From, strings.ReplaceAll(msg.Email.Body, "\n", "\n> "))
+
+		// Build set of the user's own addresses to exclude from reply-all
+		selfAddrs := make(map[string]bool)
+		if m.config != nil {
+			for _, acc := range m.config.Accounts {
+				selfAddrs[strings.ToLower(acc.Email)] = true
+				selfAddrs[strings.ToLower(acc.GetFetchEmail())] = true
+				selfAddrs[strings.ToLower(acc.GetSendAsEmail())] = true
+			}
+			// For catch-all accounts, also exclude the delivery address
+			accountID := msg.Email.AccountID
+			if accountID == "" && len(m.config.Accounts) > 0 {
+				accountID = m.config.GetFirstAccount().ID
+			}
+			for _, acc := range m.config.Accounts {
+				if acc.ID == accountID && acc.CatchAll && len(msg.Email.To) > 0 {
+					if addr, err := mail.ParseAddress(msg.Email.To[0]); err == nil {
+						selfAddrs[strings.ToLower(addr.Address)] = true
+					} else {
+						selfAddrs[strings.ToLower(strings.TrimSpace(msg.Email.To[0]))] = true
+					}
+					break
+				}
+			}
+		}
+
+		// Collect Cc recipients from original To list, excluding self and the sender
+		seen := make(map[string]bool)
+		var ccRecipients []string
+		for _, addr := range msg.Email.To {
+			parsed, err := mail.ParseAddress(addr)
+			addrLower := ""
+			displayAddr := addr
+			if err == nil {
+				addrLower = strings.ToLower(parsed.Address)
+				displayAddr = parsed.Address
+			} else {
+				addrLower = strings.ToLower(strings.TrimSpace(addr))
+			}
+			if selfAddrs[addrLower] || seen[addrLower] {
+				continue
+			}
+			seen[addrLower] = true
+			ccRecipients = append(ccRecipients, displayAddr)
+		}
+		cc := strings.Join(ccRecipients, ", ")
+
+		var composer *tui.Composer
+		hideTips := false
+		if m.config != nil {
+			hideTips = m.config.HideTips
+		}
+		if m.config != nil && len(m.config.Accounts) > 0 {
+			accountID := msg.Email.AccountID
+			if accountID == "" {
+				accountID = m.config.GetFirstAccount().ID
+			}
+			composer = tui.NewComposerWithAccounts(m.config.Accounts, accountID, sender, subject, "", hideTips)
+			// For catch-all accounts, pre-fill From with the specific address the email was delivered to.
+			if len(msg.Email.To) > 0 {
+				for i := range m.config.Accounts {
+					if m.config.Accounts[i].ID == accountID && m.config.Accounts[i].CatchAll {
+						acc := &m.config.Accounts[i]
+						deliveryAddr := msg.Email.To[0]
+						if addr, err := mail.ParseAddress(deliveryAddr); err == nil {
+							deliveryAddr = addr.Address
+						}
+						fromVal := deliveryAddr
+						if acc.Name != "" {
+							fromVal = fmt.Sprintf("%s <%s>", acc.Name, deliveryAddr)
+						}
+						composer.SetFromOverride(fromVal)
+						break
+					}
+				}
+			}
+		} else {
+			composer = tui.NewComposer("", sender, subject, "", hideTips)
+		}
+		if cc != "" {
+			composer.SetCc(cc)
+		}
+		composer.SetQuotedText(quotedText)
+
+		// Set reply headers
+		inReplyTo := msg.Email.MessageID
+		references := append(msg.Email.References, msg.Email.MessageID) //nolint:gocritic
+		composer.SetReplyContext(inReplyTo, references)
+
+		m.applySpellcheckOptions(composer)
+		m.current = composer
+		m.current, _ = m.current.Update(m.currentWindowSize())
+		m.syncPluginKeyBindings()
+		return m, m.current.Init()
+
 	case tui.ForwardEmailMsg:
 		subject := msg.Email.Subject
 		if !strings.HasPrefix(strings.ToLower(subject), "fwd:") {

@@ -265,6 +265,10 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Clear Kitty graphics before opening composer
 				ClearKittyGraphics()
 				return m, func() tea.Msg { return ReplyToEmailMsg{Email: m.email} }
+			case kb.Email.ReplyAll:
+				// Clear Kitty graphics before opening composer
+				ClearKittyGraphics()
+				return m, func() tea.Msg { return ReplyAllEmailMsg{Email: m.email} }
 			case kb.Email.Forward:
 				// Clear Kitty graphics before opening composer
 				ClearKittyGraphics()
@@ -385,7 +389,7 @@ func (m *EmailView) View() tea.View {
 		help = helpStyle.Render(helpText)
 	} else {
 		var shortcuts strings.Builder
-		shortcuts.WriteString("\uf112 r: reply • \uf064 f: forward • \uea81 d: delete • \uea98 a: archive • \uf435 tab: focus attachments • \ueb06 esc: back to inbox")
+		shortcuts.WriteString("\uf112 r: reply • \uf064 shift+r: reply all • \uf064 f: forward • \uea81 d: delete • \uea98 a: archive • \uf435 tab: focus attachments • \ueb06 esc: back to inbox")
 		if view.ImageProtocolSupported() {
 			shortcuts.WriteString("• \uf03e i: toggle images")
 		}

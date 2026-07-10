@@ -48,6 +48,7 @@ type InboxKeys struct {
 
 type EmailKeys struct {
 	Reply            string `json:"reply"`
+	ReplyAll         string `json:"reply_all"`
 	Forward          string `json:"forward"`
 	Delete           string `json:"delete"`
 	Archive          string `json:"archive"`
@@ -127,6 +128,7 @@ func ValidateKeybinds(kb KeybindsConfig) []string {
 		},
 		"email": {
 			"reply":             kb.Email.Reply,
+			"reply_all":         kb.Email.ReplyAll,
 			"forward":           kb.Email.Forward,
 			keyDelete:           kb.Email.Delete,
 			"archive":           kb.Email.Archive,

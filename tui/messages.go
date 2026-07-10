@@ -180,6 +180,10 @@ type ReplyToEmailMsg struct {
 	Email fetcher.Email
 }
 
+type ReplyAllEmailMsg struct {
+	Email fetcher.Email
+}
+
 type ForwardEmailMsg struct {
 	Email fetcher.Email
 }
