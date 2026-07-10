@@ -1712,7 +1712,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 		var ccRecipients []string
 		for _, addr := range msg.Email.To {
 			parsed, err := mail.ParseAddress(addr)
-			addrLower := ""
+			var addrLower string
 			displayAddr := addr
 			if err == nil {
 				addrLower = strings.ToLower(parsed.Address)
