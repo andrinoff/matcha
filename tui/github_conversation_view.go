@@ -556,6 +556,10 @@ func filterEvents(events []github.Event) []github.Event {
 		}
 		if strings.TrimSpace(event.Body) != "" {
 			filtered = append(filtered, event)
+			continue
+		}
+		if event.EventType != github.EventUnknown {
+			filtered = append(filtered, event)
 		}
 	}
 	return filtered

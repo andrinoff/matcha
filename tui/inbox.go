@@ -1088,6 +1088,17 @@ func (m *Inbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 				if m.searchActive {
 					email = m.GetEmailAtIndex(idx)
 				}
+				if selectedItem.isGitHubGroup {
+					return m, func() tea.Msg {
+						return ViewGitHubGroupMsg{
+							Key:       selectedItem.githubGroupKey,
+							UID:       uid,
+							AccountID: accountID,
+							Mailbox:   m.mailbox,
+							Email:     email,
+						}
+					}
+				}
 				return m, func() tea.Msg {
 					return ViewEmailMsg{Index: idx, UID: uid, AccountID: accountID, Mailbox: m.mailbox, Email: email}
 				}

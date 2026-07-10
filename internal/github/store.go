@@ -164,6 +164,27 @@ func UpdateEventBody(key EventKey, uid uint32, accountID string, body string, ev
 	}
 }
 
+func UpdateEventSystem(key EventKey, uid uint32, accountID string, systemMsg string, eventType EventType) {
+	if uid == 0 {
+		return
+	}
+	storeMu.Lock()
+	defer storeMu.Unlock()
+	group, exists := store[key]
+	if !exists {
+		return
+	}
+	for i, event := range group.Events {
+		if event.RawEmail.UID == uid && event.RawEmail.AccountID == accountID {
+			group.Events[i].IsSystem = true
+			group.Events[i].SystemMsg = systemMsg
+			group.Events[i].Body = ""
+			group.Events[i].EventType = eventType
+			return
+		}
+	}
+}
+
 func SetPRDetails(key EventKey, details *PRDetails) {
 	storeMu.Lock()
 	defer storeMu.Unlock()

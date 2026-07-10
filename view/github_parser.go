@@ -64,23 +64,17 @@ func ParseGitHubNotification(email fetcher.Email) *github.NotificationGroup {
 		event.Body = ""
 	}
 
-	if eventType == github.EventUnknown && body == "" && !event.IsSystem {
-		group := github.GetGroup(key)
-		if group == nil {
-			group = github.GetOrCreateGroup(key, title, state, isPR)
-		}
-		github.AddEmailToGroup(key, email.UID, email.AccountID)
-		go fetchDetails(key, orgName, repoName, issueNumber, isPR)
-		return group
-	}
-
 	existing := github.GetGroup(key)
 	if existing != nil && email.UID != 0 {
 		github.AddEmailToGroup(key, email.UID, email.AccountID)
 		for _, e := range existing.Events {
 			if e.RawEmail.UID == email.UID && e.RawEmail.AccountID == email.AccountID {
 				if body != "" && e.Body == "" {
-					github.UpdateEventBody(key, email.UID, email.AccountID, body, eventType)
+					if event.IsSystem {
+						github.UpdateEventSystem(key, email.UID, email.AccountID, event.SystemMsg, eventType)
+					} else {
+						github.UpdateEventBody(key, email.UID, email.AccountID, body, eventType)
+					}
 				}
 				go fetchDetails(key, orgName, repoName, issueNumber, isPR)
 				return existing

@@ -48,7 +48,7 @@ type ViewGitHubGroupMsg struct {
 
 type GitHubGroupBodiesFetchedMsg struct {
 	Key    github.EventKey
-	Bodies map[uint32]GitHubBodyData
+	Bodies map[string]GitHubBodyData
 	Err    error
 }
 

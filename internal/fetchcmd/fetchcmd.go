@@ -293,7 +293,7 @@ func FetchPreviewBodyCmd(cfg *config.Config, uid uint32, accountID string, folde
 func FetchGitHubGroupBodiesCmd(cfg *config.Config, key github.EventKey, folderName string, mailbox tui.MailboxKind) tea.Cmd {
 	return func() tea.Msg {
 		uids := github.GetGroupEmailUIDs(key)
-		bodies := make(map[uint32]tui.GitHubBodyData)
+		bodies := make(map[string]tui.GitHubBodyData)
 		var mu sync.Mutex
 		var wg sync.WaitGroup
 
@@ -310,7 +310,7 @@ func FetchGitHubGroupBodiesCmd(cfg *config.Config, key github.EventKey, folderNa
 					return
 				}
 				mu.Lock()
-				bodies[u.UID] = tui.GitHubBodyData{
+				bodies[fmt.Sprintf("%d:%s", u.UID, u.AccountID)] = tui.GitHubBodyData{
 					Body:         body,
 					BodyMIMEType: bodyMIMEType,
 					AccountID:    u.AccountID,

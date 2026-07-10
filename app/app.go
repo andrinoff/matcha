@@ -1740,8 +1740,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 		return m, m.current.Init()
 
 	case tui.GitHubGroupBodiesFetchedMsg:
-		for uid, bodyData := range msg.Bodies {
-			if email := m.store.GetEmailByUIDAndAccount(uid, bodyData.AccountID); email != nil {
+		for _, uid := range github.GetGroupEmailUIDs(msg.Key) {
+			bodyData, ok := msg.Bodies[fmt.Sprintf("%d:%s", uid.UID, uid.AccountID)]
+			if !ok {
+				continue
+			}
+			if email := m.store.GetEmailByUIDAndAccount(uid.UID, bodyData.AccountID); email != nil {
 				email.Body = bodyData.Body
 				email.BodyMIMEType = bodyData.BodyMIMEType
 				view.ParseGitHubNotification(*email)
@@ -1821,9 +1825,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 			m.folderInbox.OpenSplitPreview(msg.UID, msg.AccountID, email)
 			m.current = m.folderInbox
 			cmd = m.markEmailReadAndQueue(msg.AccountID, msg.UID, suppressRead)
-			return m, tea.Batch(append(m.pluginFlagCmds(), cmd, func() tea.Msg {
+			cmds := append(m.pluginFlagCmds(), cmd, func() tea.Msg {
 				return tui.UpdatePreviewMsg{UID: msg.UID, AccountID: msg.AccountID}
-			})...)
+			})
+			if key, ok := view.ExtractGitHubKey(*email); ok {
+				cmds = append(cmds, fetchcmd.FetchGitHubGroupBodiesCmd(m.config, key, folderName, msg.Mailbox))
+			}
+			return m, tea.Batch(cmds...)
 		}
 		if cached := config.GetCachedEmailBody(folderName, msg.UID, msg.AccountID, m.config.GetBodyCacheThreshold()); cached != nil {
 			attachments := m.cachedAttachmentsToFetcher(cached.Attachments)
@@ -1900,6 +1908,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:gocyclo
 		githubNotification := view.ParseGitHubNotification(*email)
 		if githubNotification != nil {
 			m.current = tui.NewGitHubConversationView(githubNotification, *email, m.width, m.height, msg.Mailbox)
+			m.syncPluginStatus()
+			m.syncPluginKeyBindings()
+			cmds := []tea.Cmd{m.current.Init()}
+			if markReadCmd != nil {
+				cmds = append(cmds, markReadCmd)
+			}
+			cmds = append(cmds, m.pluginFlagCmds()...)
+			fetchBodiesCmd := fetchcmd.FetchGitHubGroupBodiesCmd(m.config, githubNotification.Key, m.folderName(), msg.Mailbox)
+			cmds = append(cmds, fetchBodiesCmd)
+			return m, tea.Batch(cmds...)
 		} else {
 			emailView := tui.NewEmailView(*email, emailIndex, m.width, m.height, msg.Mailbox, m.config.DisableImages)
 			m.current = emailView
