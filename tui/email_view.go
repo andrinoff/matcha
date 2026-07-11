@@ -231,6 +231,24 @@ func (m *EmailView) Init() tea.Cmd {
 	return nil
 }
 
+// handleComposeAction checks if the key matches reply, reply-all, or forward
+// and returns the corresponding message. Returns false if no match.
+func (m *EmailView) handleComposeAction(key string) (tea.Msg, bool) {
+	kb := config.Keybinds
+	switch key {
+	case kb.Email.Reply:
+		ClearKittyGraphics()
+		return ReplyToEmailMsg{Email: m.email}, true
+	case kb.Email.ReplyAll:
+		ClearKittyGraphics()
+		return ReplyAllEmailMsg{Email: m.email}, true
+	case kb.Email.Forward:
+		ClearKittyGraphics()
+		return ForwardEmailMsg{Email: m.email}, true
+	}
+	return nil, false
+}
+
 func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	cmds := make([]tea.Cmd, 0, 1)
@@ -323,15 +341,11 @@ func (m *EmailView) handleEmailBodyKey(msg tea.KeyPressMsg) (bool, func() (tea.M
 			m.regenerateBody()
 			return true, func() (tea.Model, tea.Cmd) { return m, nil }
 		}
-	case kb.Email.Reply:
-		ClearKittyGraphics()
-		return true, func() (tea.Model, tea.Cmd) {
-			return m, func() tea.Msg { return ReplyToEmailMsg{Email: m.email} }
-		}
-	case kb.Email.Forward:
-		ClearKittyGraphics()
-		return true, func() (tea.Model, tea.Cmd) {
-			return m, func() tea.Msg { return ForwardEmailMsg{Email: m.email} }
+	case kb.Email.Reply, kb.Email.ReplyAll, kb.Email.Forward:
+		if composeMsg, ok := m.handleComposeAction(msg.String()); ok {
+			return true, func() (tea.Model, tea.Cmd) {
+				return m, func() tea.Msg { return composeMsg }
+			}
 		}
 	case kb.Email.Delete:
 		accountID := m.accountID
@@ -525,7 +539,7 @@ func (m *EmailView) renderHelp() string {
 	}
 
 	var shortcuts strings.Builder
-	shortcuts.WriteString("\uf112 r: reply • \uf064 f: forward • \uea81 d: delete • \uea98 a: archive • \uf435 tab: focus attachments • \ueb06 esc: back to inbox")
+	shortcuts.WriteString("\uf112 r: reply • \uf064 shift+r: reply all • \uf064 f: forward • \uea81 d: delete • \uea98 a: archive • \uf435 tab: focus attachments • \ueb06 esc: back to inbox")
 	if m.isPatch && m.patchInfo != nil && m.patchInfo.HasDiff {
 		shortcuts.WriteString(" • \uf126 p: apply patch")
 	}

@@ -21,6 +21,7 @@
   },
   "email": {
     "reply": "r",
+    "reply_all": "shift+r",
     "forward": "f",
     "delete": "d",
     "archive": "a",
