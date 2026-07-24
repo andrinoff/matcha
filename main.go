@@ -3623,6 +3623,8 @@ func downloadAttachmentCmd(account *config.Account, uid uint32, folderName strin
 			data, err = fetcher.FetchTrashAttachment(account, uid, msg.PartID, msg.Encoding)
 		case tui.MailboxArchive:
 			data, err = fetcher.FetchArchiveAttachment(account, uid, msg.PartID, msg.Encoding)
+		case tui.MailboxInbox:
+			fallthrough
 		default:
 			// MailboxInbox and any custom folder (Starred, All Mail, Important, ...).
 			// Select the exact folder the email lives in rather than assuming INBOX.
